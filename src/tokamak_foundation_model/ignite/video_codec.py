@@ -1,28 +1,22 @@
-"""IGNITE Phase-A tangtv **video** codec — encoder + FSQ quantizer + generative decoder.
+"""tangtv video codec: encoder, FSQ quantizer and adversarially trained decoder.
 
-Mirrors :class:`~ignite.codec.SpectroCodec` — same composition (encoder + FSQ + decoder),
-same generator-side GAN loss shape (adversarial + low pixel anchor + feature-matching +
-entropy, balanced by the VQGAN adaptive adversarial weight at the decoder's last layer) —
-but for video windows ``(B, C, T, H, W)`` and with **ONE deliberate difference**:
-
-    NO shift-consistency term.
+Same structure as :class:`~ignite.codec.SpectroCodec` and the same generator loss
+(adversarial term, small pixel anchor, feature matching and entropy, balanced by the
+VQGAN adaptive weight at the decoder's last layer), for video windows
+``(B, C, T, H, W)``. The one difference is that there is no shift-consistency term.
 
 The spectrogram codec needs a δ-shift consistency loss because a spectrogram carries an
-STFT-phase / speckle *realization* nuisance (a 0.5 ms sub-window shift scrambles ~74 % of
-the codes) that must be projected out so the codes carry only the *statistic*
-(docs/IGNITE_DESIGN.md §4.1-§4.2). A divertor camera frame has **no such sub-window-phase
-realization** — it is Genie-native smooth video — so there is no realization pair to be
-invariant to, and §4.3 explicitly scopes the video codec to "mostly just the
-no-strong-pixel-MSE / generative-decoder move." The statistics-first property comes from the
-low-weight pixel anchor + adversarial/feature-matching generative decoder (which prevents the
-mean-collapse a strong pixel-MSE would cause), NOT from a consistency pair. So
-``generator_losses`` takes a single ``x`` (plus an optional per-frame validity mask), never a
-nuisance pair.
+STFT-phase / speckle realization (a 0.5 ms sub-window shift changes ~74% of the codes)
+that has to be projected out so the codes keep only the statistic (docs/IGNITE_DESIGN.md
+§4.1-§4.2). A divertor camera frame has no such realization; it is smooth video, as in
+Genie, and §4.3 scopes the video codec to dropping strong pixel MSE in favour of a
+generative decoder. The low-weight pixel anchor with the adversarial and
+feature-matching terms prevents the mean collapse a strong pixel MSE would cause. So
+``generator_losses`` takes a single ``x`` and an optional per-frame validity mask.
 
-Everything else — FSQ bottleneck, the adaptive adversarial weight, the entropy/utilization
-regularizer, the feature-matching perceptual term — is reused from the shared IGNITE infra
-(``video_quantizer`` == the spectro FSQ machinery; ``losses.feature_matching_loss`` /
-``losses._as_score_list`` / ``losses._mean_over_maps``). Reuses **no** FAITH model code (§7).
+The FSQ bottleneck (``video_quantizer``, the spectro machinery), the adaptive weight,
+the entropy regularizer and feature matching (``losses``) are shared with the spectro
+codec. No FAITH model code is used (§7).
 """
 from __future__ import annotations
 
@@ -38,19 +32,19 @@ from .video_quantizer import VideoQuantizer
 
 
 class VideoCodec(nn.Module):
-    """Encoder + FSQ quantizer + generative decoder for ONE tangtv divertor (Phase A).
+    """Encoder, FSQ quantizer and decoder for one tangtv divertor camera.
 
-    Forward contract
-    ----------------
-    ``forward(x: (B, C, T, H, W)) -> dict`` with keys:
-        ``recon``  (B, C, T, H, W)      decoded video (generative output)
-        ``feats``  (B, n_tok, d_model)  PRE-FSQ continuous encoder features
-        ``quant``  (B, n_tok, d_model)  STE-quantized (decoder-facing) features
-        ``codes``  (B, n_tok, fsq_dim)  discrete per-dim FSQ codes (long) — Phase-B contract.
+    ``forward(x: (B, C, T, H, W))`` returns a dict with keys:
 
-    The discriminator (``video_discriminator.FramePatchGAN``) lives OUTSIDE the codec (created
-    alongside it by the trainer), exactly as for the spectro codec: the codec's parameters are
-    precisely the tokenizer Phase B freezes, and the two optimizers own disjoint parameters.
+    - ``recon`` (B, C, T, H, W): decoded video, in standardized frame space
+    - ``feats`` (B, n_tok, d_model): continuous encoder features before FSQ
+    - ``quant`` (B, n_tok, d_model): straight-through quantized features
+    - ``codes`` (B, n_tok, fsq_dim): FSQ codes (long), the Phase-B input
+    - ``x_std``: the standardized input
+
+    As for the spectro codec, the discriminator (``video_discriminator.FramePatchGAN``)
+    is created by the trainer outside the codec, so the codec's parameters are exactly
+    the tokenizer Phase B freezes and the two optimizers own disjoint parameters.
     """
 
     def __init__(self, cfg: VideoCodecConfig) -> None:
@@ -60,25 +54,21 @@ class VideoCodec(nn.Module):
         self.quantizer = VideoQuantizer(cfg)
         self.decoder = VideoDecoder(cfg)
 
-    # ------------------------------------------------------------------ #
-    # input standardization (the SCALE FIX — mirrors the FM model)
-    # ------------------------------------------------------------------ #
+    # Input standardization
     @staticmethod
     def standardize_input(x: torch.Tensor) -> torch.Tensor:
-        """Per-(B, C) z-score of a video window over (T, H, W) — the codec-input SCALE FIX.
+        """Per-(B, C) z-score of a video window over (T, H, W).
 
-        The tangtv frames arrive as RAW camera pixels (measured std ~5.2, range ~[16, 240] —
-        NOT O(1)); feeding those straight into the patchify→Linear encoder is a scale leak that
-        the FM model never sees. The FM standardizes video PER-(B, C) over (T, H, W) with
-        ``sd.clamp(min=1.0)`` (``e2e.multimodal.video_standardize_per_bc`` /
-        ``train_e2e_stage1.py``), so the codec mirrors that EXACTLY here. Applied inside
-        ``encode`` / ``forward`` / ``generator_losses`` so EVERY path (training, gate stability
-        nuisance, gate forecast sequence) sees the SAME O(1) input and the reconstruction target
-        is the SAME standardized frames as the reconstruction (a consistent loss).
+        tangtv frames arrive as raw camera pixels (std ~5.2, range ~[16, 240]), not
+        O(1). The foundation model standardizes video per (B, C) over (T, H, W) with
+        ``sd.clamp(min=1.0)`` (``e2e.multimodal.video_standardize_per_bc``), and the
+        codec does the same. It is applied in ``encode``, ``forward`` and
+        ``generator_losses``, so training and the gate's stability and forecast checks
+        all see the same input, and the reconstruction target is the same standardized
+        frames.
 
-        ``sd.clamp(min=1.0)`` keeps an off / dead camera (a zero-filled channel) finite and maps
-        it to ~0 (standardized-mean / neutral), never a large artifact. Reuses NO FAITH model
-        code — this is the same arithmetic, re-implemented from the data-pipeline mechanism.
+        ``sd.clamp(min=1.0)`` keeps an off or dead (zero-filled) camera finite and maps
+        it to ~0. The arithmetic is re-implemented here, not imported from FAITH.
 
         Parameters
         ----------
@@ -86,7 +76,7 @@ class VideoCodec(nn.Module):
 
         Returns
         -------
-        (B, C, T, H, W) standardized frames (per-(B, C) zero-mean, unit-ish-std).
+        (B, C, T, H, W) frames with zero mean and roughly unit std per (B, C).
         """
         if x.dim() != 5:
             raise ValueError(f"video input must be (B, C, T, H, W); got {tuple(x.shape)}")
@@ -94,15 +84,11 @@ class VideoCodec(nn.Module):
         sd = x.std(dim=(2, 3, 4), keepdim=True).clamp(min=1.0)
         return (x - mu) / sd
 
-    # ------------------------------------------------------------------ #
-    # forward paths
-    # ------------------------------------------------------------------ #
     def encode(self, x: torch.Tensor) -> torch.Tensor:
-        """(B, C, T, H, W) -> PRE-FSQ continuous features (B, n_tok, d_model).
+        """(B, C, T, H, W) -> continuous features before FSQ, (B, n_tok, d_model).
 
-        Standardizes the raw frames per-(B, C) (see :meth:`standardize_input`) BEFORE the
-        patchify encoder so the encoder input is O(1) (the SCALE FIX). Callers that pre-encode
-        a nuisance (the gate) go through here too, so they are standardized identically.
+        The frames are standardized first (:meth:`standardize_input`). Callers that
+        encode a nuisance copy (the gate) go through here too.
         """
         return self.encoder(self.standardize_input(x))
 
@@ -115,12 +101,10 @@ class VideoCodec(nn.Module):
         return self.decoder(quant)
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
-        """Run the codec; ``recon`` is in the STANDARDIZED frame space (see :meth:`encode`).
+        """Run the codec. ``recon`` is in standardized frame space.
 
-        Also returns ``x_std`` — the standardized input — so the generator loss compares
-        ``recon`` against the SAME standardized frames it was trained to produce (a consistent
-        reconstruction target; without this the target would be raw-scale and the recon
-        standardized-scale).
+        Also returns ``x_std``, the standardized input, so the generator loss compares
+        ``recon`` with the frames it is trained to produce rather than raw-scale ones.
         """
         x_std = self.standardize_input(x)
         feats = self.encoder(x_std)
@@ -132,9 +116,6 @@ class VideoCodec(nn.Module):
     def codebook_size(self) -> int:
         return self.quantizer.codebook_size
 
-    # ------------------------------------------------------------------ #
-    # generator-side loss (the codec's half of the GAN alternation)
-    # ------------------------------------------------------------------ #
     def generator_losses(
         self,
         x: torch.Tensor,
@@ -143,119 +124,105 @@ class VideoCodec(nn.Module):
         step: int = 0,
         frame_mask: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
-        """Full generator loss for one video-codec (generator) step.
+        """Generator loss for one video-codec step.
 
-        Runs the codec forward on ``x`` (the reconstruction target is ``x`` itself). There is
-        **no** δ-shift nuisance pair and **no** consistency term (see module docstring): the
-        signature takes a single ``x``.
+        Runs the codec on ``x``; the target is the standardized ``x``. There is no
+        δ-shift pair and no consistency term (see the module docstring).
 
-        ADAPTIVE (``cfg.adaptive_adv_weight`` True — VQGAN/MagViT "adaptive weight", Taming
-        Transformers §3.3), the default::
+        With the adaptive weight (``cfg.adaptive_adv_weight``, the default;
+        VQGAN/MagViT, Taming Transformers §3.3)::
 
-            recon_ref = cfg.pixel_anchor_weight * pixel + cfg.fm_weight * fm
-            adv       = -mean(D(recon))
-            lam       = (‖∇recon_ref‖ / (‖∇adv‖ + 1e-4)).clamp(0, clamp).detach()
-            adv_coeff = 0 if step < adv_warmup_steps else adversarial_weight * lam
-            total     = recon_ref + entropy_weight * entropy + adv_coeff * adv
+            ref   = cfg.pixel_anchor_weight * pixel + cfg.fm_weight * fm
+            adv   = -mean(D(recon))
+            lam   = (|grad ref| / (|grad adv| + 1e-4)).clamp(0, clamp).detach()
+            coeff = 0 if step < adv_warmup_steps else adversarial_weight * lam
+            total = ref + entropy_weight * entropy + coeff * adv
 
-        FIXED-WEIGHT (``cfg.adaptive_adv_weight`` False)::
+        With fixed weights::
 
             total = adversarial_weight * adv
                     + pixel_anchor_weight * pixel
                     + entropy_weight * entropy
 
-        ``last_layer`` for the adaptive balance is ``self.decoder.last_layer`` (the
-        ``to_pixels`` weight); ``lam`` is DETACHED. Zero-grad cases are handled gracefully.
+        Gradients for ``lam`` are taken at ``self.decoder.last_layer``.
 
         Parameters
         ----------
         x : (B, C, T, H, W)
-            The video window to reconstruct (also the recon target).
+            Video window to reconstruct.
         disc : nn.Module
-            The (external) FramePatchGAN; scored on ``recon`` for the adversarial term.
+            The external FramePatchGAN, scored on ``recon``.
         cfg : VideoCodecConfig
         step : int
-            Current global step (for ``cfg.adv_warmup_steps``). Default 0.
-        frame_mask : (B, T) or (B, C, T) bool/float, optional
-            Per-frame (optionally per-channel) validity mask. Off-filter tangtv cameras are
-            stored as fully-NaN slabs (already zero-filled by the loader) and flagged invalid.
-            ``None`` = all valid.
+            Global step, for ``cfg.adv_warmup_steps``.
+        frame_mask : (B, T) or (B, C, T) bool or float, optional
+            Per-frame (optionally per-channel) validity mask. Cameras with the filter
+            off are stored as all-NaN slabs, zero-filled by the loader, and flagged
+            invalid. ``None`` means all valid. The terms use it as follows:
 
-            AS OF 2026-09-03 THE MASK IS HONOURED BY EVERY TERM, not just the pixel anchor:
+            * ``pixel``: mean |recon - x| over valid (b, c, t) positions.
+            * ``adversarial``, ``feature_matching``: the discriminator sees only frames
+              in which every channel is valid. A half-dead frame is not a realistic
+              camera image, and a dead one is a constant plate; shown to D as real they
+              would teach it that flat frames are realistic, pushing toward mean
+              collapse.
+            * ``entropy``: valid clips only. Tokens mix both channels
+              (patch_dim = C*pt*ph*pw), so a dead channel spoils all 108 tokens of the
+              clip.
 
-              * ``pixel``            — mean |recon - x| over VALID (b, c, t) positions
-                                       (unchanged behaviour).
-              * ``adversarial`` + ``feature_matching`` — the discriminator is run on the
-                                       SUBSET of frames in which EVERY channel is valid. A
-                                       half-dead frame is not a realistic camera image, and a
-                                       fully dead one is a constant-zero plate: feeding those
-                                       to D as "real" teaches it that a flat frame IS realistic,
-                                       which is a direct gradient toward the mean-collapsed
-                                       generator this codec is supposed to avoid.
-              * ``entropy``          — the FSQ statistic is accumulated over valid CLIPS only.
-                                       Tokens mix both channels (patch_dim = C*pt*ph*pw), so a
-                                       clip with a dead channel has every one of its 108 tokens
-                                       contaminated; there is no per-token repair, only
-                                       exclusion.
+            Over all 8753 shots (video_channel_liveness.pt), 51.30% of tangtv_lower and
+            68.58% of tangtv_upper shots have no live camera, and in the rest 19.0% /
+            16.9% of channel slots are dead: only 39.4% (lower) / 26.1% (upper) of the
+            streamed tensor is real data.
 
-            WHY IT MATTERS (measured over all 8753 shots, video_channel_liveness.pt):
-            51.30% of tangtv_lower shots and 68.58% of tangtv_upper shots have NO live camera
-            at all, and among the shots that do, a further 19.0% / 16.9% of channel-slots are
-            dead. Only 39.4% (lower) / 26.1% (upper) of the streamed tensor is real data.
-
-            NO-OP GUARANTEE: when the mask is ``None`` OR selects every frame, the code takes
-            the ORIGINAL tensors through the identical call sequence, so the default path is
-            bit-identical to the pre-2026-09-03 loss (verified by test).
+            When the mask is ``None`` or selects every frame, the original tensors go
+            through the same calls, so the result is bit-identical to the unmasked loss
+            (covered by a test).
 
         Returns
         -------
         dict with keys:
-            ``total``            scalar generator loss (backprop this into the codec).
-            ``adversarial``      RAW hinge generator term  [-mean(D(recon))].
-            ``pixel``            raw (masked) pixel-MAE anchor.
-            ``feature_matching`` raw disc feature-matching L1.
-            ``entropy``          raw anti-collapse entropy term.
-            ``adaptive_weight``  float(lam) — the adaptive scale used this step (1.0 in the
-                                 fixed-weight path).
-            ``recon``            (B, C, T, H, W) reconstruction (live graph).
-            ``codes``            (B, n_tok, fsq_dim) codes for ``x`` (for gate/logging).
+            ``total``            scalar generator loss.
+            ``adversarial``      hinge generator term, -mean(D(recon)).
+            ``pixel``            masked pixel MAE.
+            ``feature_matching`` feature-matching L1.
+            ``entropy``          entropy term.
+            ``adaptive_weight``  float(lam) used this step (1.0 with fixed weights).
+            ``recon``            (B, C, T, H, W) reconstruction, with graph.
+            ``codes``            (B, n_tok, fsq_dim) codes of ``x``.
         """
         out = self.forward(x)
         recon, feats_x, codes = out["recon"], out["feats"], out["codes"]
-        # The reconstruction target is the STANDARDIZED input (see forward / standardize_input):
-        # recon lives in standardized frame space, so the pixel anchor + the discriminator's
-        # "real" frames MUST be the same standardized frames — comparing to the raw-scale x would
-        # make the loss (and the adaptive-adv gradient balance) inconsistent.
+        # recon is in standardized frame space, so the pixel anchor and the
+        # discriminator's real frames use the standardized input too.
         x_std = out["x_std"]
 
-        # MISSING-DATA EXCLUSION. `keep` is the (B, T) "every channel valid" frame selector;
-        # None means "everything valid", in which case the ORIGINAL tensors are used and the
-        # whole path below is bit-identical to the unmasked loss.
+        # `keep` is the (B, T) selector of frames with every channel valid; None means
+        # all are valid and the original tensors are used.
         keep = self._disc_frame_selector(frame_mask, recon.shape)
         d_fake = recon if keep is None else self._select_frames(recon, keep)
         d_real = x_std if keep is None else self._select_frames(x_std, keep)
 
-        # ONE discriminator pass: patch scores (adversarial) + intermediate features (FM).
+        # One discriminator pass gives the scores and the features for matching.
         fake_scores, fake_feats = disc(d_fake, return_features=True)
         fake_scores = _as_score_list(fake_scores)
-        adversarial = -_mean_over_maps(fake_scores)  # hinge generator term: -mean(D(recon))
+        adversarial = -_mean_over_maps(fake_scores)  # hinge generator term
 
         pixel = self._masked_pixel_mae(recon, x_std, frame_mask)
 
-        # DETACHED real features: generator matches fake -> real (grad only via fake feats).
+        # Real features are a detached target; the gradient flows through the fake ones.
         with torch.no_grad():
             _, real_feats = disc(d_real, return_features=True)
         fm = feature_matching_loss(real_feats, fake_feats)
 
-        # ENTROPY over valid CLIPS only (a clip with a dead channel contaminates all its
-        # tokens). `_valid_clips` returns None when every clip is usable -> feats_x unchanged.
+        # Entropy over valid clips only; `_valid_clips` is None when all are usable.
         clips = self._valid_clips(frame_mask, recon.shape)
         entropy = self.quantizer.entropy_loss(
             feats_x if clips is None else feats_x[clips], step=step
         )
 
-        # VQGAN-canonical: adaptive weight balances adv against the RECONSTRUCTION reference
-        # (pixel anchor + feature-matching), NOT the entropy regularizer.
+        # As in VQGAN, the adaptive weight balances the adversarial term against the
+        # reconstruction terms (pixel anchor and feature matching), not the entropy.
         recon_ref = cfg.pixel_anchor_weight * pixel + cfg.fm_weight * fm
 
         if cfg.adaptive_adv_weight:
@@ -286,20 +253,17 @@ class VideoCodec(nn.Module):
             "codes": codes,
         }
 
-    # ------------------------------------------------------------------ #
-    # missing-data selectors (shared with the trainer's discriminator step)
-    # ------------------------------------------------------------------ #
+    # Missing-data selectors, shared with the trainer's discriminator step
     @staticmethod
     def _frame_validity(
         frame_mask: Optional[torch.Tensor], shape
     ) -> Optional[torch.Tensor]:
-        """``(B, T)`` bool "every channel of this frame is valid", or None if all valid.
+        """``(B, T)`` bool, True where every channel of the frame is valid.
 
-        ``shape`` is the ``(B, C, T, H, W)`` video shape. A ``(B, T)`` mask is already
-        per-frame; a ``(B, C, T)`` mask is reduced over C with AND, because the
-        discriminator's input channel axis IS C — there is no way to hide one dead camera
-        from a conv that consumes both. Returns ``None`` when nothing would be excluded, so
-        every caller can short-circuit to the original tensors (the bit-identical path).
+        ``shape`` is the ``(B, C, T, H, W)`` video shape. A ``(B, C, T)`` mask is
+        reduced over C with AND, because the discriminator's conv takes both cameras as
+        input channels and cannot ignore a dead one. Returns ``None`` when nothing would
+        be excluded, so callers can use the original tensors.
         """
         if frame_mask is None:
             return None
@@ -307,26 +271,25 @@ class VideoCodec(nn.Module):
         m = frame_mask
         if m.dim() == 2:            # (B, T)
             v = m > 0.5
-        elif m.dim() == 3:          # (B, C, T) -> AND over channels
+        elif m.dim() == 3:          # (B, C, T), AND over channels
             v = (m > 0.5).all(dim=1)
         else:
             raise ValueError(f"frame_mask must be (B,T) or (B,C,T); got {tuple(m.shape)}")
         if v.shape != (B, T):
             raise ValueError(f"frame_mask implies {tuple(v.shape)}, expected {(B, T)}")
         if bool(v.all()):
-            return None             # nothing excluded -> caller keeps the original tensors
+            return None             # nothing excluded
         return v
 
     @classmethod
     def _disc_frame_selector(
         cls, frame_mask: Optional[torch.Tensor], shape
     ) -> Optional[torch.Tensor]:
-        """:meth:`_frame_validity`, but also None when the mask would leave NO frame.
+        """:meth:`_frame_validity`, but also None when no frame would be left.
 
-        A batch in which every frame is invalid (a whole batch of dead cameras) would give the
-        discriminator an empty input; the term then has no gradient and the hinge mean is NaN.
-        In that degenerate case we fall back to the unmasked tensors, exactly as
-        :meth:`_masked_pixel_mae` falls back to the unmasked MAE.
+        If every frame in the batch is invalid, the discriminator would get an empty
+        input and the hinge mean would be NaN, so the unmasked tensors are used instead,
+        as :meth:`_masked_pixel_mae` falls back to the unmasked MAE.
         """
         v = cls._frame_validity(frame_mask, shape)
         if v is None or not bool(v.any()):
@@ -337,12 +300,11 @@ class VideoCodec(nn.Module):
     def _select_frames(x: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
         """Gather the ``keep`` (B, T) frames of ``(B, C, T, H, W)`` into ``(1, C, N, H, W)``.
 
-        The FramePatchGAN reshapes ``(B, C, T, H, W) -> (B*T, C, H, W)`` and scores every frame
-        independently, so packing the surviving frames onto a single clip's time axis gives the
-        discriminator EXACTLY the valid frames and nothing else. Order is (batch, time)
-        row-major, matching the discriminator's own rearrange.
+        FramePatchGAN reshapes to ``(B*T, C, H, W)`` and scores each frame on its own,
+        so packing the kept frames onto one clip's time axis gives it exactly the valid
+        frames. Order is (batch, time), matching the discriminator's rearrange.
         """
-        # (B, C, T, H, W) -> (B, T, C, H, W) -> select -> (N, C, H, W) -> (1, C, N, H, W)
+        # (B, C, T, H, W) -> (B, T, C, H, W) -> (N, C, H, W) -> (1, C, N, H, W)
         sel = x.permute(0, 2, 1, 3, 4)[keep]          # (N, C, H, W)
         return sel.permute(1, 0, 2, 3).unsqueeze(0)   # (1, C, N, H, W)
 
@@ -350,11 +312,11 @@ class VideoCodec(nn.Module):
     def _valid_clips(
         cls, frame_mask: Optional[torch.Tensor], shape
     ) -> Optional[torch.Tensor]:
-        """``(B,)`` bool "every (channel, frame) of this clip is valid", or None if all are.
+        """``(B,)`` bool, True for clips whose every (channel, frame) is valid.
 
-        Used to restrict the FSQ entropy statistic. Returns None when nothing would be
-        excluded AND when the selection would be empty (keeping the term finite and, under
-        DDP, keeping every rank's collective call shape well-defined).
+        Restricts the FSQ entropy statistic. Returns None when nothing would be excluded
+        and when nothing would be left, which keeps the term finite and the collective
+        call shapes the same on every DDP rank.
         """
         v = cls._frame_validity(frame_mask, shape)
         if v is None:
@@ -364,22 +326,18 @@ class VideoCodec(nn.Module):
             return None
         return clips
 
-    # ------------------------------------------------------------------ #
-    # masked pixel anchor
-    # ------------------------------------------------------------------ #
     @staticmethod
     def _masked_pixel_mae(
         recon: torch.Tensor, x: torch.Tensor, frame_mask: Optional[torch.Tensor]
     ) -> torch.Tensor:
-        """Mean |recon - x| over VALID positions (all positions if ``frame_mask`` is None).
+        """Mean |recon - x| over valid positions (all if ``frame_mask`` is None).
 
-        ``frame_mask`` broadcasts a per-(batch, [channel], time) validity flag over the
-        (H, W) pixel grid. If the mask selects nothing (a whole batch of dead cameras) the
-        anchor falls back to the unmasked MAE so the term is always finite and differentiable.
+        The per-(batch, [channel], time) mask is broadcast over the (H, W) grid. If it
+        selects nothing, the unmasked MAE is returned so the term stays finite.
         """
         if frame_mask is None:
             return torch.mean(torch.abs(recon - x))
-        # x: (B, C, T, H, W). mask given as (B, T) or (B, C, T) -> broadcast over C?,H,W.
+        # x is (B, C, T, H, W); the mask is (B, T) or (B, C, T).
         m = frame_mask.to(dtype=recon.dtype)
         if m.dim() == 2:            # (B, T) -> (B, 1, T, 1, 1)
             m = m[:, None, :, None, None]
@@ -393,19 +351,17 @@ class VideoCodec(nn.Module):
             return torch.mean(torch.abs(recon - x))
         return (torch.abs(recon - x) * m).sum() / denom
 
-    # ------------------------------------------------------------------ #
     # VQGAN adaptive adversarial weight ("Taming Transformers" §3.3)
-    # ------------------------------------------------------------------ #
     def _adaptive_adv_weight(
         self,
         ref: torch.Tensor,
         adv: torch.Tensor,
         cfg: VideoCodecConfig,
     ) -> torch.Tensor:
-        """lam = ‖∇ref‖ / (‖∇adv‖ + 1e-4), clamped to [0, cfg.adaptive_adv_clamp], DETACHED.
+        """lam = |grad ref| / (|grad adv| + 1e-4), clamped to [0, adaptive_adv_clamp].
 
-        Gradients are taken w.r.t. the decoder's last layer (``self.decoder.last_layer``).
-        Identical in spirit + numerics to ``SpectroCodec._adaptive_adv_weight``.
+        Gradients are taken at ``self.decoder.last_layer``. Same computation as
+        ``SpectroCodec._adaptive_adv_weight``; returns a detached 0-dim tensor.
         """
         last_layer = self.decoder.last_layer
         zero = torch.zeros((), device=last_layer.device, dtype=last_layer.dtype)

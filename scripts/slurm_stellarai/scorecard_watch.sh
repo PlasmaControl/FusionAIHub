@@ -1,14 +1,11 @@
 #!/bin/bash
-# =====================================================================================
-# Score every frozen checkpoint of the watched runs on rollouts, as they appear.
-# Trainers started with SNAPSHOT_EVERY (default 2000 in launch_ss75full.sh) keep
-# runs/<run>/dynamics_step<N>.pt; for each one without runs/<run>/scorecard_<N>/ this
-# submits scripts/slurm_stellarai/ckpt_scorecard.sh as two one-node jobs side by side
-# (STAGE=val: held-out rollouts, ~1.2 h; STAGE=resp: NBI-off and ECH-off response, ~2.5 h),
-# at most MAX_JOBS scorecard jobs at a time, and then refreshes
+# Score every frozen checkpoint of the watched runs on rollouts as it appears.
+# Trainers started with SNAPSHOT_EVERY keep runs/<run>/dynamics_step<N>.pt. For each one
+# without runs/<run>/scorecard_<N>/ this submits scripts/slurm_stellarai/ckpt_scorecard.sh
+# as two one-node jobs side by side (STAGE=val: held-out rollouts; STAGE=resp: NBI-off and
+# ECH-off response), at most MAX_JOBS scorecard jobs at a time, then refreshes
 # runs/scorecard_all.json with analysis/scorecard_table.py. Runs on the login node:
 #   nohup bash scripts/slurm_stellarai/scorecard_watch.sh > logs/scorecard_watch.log 2>&1 &
-# =====================================================================================
 set -uo pipefail
 
 REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}
@@ -27,7 +24,7 @@ while true; do
       [ -f "$ckpt" ] || continue
       step=$(basename "$ckpt" .pt); step=${step#dynamics_step}
       out="$RUNS_DIR/$run/scorecard_$step"
-      # A stage whose sbatch was rejected (e.g. the QOS's 10-job submit limit) leaves
+      # A stage whose sbatch was rejected (e.g. by the QOS's 10-job limit) leaves
       # .unsubmitted_<stage> and is retried on the next poll.
       if [ -e "$out" ]; then
         stages=$(ls -A "$out" 2>/dev/null | sed -n 's/^\.unsubmitted_//p')

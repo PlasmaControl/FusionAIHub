@@ -1,16 +1,13 @@
-"""Phase-A tangtv **video** encoder / decoder (statistics-first, generative codec).
+"""tangtv video encoder and decoder.
 
-Mirrors ``nets.py`` (the spectrogram codec) but patchifies over the video volume
-``(B, C, T, H, W)`` instead of the spectrogram ``(B, C, F, T)``. Both are built on
-``x_transformers.Encoder`` attention primitives (no causal mask — a codec frame is a
-bidirectional token set). The video window is split into non-overlapping
-``(patch_t × patch_h × patch_w)`` space-time patches, linearly embedded to ``d_model``,
-and given learned factorized time/height/width patch-position embeddings. The decoder
-mirrors the path: transformer over the quantized tokens, then a linear unpatchify back to
-``(B, C, T, H, W)``.
-
-Only external libs (torch, x_transformers, einops) + config.py are used; **no** FAITH
-model code is imported (docs/IGNITE_DESIGN.md §7).
+Mirrors ``nets.py`` (the spectrogram codec) but patchifies the video volume
+``(B, C, T, H, W)`` instead of a spectrogram ``(B, C, F, T)``. Both sides are
+``x_transformers.Encoder`` stacks without a causal mask, since a codec frame is a
+bidirectional token set. The window is cut into non-overlapping
+``(patch_t, patch_h, patch_w)`` patches, embedded linearly to ``d_model`` and given
+learned factorized time, height and width embeddings. The decoder runs a transformer over the quantized tokens
+and unpatchifies linearly back to ``(B, C, T, H, W)``. No FAITH model code is used
+(docs/IGNITE_DESIGN.md §7).
 """
 from __future__ import annotations
 
@@ -23,10 +20,10 @@ from .config import VideoCodecConfig
 
 
 class _VideoPatchPosEmb(nn.Module):
-    """Additive learned position embedding factorized over time / height / width patches.
+    """Learned additive position embedding, factorized over time, height and width.
 
-    Token order is ``(time_patch, height_patch, width_patch)`` row-major (time outer,
-    width inner), matching the patchify rearrange below. Returns ``(1, n_tok, d_model)``.
+    Token order is ``(time_patch, height_patch, width_patch)``, time outer and width
+    inner, matching the patchify below. Returns ``(1, n_tok, d_model)``.
     """
 
     def __init__(self, cfg: VideoCodecConfig) -> None:
@@ -68,7 +65,7 @@ class VideoEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         cfg = self.cfg
-        # patchify: time outer, width inner -> n_tok = n_t * n_h * n_w
+        # Patchify, time outer and width inner, so n_tok = n_t * n_h * n_w.
         patches = rearrange(
             x,
             "b c (nt pt) (nh ph) (nw pw) -> b (nt nh nw) (c pt ph pw)",
@@ -83,10 +80,9 @@ class VideoEncoder(nn.Module):
 class VideoDecoder(nn.Module):
     """(B, n_tok, d_model) -> (B, C, T, H, W).
 
-    Generative (adversarial) decoder: a transformer over the quantized tokens followed by a
-    linear projection to per-patch pixels and a parameter-free unpatchify. The
-    ``to_pixels`` linear is the analogue of a deconv stack's final layer — it is what
-    hallucinates the frame's realization from the statistic-codes (§4.1).
+    Adversarially trained decoder: a transformer over the quantized tokens, a linear
+    projection to per-patch pixels and a parameter-free unpatchify. ``to_pixels`` plays
+    the role of a deconv stack's last layer and renders the frame from the codes (§4.1).
     """
 
     def __init__(self, cfg: VideoCodecConfig) -> None:
@@ -100,22 +96,21 @@ class VideoDecoder(nn.Module):
             heads=cfg.heads,
         )
         self.to_pixels = nn.Linear(cfg.d_model, patch_dim)
-        # Optional RESIDUAL per-frame conv refinement head (cfg.refine_depth > 0): stride-1
-        # kernel-3 2D convs that blend the linear head's independently-rendered patches across
-        # their 20x20 seams (the v6 GAN-free checkerboard fix — see the config note). The final
-        # conv is ZERO-INIT so the head starts as an exact identity; depth 0 (and old pickled
-        # configs, which lack the field entirely — hence the getattr) builds NOTHING, keeping
-        # the state_dict byte-identical to pre-refine checkpoints.
+        # Optional residual per-frame conv refinement (cfg.refine_depth > 0): stride-1,
+        # kernel-3 convs that blend the separately rendered 20x20 patches across their
+        # seams (against the checkerboard; see the config). The last conv is
+        # zero-initialised, so the head starts as the identity. Depth 0, and old pickled
+        # configs without the field (hence getattr), build nothing and keep the old
+        # state_dict.
         depth = int(getattr(cfg, "refine_depth", 0))
         self.refine: nn.Sequential | None = None
         if depth > 0:
             hidden = int(getattr(cfg, "refine_hidden", 64))
-            # DILATION schedule. `cfg.refine_dilated` (default False -> every dilation 1, i.e.
-            # BYTE-IDENTICAL to the pre-2026-09-03 head) makes layer i use dilation 2**i, so the
-            # stack's receptive field is 2^(depth+1)-1 rather than 2*depth+1. The recorded
-            # patch-lattice rule is that the head must SEE further than one patch; the video
-            # patch is 20x20, so depth 4 dilated (RF 31) clears it while depth 4 undilated
-            # (RF 9) cannot -- it can only smooth inside a patch, never across two seams.
+            # With cfg.refine_dilated (default False, all dilations 1) layer i uses
+            # dilation 2**i, so the receptive field is 2^(depth+1)-1 instead of
+            # 2*depth+1. The head has to see further than one 20x20 patch to remove
+            # seams: depth 4 dilated (RF 31) does, depth 4 undilated (RF 9) only smooths
+            # inside a patch.
             dilated = bool(getattr(cfg, "refine_dilated", False))
             layers: list[nn.Module] = []
             for i in range(depth - 1):
@@ -135,14 +130,13 @@ class VideoDecoder(nn.Module):
 
     @property
     def last_layer(self) -> nn.Parameter:
-        """The weight ``Parameter`` of the final layer producing the (B,C,T,H,W) output.
+        """Weight of the last parameterized layer on the output path.
 
-        Without the refinement head this is ``to_pixels.weight`` — the last linear before the
-        (parameter-free) unpatchify rearrange; with ``cfg.refine_depth > 0`` it is the final
-        refinement conv's weight (the last parameterized layer on the output path). The VQGAN
-        adaptive adversarial weight balances the reconstruction and adversarial gradients at
-        this tensor (see ``video_codec.VideoCodec.generator_losses`` and "Taming Transformers"
-        §3.3), exactly as ``nets.SpectroDecoder.last_layer`` does for the spectro codec.
+        ``to_pixels.weight`` without the refinement head, otherwise the last refinement
+        conv's weight. The VQGAN adaptive adversarial weight balances the reconstruction
+        and adversarial gradients at this tensor
+        (``video_codec.VideoCodec.generator_losses``, "Taming Transformers" §3.3), as
+        ``nets.SpectroDecoder.last_layer`` does.
         """
         if self.refine is not None:
             return self.refine[-1].weight
@@ -152,7 +146,7 @@ class VideoDecoder(nn.Module):
         cfg = self.cfg
         h = self.transformer(quant + self.pos_emb())
         patches = self.to_pixels(h)
-        # unpatchify: inverse of the encoder rearrange.
+        # Inverse of the encoder patchify.
         x = rearrange(
             patches,
             "b (nt nh nw) (c pt ph pw) -> b c (nt pt) (nh ph) (nw pw)",

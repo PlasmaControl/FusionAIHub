@@ -113,6 +113,20 @@ def test_rollout_is_deterministic_with_generator():
         assert torch.equal(t1[m.name], t2[m.name])
 
 
+def test_rollout_gumbel_argument_changes_the_reveal_order():
+    cfg = _tiny()
+    mg = MaskGITDynamics(cfg).eval()
+    seed = _codes(cfg, B=1, F=cfg.k0_seed)
+    act = torch.randn(1, cfg.k0_seed + cfg.n_predict, cfg.actuator_dim)
+    runs = [
+        mg.rollout(seed, act, generator=torch.Generator().manual_seed(7), gumbel=g)
+        for g in (0.0, 3.0, 3.0)
+    ]
+    for m in cfg.modalities:
+        assert torch.equal(runs[1][m.name], runs[2][m.name])
+    assert any(not torch.equal(runs[0][m.name], runs[1][m.name]) for m in cfg.modalities)
+
+
 def test_ss_fraction_ramps_from_zero_to_final():
     mg = MaskGITDynamics(_tiny())
     assert mg.ss_fraction(0) == 0.0

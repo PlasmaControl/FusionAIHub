@@ -8,13 +8,12 @@
 #SBATCH --time=04:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# =====================================================================================
-# Held-out rollout sweep on StellarAI: the last VAL_TAIL shots of the frozen validation
-# split (not the 12-shot protocol, whose 9 held-out shots are too few to separate +-0.01),
-# for each RUN:TEMPERATURE[:GUIDANCE[:OPTIONS]] in SWEEP, one after another on one node (8 GPUs, ~10 min per
-# shot and GPU). Each point is scored right away, in code space (rollout_npz_score.py)
-# and for hallucinated / missed spectrogram activity (rollout_hallucination.py), so a
-# point that finishes is never lost to the time limit.
+# Held-out rollout sweep on StellarAI over the last VAL_TAIL shots of the frozen
+# validation split. (The 12-shot protocol has only 9 held-out shots, too few to separate
+# +-0.01.) Each RUN:TEMPERATURE[:GUIDANCE[:OPTIONS]] in SWEEP runs in turn on one node
+# (8 GPUs, ~10 min per shot and GPU). Each point is scored right away, in code space
+# (rollout_npz_score.py) and for hallucinated / missed spectrogram activity
+# (rollout_hallucination.py), so a finished point is never lost to the time limit.
 #   sbatch scripts/slurm_stellarai/rollout_val_sweep.sh
 #   sbatch --export=ALL,SWEEP="ss75g_btf:1.0",VAL_TAIL=32 scripts/slurm_stellarai/rollout_val_sweep.sh
 #   sbatch --export=ALL,SWEEP="ss75g_btf_cfg:1.0:1 ss75g_btf_cfg:1.0:2" scripts/slurm_stellarai/rollout_val_sweep.sh
@@ -23,10 +22,9 @@
 #   ss75g_btf_cfg:1.0:1:GATE=0.4                      confidence gate
 #   ss75g_btf_cfg:1.0:1:CONSENSUS_N=8,CONSENSUS_Q=0.6 consensus rollout
 # Output: runs/<RUN>/rollout_val<N>_T<T>[_g<G>]_<jobid>/
-# CKPT_NAME (default dynamics_latest.pt) picks another file in the run folder, e.g. a frozen
-# snapshot: a running trainer rewrites dynamics_latest.pt, so points run hours apart
-# would otherwise score different checkpoints.
-# =====================================================================================
+# CKPT_NAME (default dynamics_latest.pt) picks another file in the run folder, such as a
+# frozen snapshot. A running trainer rewrites dynamics_latest.pt, so points run hours
+# apart would otherwise score different checkpoints.
 set -uo pipefail
 
 export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}
@@ -45,7 +43,7 @@ export SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-8}
 PINNED="190729,190735,190736"
 
 cd "$REPO_DIR"
-# The scorers run in this shell: activate the frozen env here (compute nodes have no
+# The scorers run in this shell, so activate the frozen env here (compute nodes have no
 # network, so `pixi run` cannot re-solve the environment there).
 source "$CLUSTER_ENV"
 for point in $SWEEP; do

@@ -880,6 +880,7 @@ class MaskGITDynamics(nn.Module):
         guidance: float = 1.0,
         gate: float = 0.0,
         return_mean: bool = False,
+        gumbel: Optional[float] = None,
     ):
         """Generate the codes of the next frame by iterative unmasking.
 
@@ -908,6 +909,9 @@ class MaskGITDynamics(nn.Module):
             Also return the expected FSQ coordinates of every token under the
             model's distribution given the history (the first, fully masked step,
             at temperature 1). Categorical head only.
+        gumbel : float, default=None
+            Scale of the annealed Gumbel noise on the reveal order; ``None`` uses
+            ``IGNITE_MASKGIT_GUMBEL``.
 
         Returns
         -------
@@ -924,6 +928,7 @@ class MaskGITDynamics(nn.Module):
         confidence so the reveal order is not a greedy cascade onto the mode.
         """
         cfg = self.cfg
+        gumbel_scale = _GUMBEL_SCALE if gumbel is None else float(gumbel)
         reference = past_codes[cfg.modalities[0].name]
         batch = reference.shape[0]
         device = reference.device
@@ -985,12 +990,12 @@ class MaskGITDynamics(nn.Module):
                     logits[m.name][:, -1], temperature, generator
                 )
                 probability = confidence.float()
-                if _GUMBEL_SCALE > 0.0:
+                if gumbel_scale > 0.0:
                     uniform = torch.rand(
                         confidence.shape, generator=generator, device=device
                     )
                     uniform = uniform.clamp_(1e-9, 1 - 1e-9)
-                    anneal = _GUMBEL_SCALE * (1.0 - step / max(1, len(keep_masked)))
+                    anneal = gumbel_scale * (1.0 - step / max(1, len(keep_masked)))
                     gumbel = -torch.log(-torch.log(uniform))
                     confidence = self.output.reveal_score(confidence) + anneal * gumbel
                 confidence = confidence.masked_fill(revealed[m.name], float("inf"))
@@ -1073,6 +1078,7 @@ class MaskGITDynamics(nn.Module):
         consensus_mode: str = "majority",
         consensus_shared: bool = True,
         return_mean: bool = False,
+        gumbel: Optional[float] = None,
     ):
         """Roll out ``n_predict`` frames autoregressively in code space.
 
@@ -1114,6 +1120,8 @@ class MaskGITDynamics(nn.Module):
             :meth:`generate_frame`): the model's mean given the sampled history,
             which drops the sampling noise of the frame itself. Needs
             ``consensus_n == 1``.
+        gumbel : float, default=None
+            Reveal-order noise of every frame (:meth:`generate_frame`).
 
         Returns
         -------
@@ -1149,6 +1157,7 @@ class MaskGITDynamics(nn.Module):
                 generator=generator,
                 guidance=guidance,
                 gate=gate,
+                gumbel=gumbel,
             )
             combined = {name: codes.clone() for name, codes in seed_codes.items()}
             for t in range(n_seed, n_seed + n_predict):
@@ -1184,6 +1193,7 @@ class MaskGITDynamics(nn.Module):
                 guidance=guidance,
                 gate=gate,
                 return_mean=return_mean,
+                gumbel=gumbel,
             )
             if return_mean:
                 next_frame, frame_mean = next_frame

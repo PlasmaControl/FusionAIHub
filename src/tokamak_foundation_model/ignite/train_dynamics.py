@@ -8,8 +8,8 @@ that cache, with scheduled sampling, optional loss masks and periodic validation
 Environment
 -----------
 IGNITE_ACT_GLOBAL
-    Directory of dataset-wide normalised actuators (built by
-    ``models/ignite_bandpower/build_actglobal.py``). When set, they replace the
+    Directory of dataset-wide normalised actuators, one ``<shot>.pt`` per shot
+    (entries are rebuilt with ``_raw_actuators``). When set, they replace the
     per-shot z-scored actuators of the cache, whose whole-shot statistics leak the
     future. A shot missing from it is an error. Read once at import.
 IGNITE_DETECT_ANOMALY
@@ -303,9 +303,9 @@ def _raw_actuators(
     Missing signals are zero-filled, so the width is always the one of
     :data:`_ACT_SPEC`. Windows are located in shot time like the diagnostics:
     sample ``round((t - x[0]) * fs)`` with ``fs`` from the record span, clamped
-    into the record. ``legacy=True`` reproduces the pre-2026-08-11 misaligned
-    indexing ``int(t * fs)`` with ``fs = 1 / median(diff(x))``, which is only
-    used to verify old caches before patching them.
+    into the record. ``legacy=True`` reproduces the old misaligned indexing
+    ``int(t * fs)`` with ``fs = 1 / median(diff(x))``, used only to verify old
+    caches before patching them.
     """
     import h5py
 
@@ -378,7 +378,7 @@ def actuator_frames(
 
 
 def _legacy_actuator_frames(shot: str, n_frames: int, data_dir, t0_start: float = 1.0):
-    """Return the pre-2026-08-11 misaligned actuators, to verify an old cache entry.
+    """Return the old misaligned actuators, to verify an old cache entry.
 
     Wrong on purpose; used only by :func:`patch_cache_actuators`.
     """
@@ -1922,9 +1922,10 @@ class TrainConfig:
     best_metric: str = _option(
         "masked",
         "metric ranking dynamics_best.pt: 'masked' (cosine-prior infilling), "
-        "'gen' (whole frame unknown, real history) or 'skill' (rollout profile skill "
-        "of --skill_every, the only one that tracks rollout quality)",
-        choices=("masked", "gen", "skill"),
+        "'gen' (whole frame unknown, real history), 'skill' (rollout profile skill "
+        "of --skill_every) or 'task' (rollout skill of every recorded modality of "
+        "--skill_every, over the live frames)",
+        choices=("masked", "gen", "skill", "task"),
     )
     val_rollout_horizon: int = _option(
         0,
@@ -1940,6 +1941,11 @@ class TrainConfig:
         "skill against persistence; 0 = off",
     )
     skill_shots: int = _option(32, "validation shots of --skill_every (the last N)")
+    skill_gumbel: float = _option(
+        0.0,
+        "reveal-order Gumbel noise of the --skill_every rollouts (the demo rollouts "
+        "use 3); 0 = the scorecard's val-stage protocol",
+    )
     skill_codec_tmpl: str = _option(
         "",
         "codec checkpoint template ({m} = modality) of the profile decoders of "
@@ -1965,6 +1971,7 @@ class BestMetric(enum.StrEnum):
     MASKED = "masked"
     GEN = "gen"
     SKILL = "skill"
+    TASK = "task"
 
 
 class ValScore(NamedTuple):
@@ -1980,6 +1987,11 @@ class SkillScore(NamedTuple):
     median: float
     median_mean: float  # on the expected frames; NaN without them
     per_shot: Dict[str, float]
+    # Task skill: mean over modalities of the median over shots, its per-modality
+    # medians and each shot's per-modality scores.
+    task: float
+    task_per_modality: Dict[str, float]
+    task_shots: Dict[str, Dict[str, float]]
 
 
 class _PhaseTimer:
@@ -2598,10 +2610,12 @@ class Trainer:
         self._setup_skill()
 
     def _setup_skill(self):
-        """Shots and profile decoders of ``--skill_every``."""
+        """Shots and decoders of ``--skill_every``."""
         config = self.config
-        if config.best_metric == BestMetric.SKILL and not config.skill_every:
-            raise ValueError("--best_metric skill needs --skill_every")
+        if config.best_metric in (BestMetric.SKILL, BestMetric.TASK) and not (
+            config.skill_every
+        ):
+            raise ValueError(f"--best_metric {config.best_metric} needs --skill_every")
         self.skill_shots, self.my_skill_shots, self.skill_codecs = [], [], {}
         if not config.skill_every:
             return
@@ -2616,21 +2630,26 @@ class Trainer:
         self.skill_shots = list(self.val_shots)[-int(config.skill_shots) :]
         self.my_skill_shots = self.skill_shots[self.ddp.rank :: self.ddp.world_size]
         if self.my_skill_shots:
-            codecs = load_frozen_codecs(
-                list(ev.PROFILE_SIGNALS), tmpl=config.skill_codec_tmpl or None
-            )
-            missing = set(ev.PROFILE_SIGNALS) - set(codecs)
+            names = [m.name for m in self.model_cfg.modalities]
+            codecs = load_frozen_codecs(names, tmpl=config.skill_codec_tmpl or None)
+            missing = set(names) - set(codecs)
             if missing:
                 raise FileNotFoundError(
                     f"--skill_every: no codec for {sorted(missing)} "
                     f"(--skill_codec_tmpl {config.skill_codec_tmpl!r})"
                 )
+            for codec, _cfg, _family in codecs.values():
+                codec.to(self.device).eval()
             self.skill_codecs = codecs
-            self.skill_convert = ev.profile_converters(codecs)
+            self.skill_convert = ev.profile_converters(
+                codecs,
+                [name for name, (_c, _cfg, family) in codecs.items() if family == "slowts"],
+            )
         if self.is_main:
             self.log(
                 f"[dynamics] rollout skill every {config.skill_every} steps on the "
-                f"last {len(self.skill_shots)} val shots, "
+                f"last {len(self.skill_shots)} val shots (Gumbel "
+                f"{float(config.skill_gumbel):g}), "
                 f"{len(self.my_skill_shots)} per rank on rank 0"
             )
 
@@ -2967,18 +2986,21 @@ class Trainer:
         )
 
     def _validate_skill(self) -> SkillScore:
-        """Median profile skill of free-running rollouts of the skill shots.
+        """Profile and task skill of free-running rollouts of the skill shots.
 
         The protocol of the scorecard's val stage (``eval_dynamics.rollout_shot``:
-        whole window from ``k0``, real actuators, T=1, seed 0, fp32), scored by
-        ``eval_dynamics.profile_skill``, so it matches the scorecard's ``skill``
-        column. Each rank rolls out its share of the shots; every rank gets the
-        merged result.
+        whole window from ``k0``, real actuators, T=1, seed 0, fp32), plus the
+        reveal noise of ``--skill_gumbel``. The profile skill is
+        ``eval_dynamics.profile_skill``, the scorecard's ``skill`` column when the
+        noise is off. The task skill is ``eval_dynamics.task_skill`` over the live
+        frames of every recorded modality. Each rank rolls out its share of the
+        shots; every rank gets the merged result.
         """
         from . import eval_dynamics as ev
 
         self.model.eval()
-        results = {}
+        results, task = {}, {}
+        gumbel = float(self.config.skill_gumbel)
         for shot in self.my_skill_shots:
             cache = ev.load_shot_cache(self.cache_dir, shot)
             generator = torch.Generator(device=self.device).manual_seed(0)
@@ -2991,6 +3013,20 @@ class Trainer:
                 generator,
                 self.device,
                 shot=shot,
+                decode={"gumbel": gumbel} if gumbel > 0 else None,
+            )
+            t_end = (self.live_end or {}).get(str(shot))
+            n_live = _n_live_frames(
+                rollout.n_frames, t_end, self.t0_start, _FRAME_S
+            )
+            task[shot] = ev.task_skill(
+                rollout.gt_codes,
+                rollout.pred_codes,
+                rollout.k0,
+                min(rollout.n_frames, n_live),
+                self.skill_codecs,
+                self.skill_convert,
+                self.device,
             )
             score = {
                 kind: ev.profile_skill(
@@ -2998,9 +3034,9 @@ class Trainer:
                     predicted,
                     rollout.k0,
                     rollout.n_frames,
-                    self.skill_codecs,
+                    {n: self.skill_codecs[n] for n in ev.PROFILE_SIGNALS},
                     self.skill_convert,
-                    torch.device("cpu"),
+                    self.device,
                 )
                 for kind, predicted in (
                     ("sampled", rollout.pred_codes),
@@ -3012,15 +3048,31 @@ class Trainer:
         self.model.train()
         if self.ddp.distributed:
             gathered = [None] * self.ddp.world_size
-            dist.all_gather_object(gathered, results)
-            results = {shot: v for part in gathered for shot, v in part.items()}
+            dist.all_gather_object(gathered, (results, task))
+            results = {shot: v for part, _ in gathered for shot, v in part.items()}
+            task = {shot: v for _, part in gathered for shot, v in part.items()}
 
         def median(index):
             values = [v[index] for v in results.values() if math.isfinite(v[index])]
             return float(np.median(values)) if values else float("nan")
 
+        # Median over shots per modality, then the mean over modalities, so every
+        # modality counts once whatever its token count; at least 3 shots each.
+        per_modality = {}
+        for name in sorted({name for scores in task.values() for name in scores}):
+            values = [s[name] for s in task.values() if name in s]
+            if len(values) >= 3:
+                per_modality[name] = float(np.median(values))
+        task_score = (
+            float(np.mean(list(per_modality.values()))) if per_modality else float("nan")
+        )
         return SkillScore(
-            median(0), median(1), {shot: v[0] for shot, v in sorted(results.items())}
+            median(0),
+            median(1),
+            {shot: v[0] for shot, v in sorted(results.items())},
+            task_score,
+            per_modality,
+            dict(sorted(task.items())),
         )
 
     def _log_train_step(self, train_loss, equal_weight, grad_norm):
@@ -3081,6 +3133,15 @@ class Trainer:
                 f"(expected frames {skill.median_mean:+.4f}; median of {scored} "
                 f"shots, rollout from k0 vs persistence)"
             )
+            self.log(
+                f"[dynamics] step {self.step} VAL task={skill.task:+.4f} (mean over "
+                f"{len(skill.task_per_modality)} modalities of the median over shots; "
+                "live frames, recorded modalities): "
+                + "  ".join(
+                    f"{name} {value:+.3f}"
+                    for name, value in skill.task_per_modality.items()
+                )
+            )
         per_modality = generation.per_modality
         if per_modality:
             worst_first = sorted(per_modality, key=lambda name: -per_modality[name])
@@ -3109,6 +3170,9 @@ class Trainer:
                         "val_skill": skill.median,
                         "val_skill_mean": skill.median_mean,
                         "val_skill_shots": skill.per_shot,
+                        "val_task": skill.task,
+                        "val_task_permod": skill.task_per_modality,
+                        "val_task_shots": skill.task_shots,
                     }
                     if skill is not None
                     else {}
@@ -3165,15 +3229,18 @@ class Trainer:
     def _selection_score(self, masked, generation, skill) -> Optional[float]:
         """The ``--best_metric`` score of this evaluation, lower is better.
 
-        Skill is negated; it is None on evaluations without a skill rollout.
+        Skill and task are negated; they are None on evaluations without a skill
+        rollout.
         """
         if self.best_metric is BestMetric.SKILL:
             return None if skill is None else -skill.median
+        if self.best_metric is BestMetric.TASK:
+            return None if skill is None else -skill.task
         return (generation if self.best_metric is BestMetric.GEN else masked).loss
 
     def _describe_score(self, score: float) -> str:
-        if self.best_metric is BestMetric.SKILL:
-            return f"skill={-score:+.4f}"
+        if self.best_metric in (BestMetric.SKILL, BestMetric.TASK):
+            return f"{self.best_metric}={-score:+.4f}"
         return f"{self.best_metric}_ce={score:.4f}"
 
     def _save_checkpoints(
@@ -3198,7 +3265,11 @@ class Trainer:
                 "val_loss": selected,
                 "masked_ce": masked.loss,
                 "gen_ce": generation.loss,
-                **({"skill": skill.median} if skill is not None else {}),
+                **(
+                    {"skill": skill.median, "task": skill.task}
+                    if skill is not None
+                    else {}
+                ),
                 "best_metric": str(self.best_metric),
             }
             _save_atomically(best, self.best_path)

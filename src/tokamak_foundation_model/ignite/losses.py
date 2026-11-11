@@ -1,16 +1,16 @@
-"""IGNITE Phase-A codec losses (fresh code, no FAITH model reuse).
+"""Codec losses (docs/IGNITE_DESIGN.md §4.2).
 
-Uses only `torch` + `config.py`. See docs/IGNITE_DESIGN.md §4.2.
+Uses only ``torch`` and ``config.py``. The main terms:
 
-Three losses:
-- ``shift_consistency`` — enforces shift-invariance of the encoder on the PRE-FSQ
-  continuous features (statistics-first codec; a δ-shifted raw signal should map to the
-  same statistic).
-- ``recon_objective`` — generator-side reconstruction loss: adversarial (hinge generator
-  term over the discriminator's scores on the reconstruction) + a small,
-  stability-gated pixel-MAE anchor.
-- ``discriminator_loss`` — hinge GAN discriminator loss over real vs fake, with an
-  optional R1 gradient-penalty stub.
+- ``shift_consistency``: makes the encoder's pre-FSQ features invariant to a δ-shift of
+  the raw signal, since the codec encodes statistics.
+- ``recon_objective``: generator loss, the hinge adversarial term on the reconstruction
+  plus a small pixel-MAE anchor.
+- ``discriminator_loss``: hinge discriminator loss on real and fake, with an optional R1
+  penalty.
+
+The other functions (feature matching, multi-scale L1, peak-weighted L1, frequency
+gradient, MS-SSIM) are optional reconstruction terms.
 """
 from __future__ import annotations
 
@@ -21,14 +21,11 @@ import torch
 from .config import SpectroCodecConfig
 
 
-# --------------------------------------------------------------------------- #
-# encoder shift-consistency
-# --------------------------------------------------------------------------- #
 def shift_consistency(feats_a: torch.Tensor, feats_b: torch.Tensor) -> torch.Tensor:
-    """MSE between the PRE-FSQ features of ``x`` and its δ-shifted version.
+    """MSE between the pre-FSQ features of ``x`` and of its δ-shifted copy.
 
-    Both tensors are (B, n_tok, d_model) continuous encoder features. Returns a scalar.
-    Zero when the two feature sets are identical, positive otherwise, differentiable.
+    Both are (B, n_tok, d_model) encoder features. Returns a differentiable scalar, zero
+    when the two are identical.
     """
     if feats_a.shape != feats_b.shape:
         raise ValueError(
@@ -37,9 +34,7 @@ def shift_consistency(feats_a: torch.Tensor, feats_b: torch.Tensor) -> torch.Ten
     return torch.mean((feats_a - feats_b) ** 2)
 
 
-# --------------------------------------------------------------------------- #
-# discriminator score helpers (hinge)
-# --------------------------------------------------------------------------- #
+# Discriminator score helpers
 def _as_score_list(scores) -> List[torch.Tensor]:
     """Normalize a discriminator output (Tensor or list of Tensors) to a list."""
     if isinstance(scores, (list, tuple)):
@@ -52,32 +47,25 @@ def _mean_over_maps(maps: List[torch.Tensor]) -> torch.Tensor:
     return torch.stack([m.mean() for m in maps]).mean()
 
 
-# --------------------------------------------------------------------------- #
-# discriminator feature-matching (HiFi-GAN / MelGAN vocoder-GAN perceptual term)
-# --------------------------------------------------------------------------- #
 def feature_matching_loss(
     feats_real: List[torch.Tensor],
     feats_fake: List[torch.Tensor],
 ) -> torch.Tensor:
-    """Mean L1 distance between matched discriminator feature activations.
+    """Mean L1 distance between matched discriminator activations.
 
-    This is the vocoder-GAN feature-matching term (HiFi-GAN §2.2 / MelGAN): it plays the
-    Genie perceptual-loss role but adapted to spectrograms, where VGG features do not
-    transfer. The generator is pushed to make the discriminator's *internal representation*
-    of the reconstruction match that of the real input.
+    The vocoder-GAN feature-matching term (HiFi-GAN §2.2, MelGAN). It takes the place of
+    Genie's perceptual loss, since VGG features do not transfer to spectrograms: the
+    discriminator's internal features of the reconstruction should match those of the
+    real input.
 
-    ``feats_real`` is treated as a DETACHED target (generator matches fake -> real; gradient
-    flows only through ``feats_fake``). List lengths are handled defensively via ``zip`` (the
-    shorter list bounds the sum), so a mismatch never raises. Returns a scalar:
-    - 0 when every matched pair is elementwise equal,
-    - > 0 otherwise,
-    - differentiable w.r.t. the tensors in ``feats_fake``.
-
-    An empty pairing (either list empty) returns a 0 scalar (no NaN).
+    ``feats_real`` is a detached target, so the gradient flows only through
+    ``feats_fake``. The lists are paired with ``zip``, so the shorter one sets the
+    length and a mismatch does not raise. Returns a scalar, 0 when every pair is equal
+    and when either list is empty.
     """
     pairs = list(zip(feats_real, feats_fake))
     if not pairs:
-        # no features to match -> zero. Anchor dtype/device to a fake tensor if present.
+        # Nothing to match. Take dtype and device from a feature tensor if there is one.
         ref = feats_fake[0] if feats_fake else (feats_real[0] if feats_real else None)
         if ref is None:
             return torch.zeros(())
@@ -86,23 +74,20 @@ def feature_matching_loss(
     return torch.stack(terms).mean()
 
 
-# --------------------------------------------------------------------------- #
-# generator-side reconstruction objective
-# --------------------------------------------------------------------------- #
 def recon_objective(
     recon: torch.Tensor,
     target: torch.Tensor,
     disc: torch.nn.Module,
     cfg: SpectroCodecConfig,
 ) -> Dict[str, torch.Tensor]:
-    """Generator-side loss = adversarial term + ``cfg.pixel_anchor_weight`` * pixel-MAE.
+    """Generator loss: adversarial term plus a small pixel-MAE anchor.
 
-    - adversarial (hinge generator): ``-mean(D(recon))`` — the generator wants the
-      discriminator's raw scores on the reconstruction to be high.
-    - pixel: L1 / MAE between reconstruction and target (the small, stability-gated anchor).
+    - adversarial: hinge generator term ``-mean(D(recon))``; high discriminator scores
+      on the reconstruction are rewarded.
+    - pixel: MAE between reconstruction and target.
 
-    Returns a dict with keys ``adversarial``, ``pixel`` (raw, un-weighted MAE) and
-    ``total`` (adversarial_weight * adversarial + pixel_anchor_weight * pixel).
+    Returns a dict with ``adversarial``, ``pixel`` (unweighted) and ``total``
+    (``adversarial_weight * adversarial + pixel_anchor_weight * pixel``).
     """
     fake_scores = _as_score_list(disc(recon))
     adversarial = -_mean_over_maps(fake_scores)
@@ -115,10 +100,13 @@ def recon_objective(
 
 def multiscale_recon_loss(recon: torch.Tensor, target: torch.Tensor,
                           scales=(2, 4)) -> torch.Tensor:
-    """Multi-resolution L1 — the spectrogram-image analogue of the NeMo/audio-codec multi-resolution
-    STFT/mel loss (Spectral Codecs, arXiv 2406.05298). Plain full-res pixel-L1 is minimized by the
-    smooth conditional mean (a per-freq envelope) → turbulent modalities reconstruct as a blur.
-    Adding L1 at coarser avg-pooled resolutions scores band contrast at multiple scales. (B,C,F,T)."""
+    """Multi-resolution L1 on (B, C, F, T) spectrograms.
+
+    The image counterpart of the multi-resolution STFT/mel loss of audio codecs
+    (Spectral Codecs, arXiv 2406.05298). Full-resolution L1 is minimized by the smooth
+    conditional mean (a per-frequency envelope), so turbulent modalities come out
+    blurred. L1 at coarser average-pooled resolutions also scores band contrast.
+    """
     import torch.nn.functional as _F
     loss = recon.new_zeros(())
     for s in scales:
@@ -128,35 +116,35 @@ def multiscale_recon_loss(recon: torch.Tensor, target: torch.Tensor,
 
 def peak_l1_loss(recon: torch.Tensor, target: torch.Tensor,
                  mask: torch.Tensor | None = None) -> torch.Tensor:
-    """L1 REWEIGHTED toward the target's spectral PEAKS -- the surrogate for peak_f1.
+    """L1 weighted toward the target's spectral peaks, a surrogate for ``peak_f1``.
 
-    ``recon`` / ``target`` are ``(B, C, F, T)``. Per ``(b, c, t)`` column the weight is each
-    frequency bin's PROMINENCE over that column's own mean::
+    ``recon`` and ``target`` are ``(B, C, F, T)``. In each ``(b, c, t)`` column the
+    weight of a frequency bin is its prominence over the column mean::
 
-        w = relu(target - target.mean(dim=F, keepdim=True))      # 0 on the floor, big on peaks
+        w = relu(target - target.mean(dim=F, keepdim=True))      # 0 on the floor
         w = w / mean(w)                                          # mean weight 1
         loss = mean(w * |recon - target|)
 
-    WHY A NEW TERM. MEASURED on 320 held-out co2 windows, ``peak_f1`` (top-k spectral peak
-    overlap -- whether the mode tracks are in the RIGHT PLACE):
+    Why: on 320 held-out co2 windows, ``peak_f1`` (top-k spectral peak overlap, i.e.
+    whether the mode tracks are in the right place) was:
 
-        tsmooth5 oracle (perfect coherent structure)  0.9936   <- the prize
-        patchmean oracle (exact patch means, free)    0.6537
-        shipped ms5 arm                               0.6116
-        best adversarial arm (hf 82% of ceiling)      0.6196
+        tsmooth5 oracle (perfect coherent structure)  0.9936
+        patchmean oracle (exact patch means)          0.6537
+        shipped ms5 codec                             0.6116
+        best adversarial codec (hf 82% of ceiling)    0.6196
 
-    Both trained codecs sit BELOW the free patch-mean code, while 0.9936 is reachable. So the
-    codes carry essentially no sub-patch track information, and none of the sharpness levers
-    move it: adversarial pressure took hf from 15% to 82% of ceiling and std_ratio from 0.766
-    to 0.964 and bought +0.008 of peak_f1. The reason is that no term in the objective PAYS
-    for peak placement -- a mode line spans 1-2 of a patch's 16 frequency bins, so getting it
-    right moves plain L1 by ~10% of the patch's area and moves ms_ssim's local contrast only
-    slightly, while the adversarial term rewards the right TEXTURE STATISTICS anywhere.
-    Reweighting L1 by prominence makes the peaks most of the loss instead of a tenth of it.
+    Both trained codecs score below the plain patch-mean code, so the codes carry almost
+    no sub-patch track information, and sharpness did not help: adversarial training
+    took hf from 15% to 82% of ceiling and std_ratio from 0.766 to 0.964 for +0.008 of
+    peak_f1. No other term rewards peak placement. A mode line covers 1-2 of a patch's
+    16 frequency bins, so placing it right changes plain L1 by ~10% of the patch area
+    and ms_ssim's local contrast only a little, while the adversarial term rewards the
+    right texture statistics anywhere. Weighting by prominence makes the peaks most of
+    the loss.
 
-    ``mask`` is an optional ``(B, C, T)`` validity mask, broadcast over frequency; weights and
-    the mean are taken over valid positions only. Returns a scalar. Weight normalisation uses
-    the SAME masked positions, so the term's scale does not drift with missingness.
+    ``mask`` is an optional ``(B, C, T)`` or ``(B, T)`` validity mask, broadcast over
+    frequency. Weights, their normalisation and the mean then use valid positions only,
+    so the scale does not change with the amount of missing data. Returns a scalar.
     """
     t_mean = target.mean(dim=-2, keepdim=True)                 # (B, C, 1, T)
     w = torch.relu(target - t_mean)
@@ -180,17 +168,17 @@ def peak_l1_loss(recon: torch.Tensor, target: torch.Tensor,
 
 
 def time_smooth(x: torch.Tensor, k: int) -> torch.Tensor:
-    """``k``-tap boxcar moving average along the TIME axis, edge-padded, shape-preserving.
+    """``k``-tap boxcar moving average along time, edge-padded, same shape.
 
-    ``x`` is ``(B, C, F, T)``; returns the same shape. ``k <= 1`` returns ``x`` ITSELF (the
-    identical object), so a disabled smoothing target is bit-identical, not merely equal.
+    ``x`` is ``(B, C, F, T)``. For ``k <= 1`` the input object itself is returned, so a
+    disabled smoothing target is bit-identical.
     """
     if k <= 1:
         return x
     import torch.nn.functional as _F
     pad_l, pad_r = k // 2, k - 1 - k // 2
-    # 'replicate' on a 4-D tensor pads the LAST TWO dims, so pad the time axis only by
-    # folding (C, F) into one batch-of-rows dim and using the 3-D form.
+    # 'replicate' on a 4-D tensor pads the last two dims. To pad time only, fold batch
+    # and channels together and use the 3-D form.
     B, C, F, T = x.shape
     xp = _F.pad(x.reshape(B * C, F, T), (pad_l, pad_r), mode="replicate")
     ker = x.new_full((1, 1, k), 1.0 / float(k)).expand(F, 1, k)
@@ -198,24 +186,25 @@ def time_smooth(x: torch.Tensor, k: int) -> torch.Tensor:
 
 
 def freq_gradient_loss(recon: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    """L1 on the FREQUENCY-derivative — directly penalizes a smooth envelope. A mean reconstruction
-    has ~0 freq-gradient where GT has sharp band structure, so matching ∂_F rewards exactly the
-    fine band detail pixel-L1 discards. (B,C,F,T) — finite difference along F (axis -2)."""
+    """L1 on the frequency derivative of (B, C, F, T) spectrograms.
+
+    A mean reconstruction has a near-zero frequency gradient where the truth has sharp
+    bands, so matching the finite difference along F (axis -2) rewards the band detail
+    that pixel L1 ignores.
+    """
     dr = recon[..., 1:, :] - recon[..., :-1, :]
     dt = target[..., 1:, :] - target[..., :-1, :]
     return torch.mean(torch.abs(dr - dt))
 
 
-# --------------------------------------------------------------------------- #
-# discriminator hinge loss
-# --------------------------------------------------------------------------- #
+# Discriminator hinge loss
 def _hinge_real(maps: List[torch.Tensor]) -> torch.Tensor:
-    # want real scores >= +1  ->  penalise (1 - score)_+
+    # Real scores should be >= +1: penalise relu(1 - score).
     return torch.stack([torch.relu(1.0 - m).mean() for m in maps]).mean()
 
 
 def _hinge_fake(maps: List[torch.Tensor]) -> torch.Tensor:
-    # want fake scores <= -1  ->  penalise (1 + score)_+
+    # Fake scores should be <= -1: penalise relu(1 + score).
     return torch.stack([torch.relu(1.0 + m).mean() for m in maps]).mean()
 
 
@@ -228,13 +217,11 @@ def discriminator_loss(
 ) -> torch.Tensor:
     """Hinge GAN discriminator loss.
 
-    ``L_D = E[relu(1 - D(real))] + E[relu(1 + D(fake))]``  (averaged over scales/maps).
+    ``L_D = E[relu(1 - D(real))] + E[relu(1 + D(fake))]``, averaged over scales.
 
-    Lower when real scores are high (>= +1) and fake scores are low (<= -1).
-
-    Optional R1 gradient penalty (``r1_gamma > 0``): adds
-    ``0.5 * r1_gamma * E[||∇_real D(real)||²]`` computed on the real inputs. Off by default
-    (stub; the real trainer wires the gradient graph explicitly).
+    With ``r1_gamma > 0`` it adds the R1 penalty
+    ``0.5 * r1_gamma * E[||grad_real D(real)||^2]`` on the real inputs. Off by default;
+    the trainer builds its own gradient penalty.
     """
     real_maps = _as_score_list(disc(real))
     fake_maps = _as_score_list(disc(fake.detach() if fake.requires_grad else fake))
@@ -259,36 +246,29 @@ def _r1_penalty(disc: torch.nn.Module, real: torch.Tensor, gamma: float) -> torc
     return 0.5 * gamma * penalty
 
 
-# --------------------------------------------------------------------------------------- #
-# MS-SSIM reconstruction loss — the DIFFERENTIABLE form of the ranking metric
-# --------------------------------------------------------------------------------------- #
 def ms_ssim_loss(recon: torch.Tensor, target: torch.Tensor,
                  win: int = 7, scales=(1, 2, 4), c1_frac: float = 0.01,
                  c2_frac: float = 0.03) -> torch.Tensor:
     """``1 - MS-SSIM`` between two (B, C, F, T) log-magnitude spectrograms.
 
-    WHY SSIM AND NOT AN L-p TERM. Written out,
+    Why SSIM rather than an L-p term::
 
-        SSIM = luminance x CONTRAST x STRUCTURE,
+        SSIM = luminance x contrast x structure
         contrast factor = 2 sigma_x sigma_y / (sigma_x^2 + sigma_y^2)
 
-    A blurred reconstruction has local ``sigma_y << sigma_x`` exactly where a mode ridge was,
-    so its contrast factor collapses and SSIM penalises the blur EXPLICITLY. An L1/L2 term has
-    no variance factor at all — the conditional mean is its exact minimiser — which is the
-    measured failure here: the arm with the best ``spec_nrmse`` (0.9010) has ``hf_ratio``
-    0.0143 and no visible structure, while a worse-scoring arm (1.0972 / 0.8258) reproduces the
-    mode track. This term is the differentiable twin of ``gate.ms_ssim``, so the quantity being
-    trained and the quantity being judged are the SAME quantity.
+    A blurred reconstruction has local ``sigma_y << sigma_x`` where a mode ridge was, so
+    the contrast factor drops and SSIM penalises the blur. An L1 or L2 term has no
+    variance factor, and the conditional mean minimises it. That is what happened: the
+    codec with the best ``spec_nrmse`` (0.9010) had ``hf_ratio`` 0.0143 and no visible
+    structure, while a worse one (1.0972 / 0.8258) reproduced the mode track. This is
+    the differentiable form of ``gate.ms_ssim``, so training and judging use the same
+    quantity. It also matches arXiv 2406.05298, which reports ViSQOL (built on NSIM, a
+    structural similarity over spectro-temporal patches) rather than time-domain error.
 
-    This is also what the reference's own metric choice implies: ViSQOL is built on NSIM, a
-    structural-similarity measure over spectro-temporal patches of a gammatone spectrogram
-    (arXiv 2406.05298 reports MOS/ViSQOL/ESTOI and explicitly discounts time-domain error).
-
-    Implementation notes: local statistics use a uniform ``win x win`` window via ``avg_pool2d``
-    (separable box filter, cheap and differentiable); scales are produced by ``avg_pool2d``
-    downsampling; the stabilising constants are set from each (sample, channel) TARGET's own
-    dynamic range, so the term is invariant to the modality's units. Returns a scalar in
-    ``[0, ~2]`` that is 0 for a perfect reconstruction.
+    Local statistics use a uniform ``win x win`` box filter (``avg_pool2d``), and scales
+    come from ``avg_pool2d`` downsampling. The stabilising constants are set from each
+    (sample, channel) target's dynamic range, so the loss does not depend on the
+    modality's units. Returns a scalar in ``[0, ~2]``, 0 for a perfect reconstruction.
     """
     import torch.nn.functional as _F
 

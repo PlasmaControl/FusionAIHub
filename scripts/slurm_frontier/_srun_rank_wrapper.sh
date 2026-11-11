@@ -1,10 +1,7 @@
 #!/bin/bash
-# Per-rank wrapper executed by `srun`. Maps SLURM rank vars into the env vars
-# that torch.distributed (and src/.../utils/distributed.py) reads, then execs
-# python on the script + args passed in $@.
-#
-# This is the srun analogue of what torchrun does internally — but srun gives
-# us NUMA-aware GPU binding (--gpu-bind=closest) which torchrun does not.
+# Per-rank wrapper run by `srun`. Maps the SLURM rank variables to the ones
+# torch.distributed reads, then runs python with the arguments in $@.
+# This replaces torchrun so that srun can do the GPU binding.
 
 set -uo pipefail
 export RANK="${SLURM_PROCID}"

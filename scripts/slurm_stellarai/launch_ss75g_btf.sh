@@ -8,37 +8,34 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# =====================================================================================
-# ss75g_btf on Princeton StellarAI (NVIDIA B200): the ss75full recipe with dataset-wide
-# actuator normalisation (the leak fix) and BLOCK TEACHER FORCING. Effective batch 256 =
-# micro-batch 2 x 32 GPUs x 4 accumulation steps (128 up to step ~6600, job 2934).
+# ss75g_btf on StellarAI (NVIDIA B200): the ss75full recipe with dataset-wide actuator
+# normalisation and block teacher forcing. Effective batch 256 = micro-batch 2 x 32 GPUs
+# x 4 accumulation steps (the run used 128 up to step ~6600).
 #
 # Before the first leg, from the repository root on a login node:
 #   pixi install -e stellarai
 #   mkdir -p logs "${OUT_DIR}" && cp <ss75g run>/split_shots.json "${OUT_DIR}/"
 #   sbatch scripts/slurm_stellarai/launch_ss75g_btf.sh
-# Next legs resume from OUT_DIR/dynamics_latest.pt:
+# Later legs resume from OUT_DIR/dynamics_latest.pt:
 #   sbatch -d afterany:<previous job id> scripts/slurm_stellarai/launch_ss75g_btf.sh
 # On a different node or GPU count, keep NODES x GPUS x BATCH_SIZE x ACCUM_STEPS = 256.
-# =====================================================================================
 set -uo pipefail
 
-# --- EDIT THESE PATHS -------------------------------------------------------------------
+# Paths
 export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}  # the cloned repository
 DATA_ROOT=${DATA_ROOT:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/models}             # where the archives were unpacked
 export CACHE_DIR=${CACHE_DIR:-$DATA_ROOT/ignite_prod_v4/frame_codes}
 export IGNITE_ACT_GLOBAL=${IGNITE_ACT_GLOBAL:-$DATA_ROOT/ignite_prod_v4/act_global}
 export LIVE_END_JSON=${LIVE_END_JSON:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/tend_all.json}
 export OUT_DIR=${OUT_DIR:-$DATA_ROOT/ignite_prod_v4/runs/ss75g_btf}
-# ----------------------------------------------------------------------------------------
 
 export BLOCK_FORCING=1
-# B200s have room for micro-batch 2 (about 78 GB of 179 GB). 4 nodes (32 GPUs) x 2 x 4
-# accumulation steps = 256; 4-node jobs find a slot far sooner than 8-node ones.
+# Micro-batch 2 fits a B200 (about 78 GB of 179 GB). 4 nodes (32 GPUs) x 2 x 4
+# accumulation steps = 256; 4-node jobs get a slot much sooner than 8-node ones.
 export BATCH_SIZE=${BATCH_SIZE:-2}
 export ACCUM_STEPS=${ACCUM_STEPS:-4}
-# Activation checkpointing stays ON: without it block forcing's explicit attention runs out of
-# 178 GB even at micro-batch 1 (jobs 2926, 2928).
+# Activation checkpointing stays on: without it block forcing's explicit attention runs
+# out of 178 GB even at micro-batch 1.
 export GRAD_CKPT=${GRAD_CKPT:-1}
 export CLUSTER_ENV=${CLUSTER_ENV:-scripts/slurm_stellarai/_stellarai_common.sh}
 export SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-8}
@@ -47,7 +44,7 @@ export NUM_WORKERS=${NUM_WORKERS:-2}
 for path in "$REPO_DIR" "$CACHE_DIR" "$IGNITE_ACT_GLOBAL" "$LIVE_END_JSON"; do
   [ -e "$path" ] || { echo "[stellarai] missing: $path -- edit the paths at the top" >&2; exit 1; }
 done
-# The run must reuse the frozen split, so train/val/test match the Frontier arms exactly.
+# The run reuses the frozen split, so train/val/test match the Frontier runs.
 [ -f "$OUT_DIR/split_shots.json" ] || {
   echo "[stellarai] $OUT_DIR/split_shots.json missing -- copy it from the ss75g run" >&2; exit 1; }
 

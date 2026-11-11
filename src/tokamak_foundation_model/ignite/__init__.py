@@ -1,10 +1,9 @@
-"""IGNITE — a fresh Genie-style discrete world model for the tokamak.
+"""IGNITE: a Genie-style discrete world model of the tokamak.
 
 Design: ``docs/IGNITE_DESIGN.md``.
 
-HARD RULE: this package reuses NO existing FAITH model code (no MultiWindowBackbone,
-SharedBackbone, output_heads, E2EFoundationModel, or the Stage-1 trainer's model/loss
-logic). It may reuse only (a) the data-loading pipeline and (b) external validated
-libraries (``vector-quantize-pytorch``, ``x-transformers``). All model-side code here is
-written from scratch. See ``docs/IGNITE_DESIGN.md`` §7.
+This package reuses no FAITH model code (no MultiWindowBackbone, SharedBackbone,
+output_heads, E2EFoundationModel, or the Stage-1 trainer's model and loss logic). It may
+reuse only the data-loading pipeline and external libraries (``vector-quantize-pytorch``,
+``x-transformers``); all model code here is new. See ``docs/IGNITE_DESIGN.md`` §7.
 """

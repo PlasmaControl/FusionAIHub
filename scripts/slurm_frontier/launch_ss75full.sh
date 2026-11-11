@@ -2,103 +2,114 @@
 #SBATCH -A fus187
 #SBATCH -o /lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub/logs/%x_%j.out
 #SBATCH -e /lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub/logs/%x_%j.err
-# =====================================================================================
-# ss75full -- THE RECIPE THAT BEATS PERSISTENCE ON HELD-OUT SHOTS (validated 2026-09-24).
+# ss75full: the dynamics recipe that beats persistence on held-out shots.
 #
-# d1024xL16 MaskGIT over the prod_v4 frame-code cache (15 modalities, 1209 tok/frame), ALL
-# 7877 training shots, scheduled sampling ramped to 0.75 over 2000 steps, dropout 0.1,
-# weight decay 0.01, post-shot masking from eval_runs/tend_all.json, the 3 standing example
-# shots pinned into BOTH train and val. Rollout skill on the 12-shot protocol
+# d1024xL16 MaskGIT over the prod_v4 frame-code cache (15 modalities, 1209 tokens per
+# frame), all 7877 training shots, scheduled sampling ramped to 0.75 over 2000 steps,
+# dropout 0.1, weight decay 0.01, post-shot masking from tend_all.json, and the 3 standing
+# example shots pinned into both train and val. Rollout skill on the 12-shot protocol
 # (analysis/rollout_npz_score.py, static pairs screened): near-1 0.216 -> 0.283 -> 0.310 ->
-# 0.339 vs persistence 0.315 at ep 2.3 / 2.9 / 4.2 / 6.8, motion ratio constant 0.72, timing
-# corr rising 0.11 -> 0.26. The gain came AFTER masked val CE turned (min ep 4.9): with this
-# recipe NEVER select a checkpoint on masked/gen CE -- evaluate dynamics_latest.pt on rollout.
+# 0.339 vs persistence 0.315 at epochs 2.3 / 2.9 / 4.2 / 6.8, motion ratio constant 0.72,
+# timing corr rising 0.11 -> 0.26. The gain came after masked val CE had turned (minimum
+# at epoch 4.9), so do not select checkpoints on masked or gen CE; judge them on rollouts.
 #
 # Launch (8 nodes, 12-h legs chained with afterany; TimeLimit/Partition set after sbatch):
 #   J=$(sbatch --parsable -J ss75full_l1 -N 8 --ntasks-per-node=8 --cpus-per-task=7 \
 #          --gres=gpu:8 -t 02:00:00 scripts/slurm_frontier/launch_ss75full.sh)
 #   scontrol update JobId=$J TimeLimit=12:00:00 Partition=extended,batch,g1
 #   next leg: add  -d afterany:$J
-# Any variable below can be overridden with --export=ALL,VAR=value (NO commas in values --
-# sbatch --export splits on commas; comma-bearing pins therefore live in this file).
-# Fork arm, e.g. the rollout loss on top of ss75g_live (first leg copies WARM_FROM, later legs resume):
+# Any variable below can be overridden with --export=ALL,VAR=value. Values cannot hold
+# commas, since sbatch --export splits on them, so comma lists live in this file.
+# Fork a run, e.g. the rollout loss on top of ss75g_live (the first leg copies WARM_FROM,
+# later legs resume):
 #   --export=ALL,OUT_DIR=<runs>/ss75g_live_unroll,WARM_FROM=<runs>/ss75g_live,IGNITE_ACT_GLOBAL=<act_global>,
 #            WINDOW_SAMPLE=live,VAL_WINDOW_SAMPLE=first,ROLLOUT_HORIZON=8
 # Rollout curve point: sbatch -N 1 --ntasks-per-node=8 --gres=gpu:8 -t 02:00:00 -p batch \
 #   --export=ALL,RUN=ss75full scripts/slurm_frontier/rollout15_examples.sh
-# =====================================================================================
 set -uo pipefail
 # REPO_DIR: repository root (other clusters set it, see scripts/slurm_stellarai/).
 cd "${REPO_DIR:-/lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub}"
 export SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-7}
 
-# --- architecture (persisted in the checkpoint; eval infers them from weights) ---
+# Architecture (stored in the checkpoint; eval infers it from the weights).
 export D_MODEL=${D_MODEL:-1024} DEPTH=${DEPTH:-16} N_HEADS=${N_HEADS:-16}
 export K0=${K0:-20} N_PREDICT=${N_PREDICT:-80}
-# --- optimisation ---
+# Optimisation
 export BATCH_SIZE=${BATCH_SIZE:-1} ACCUM_STEPS=${ACCUM_STEPS:-2} GRAD_CKPT=${GRAD_CKPT:-1}
 export LR=${LR:-1e-3} WARMUP_STEPS=${WARMUP_STEPS:-100} MIN_LR_RATIO=${MIN_LR_RATIO:-1.0}
 export LR_DECAY_FROM=${LR_DECAY_FROM:-999999} STEPS=${STEPS:-30000} BETA2=${BETA2:-0.9}
 export WEIGHT_DECAY=${WEIGHT_DECAY:-0.01} WD_EXCLUDE_NORMS=${WD_EXCLUDE_NORMS:-1}
 export DROPOUT=${DROPOUT:-0.1} GRAD_CLIP=${GRAD_CLIP:-1.0} LABEL_SMOOTHING=${LABEL_SMOOTHING:-0}
 export MOD_WEIGHT_POW=${MOD_WEIGHT_POW:-0} GEN_MASK_P=${GEN_MASK_P:-0.0}
-# --- THE recipe axis: scheduled sampling (the infiller recipe had SS_FINAL_FRAC=0 and rolled out flat) ---
+# Scheduled sampling: the main recipe knob. Without it (SS_FINAL_FRAC=0) rollouts are flat.
 export SS_FINAL_FRAC=${SS_FINAL_FRAC:-0.75} SS_RAMP_STEPS=${SS_RAMP_STEPS:-2000}
 # BLOCK_FORCING=1: every frame predicted from earlier frames only; SS then uses the model's own forecasts.
 export BLOCK_FORCING=${BLOCK_FORCING:-0}
 # FORECAST_DEPTH=k (with BLOCK_FORCING=1): history frames are the model's own k-deep forecasts.
 # ACT_DROP_P: share of samples trained without actuators, for classifier-free guidance at eval.
 export FORECAST_DEPTH=${FORECAST_DEPTH:-1} ACT_DROP_P=${ACT_DROP_P:-0}
-# --- augmentation (training only; 0 = off). SEED_DROP_P / SEED_COLUMN_DROP_P hide a whole modality /
-# a random share of its token positions from the input in the seed frames and SCORE them, so the
-# model learns to predict a modality missing from the seed. ACTUATOR_NOISE = std in normalised units
-# on channels that vary in the window. WINDOW_JITTER widens WINDOW_SAMPLE=first to starts 0..9+J.
+# Augmentation (training only; 0 = off). SEED_DROP_P / SEED_COLUMN_DROP_P hide a whole
+# modality / a random share of its token positions from the input in the seed frames and
+# score them, so the model learns to predict a modality missing from the seed.
+# ACTUATOR_NOISE: std in normalised units, on channels that vary in the window.
+# WINDOW_JITTER widens WINDOW_SAMPLE=first to starts 0..9+J.
 export SEED_DROP_P=${SEED_DROP_P:-0} SEED_COLUMN_DROP_P=${SEED_COLUMN_DROP_P:-0}
 export ACTUATOR_NOISE=${ACTUATOR_NOISE:-0} WINDOW_JITTER=${WINDOW_JITTER:-0}
-# --- rollout loss (0 = off): after the masked loss, unroll ROLLOUT_HORIZON frames from the real seed,
-# each predicted in one pass from the seed + the frames already generated, fed back as straight-through
-# Gumbel samples (gradients through the chain), each scored against the truth. Starts at k0, or
-# uniformly in k0..k0+ROLLOUT_START_JITTER. Adds val rollout_ce. ROLLOUT_WEIGHT scales it vs masked.
+# Rollout loss (0 = off). After the masked loss, unroll ROLLOUT_HORIZON frames from the
+# real seed, each predicted in one pass from the seed and the frames already generated,
+# fed back as straight-through Gumbel samples (gradients run through the chain) and scored
+# against the truth. Starts at k0, or uniformly in k0..k0+ROLLOUT_START_JITTER. Adds val
+# rollout_ce. ROLLOUT_WEIGHT scales it relative to the masked loss.
 export ROLLOUT_HORIZON=${ROLLOUT_HORIZON:-0} ROLLOUT_WEIGHT=${ROLLOUT_WEIGHT:-1.0}
 export ROLLOUT_START_JITTER=${ROLLOUT_START_JITTER:-0} ROLLOUT_TEMPERATURE=${ROLLOUT_TEMPERATURE:-1.0}
-# --- data / windows / split ---
+# Data, windows and split
 export CACHE_DIR=${CACHE_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/frame_codes}
 export LIVE_END_JSON=${LIVE_END_JSON:-/lustre/orion/fus187/proj-shared/ps9551/Flow/FusionAIHub/eval_runs/tend_all.json}
-# ACTUATOR NORMALISATION. Empty = per-shot z-score with WHOLE-SHOT statistics (the future leak; what
-# ss75full trained on). Set to the v4 side cache for dataset-wide stats computed from TRAIN shots:
+# Actuator normalisation. Empty = per-shot z-score with whole-shot statistics, which leaks
+# the future (ss75full trained this way). The act_global side cache gives dataset-wide
+# stats from the training shots:
 #   IGNITE_ACT_GLOBAL=/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/act_global
-# Persisted in the checkpoint as cfg_act_global; eval_dynamics refuses a mismatch.
+# Stored in the checkpoint as cfg_act_global; eval_dynamics refuses a mismatch.
 export IGNITE_ACT_GLOBAL=${IGNITE_ACT_GLOBAL:-}
 export WINDOWS_PER_SHOT=${WINDOWS_PER_SHOT:-10} WINDOW_SAMPLE=${WINDOW_SAMPLE:-first}
-# WINDOW_SAMPLE=live (2026-10-13): train windows drawn each epoch from anywhere the plasma is live
-# (>=50% of the window before t_end) instead of starts 0..9 only; validation is forced to 'first'.
+# WINDOW_SAMPLE=live: training windows are drawn each epoch from anywhere the plasma is
+# live (>=50% of the window before t_end) instead of starts 0..9 only; validation then
+# uses 'first'.
 export VAL_WINDOW_SAMPLE=${VAL_WINDOW_SAMPLE:-}
 export VAL_WINDOWS_PER_SHOT=${VAL_WINDOWS_PER_SHOT:-10} VAL_WINDOWS=${VAL_WINDOWS:-256}
 export SPLIT_SEED=${SPLIT_SEED:-42} TEST_FRAC=${TEST_FRAC:-0.05} VAL_N=${VAL_N:-438}
 export TRAIN_CAP=${TRAIN_CAP:-0} MASK_ABSENT=${MASK_ABSENT:-0} NUM_WORKERS=${NUM_WORKERS:-2}
-# --- checkpointing ---
+# Checkpointing
 export CKPT_EVERY=${CKPT_EVERY:-200}
 # SNAPSHOT_EVERY: frozen dynamics_step<N>.pt every N steps, scored by scorecard_watch.sh.
 export SNAPSHOT_EVERY=${SNAPSHOT_EVERY:-2000}
-# --- validation that tracks rollouts (2026-10-28). Masked and gen CE rank checkpoints the wrong
-# way round (Spearman +0.41 / +0.47 with scorecard skill over 24 checkpoints). Every SKILL_EVERY
-# steps the last SKILL_SHOTS val shots are rolled out as the scorecard's val stage does (one shot
-# per GPU, ~35 min per shot at 48 layers) and val_skill is logged; BEST_METRIC=skill picks
-# dynamics_best.pt on it. VAL_ROLLOUT_HORIZON adds the cheap rollout_ce (frames from k0 on the
-# model's own samples) at every validation. SKILL_CODEC_TMPL: the frozen codecs next to the cache.
+# Validation on rollouts. Masked and gen CE rank checkpoints the wrong way round (Spearman
+# +0.41 / +0.47 with scorecard skill over 24 checkpoints). Every SKILL_EVERY steps the
+# last SKILL_SHOTS val shots are rolled out as in the scorecard's val stage (one shot per
+# GPU, ~35 min per shot at 48 layers) and val_skill is logged; BEST_METRIC=skill picks
+# dynamics_best.pt on it. VAL_ROLLOUT_HORIZON adds the cheap rollout_ce (frames from k0 on
+# the model's own samples) at every validation. SKILL_CODEC_TMPL: the frozen codecs next
+# to the cache.
 _skill_codecs="${CACHE_DIR%/*/*}/ignite_codecs_v4/{m}/codec_best.pt"
 export SKILL_EVERY=${SKILL_EVERY:-$SNAPSHOT_EVERY} SKILL_SHOTS=${SKILL_SHOTS:-32}
 export SKILL_CODEC_TMPL=${SKILL_CODEC_TMPL:-$_skill_codecs}
 export VAL_ROLLOUT_HORIZON=${VAL_ROLLOUT_HORIZON:-8}
+# The same rollouts also log val_task: skill against persistence of every recorded
+# modality (profiles in physical units, spectrogram frequency profiles, filterscope
+# envelopes, camera intensity) over the live frames; the mean over modalities of the
+# median over shots. BEST_METRIC=task picks dynamics_best.pt on it. SKILL_GUMBEL: reveal
+# noise of those rollouts (3 as in the demo rollouts; 0 as in the scorecard's val stage,
+# so that val_skill matches its skill column).
+export SKILL_GUMBEL=${SKILL_GUMBEL:-0}
 if [ "$SKILL_EVERY" -gt 0 ]; then _best=skill; else _best=masked; fi
 export BEST_METRIC=${BEST_METRIC:-$_best}
 export OUT_DIR=${OUT_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_prod_v4/runs/ss75full}
-# --- the standing example shots: in BOTH train and val (--pin_val would EXCLUDE them from training) ---
+# The standing example shots, in both train and val (--pin_val would keep them out of training).
 export PIN_BOTH="190729,190735,190736"
 export PIN_TRAIN="190726,190727,190728,190730,190731,190732,190733,190734,190737,190738,190739"
 
-# --- warm start (fork): WARM_FROM = a run dir; its dynamics_latest.pt and split_shots.json seed OUT_DIR
-# once. Later legs find OUT_DIR/dynamics_latest.pt and resume from it; WARM_FROM is then ignored.
+# Warm start (fork): WARM_FROM is a run dir whose dynamics_latest.pt and split_shots.json
+# seed OUT_DIR once. Later legs resume from OUT_DIR/dynamics_latest.pt and ignore WARM_FROM.
 WARM_FROM=${WARM_FROM:-}
 if [ -n "$WARM_FROM" ] && [ ! -f "$OUT_DIR/dynamics_latest.pt" ]; then
   for name in dynamics_latest.pt split_shots.json; do

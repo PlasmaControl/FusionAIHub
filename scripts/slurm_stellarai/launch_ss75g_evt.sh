@@ -8,20 +8,18 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# =====================================================================================
-# ss75g_evt on Princeton StellarAI: ss75g_btf_cfg (block teacher forcing, actuator dropout
-# for guidance, pushforward depth 2, live windows) plus ACTUATOR-RESPONSE training. The
-# scorecard (analysis/checkpoint_scorecard.py) showed no checkpoint lowers T_i reliably
-# when the beams go off, so the plasma's response to its actuators is what is missing:
+# ss75g_evt on StellarAI: ss75g_btf_cfg (block teacher forcing, actuator dropout for
+# guidance, pushforward depth 2, live windows) plus actuator-response training. In the
+# scorecard (analysis/checkpoint_scorecard.py) no checkpoint lowers T_i reliably when the
+# beams go off, so this adds windows around actuator steps:
 #   EVENT_WINDOWS_PER_SHOT  extra windows per shot and epoch whose predicted frames hold
 #                           an NBI (>= 1 MW) or ECH (>= 0.5 MW) power step
 #   EVENT_WEIGHT            loss weight of the EVENT_FRAMES frames after each step
 # Validation is unchanged, so val CE stays comparable to ss75g_btf_cfg; judge the run on
-# the scorecard instead (SNAPSHOT_EVERY steps -> scripts/slurm_stellarai/scorecard_watch.sh).
+# the scorecard (SNAPSHOT_EVERY steps -> scripts/slurm_stellarai/scorecard_watch.sh).
 # Warm-started from the frozen WARM_CKPT of ss75g_btf_cfg (optimizer and scheduler included):
 #   sbatch scripts/slurm_stellarai/launch_ss75g_evt.sh
 #   sbatch -d afterany:<previous job id> scripts/slurm_stellarai/launch_ss75g_evt.sh
-# =====================================================================================
 set -uo pipefail
 
 export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}

@@ -8,21 +8,19 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# =====================================================================================
-# ss75g_gap on Princeton StellarAI: ss75g_btf_cfg (block teacher forcing, actuator dropout
-# for guidance, pushforward depth 2, live windows) plus HISTORY-GAP dropout. The scorecard
-# (analysis/checkpoint_scorecard.py) showed no checkpoint lowers T_i reliably when the
-# beams go off: the model forecasts by persistence and ignores the actuators. Here a
-# stretch of history frames is hidden from the model in some samples, so the forecast
-# across it has to come from the earlier state and the actuators:
+# ss75g_gap on StellarAI: ss75g_btf_cfg (block teacher forcing, actuator dropout for
+# guidance, pushforward depth 2, live windows) plus history-gap dropout. In the scorecard
+# (analysis/checkpoint_scorecard.py) no checkpoint lowers T_i reliably when the beams go
+# off: the model forecasts by persistence and ignores the actuators. Here some samples
+# hide a stretch of history frames, so the forecast across it has to come from the
+# earlier state and the actuators:
 #   HIST_GAP_P    probability per sample of a hidden stretch
 #   HIST_GAP_MAX  longest stretch, in frames (1 frame = 70 ms)
 # Sibling of ss75g_evt (actuator-event windows) from the same warm start, so the two
-# fixes are compared one at a time. Validation is unchanged; judge it on the scorecard.
+# changes are compared one at a time. Validation is unchanged; judge it on the scorecard.
 # Warm-started from the frozen WARM_CKPT of ss75g_btf_cfg (optimizer and scheduler included):
 #   sbatch scripts/slurm_stellarai/launch_ss75g_gap.sh
 #   sbatch -d afterany:<previous job id> scripts/slurm_stellarai/launch_ss75g_gap.sh
-# =====================================================================================
 set -uo pipefail
 
 export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}

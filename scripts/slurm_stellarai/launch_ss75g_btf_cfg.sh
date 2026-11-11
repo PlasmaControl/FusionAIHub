@@ -8,25 +8,22 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# =====================================================================================
-# ss75g_btf_cfg on Princeton StellarAI (NVIDIA B200): ss75g_btf (block teacher forcing,
-# dataset-wide actuator normalisation, effective batch 256 = 2 x 32 GPUs x 4) plus
+# ss75g_btf_cfg on StellarAI (NVIDIA B200), warm-started from ss75g_btf (block teacher
+# forcing, dataset-wide actuator normalisation, effective batch 256 = 2 x 32 GPUs x 4), plus
 #   ACT_DROP_P      share of samples trained without any actuator term, so a rollout can
 #                   use classifier-free guidance on the actuators (eval GUIDANCE=w > 1)
 #   FORECAST_DEPTH  history frames are the model's own FORECAST_DEPTH-deep forecasts
 #                   (pushforward multi-step training) instead of one-step ones
-#   WINDOW_SAMPLE   live: training windows from anywhere the plasma is live; ss75g_btf
-#                   drew only starts 0..9, about one sequence per shot
-# warm-started from an ss75g_btf checkpoint.
+#   WINDOW_SAMPLE   live: training windows from anywhere the plasma is live, instead of
+#                   only starts 0..9 (about one sequence per shot)
 #
-# Before the first leg: WARM_FROM holds dynamics_latest.pt and split_shots.json of the
-# ss75g_btf run. The first leg copies both into OUT_DIR and resumes from that step
-# (optimizer and scheduler included); next legs resume from OUT_DIR/dynamics_latest.pt:
+# WARM_FROM holds dynamics_latest.pt and split_shots.json of the ss75g_btf run. The first
+# leg copies both into OUT_DIR and resumes from that step (optimizer and scheduler
+# included); later legs resume from OUT_DIR/dynamics_latest.pt:
 #   sbatch scripts/slurm_stellarai/launch_ss75g_btf_cfg.sh
 #   sbatch -d afterany:<previous job id> scripts/slurm_stellarai/launch_ss75g_btf_cfg.sh
 # Evaluate with guidance:
 #   sbatch --export=ALL,SWEEP="ss75g_btf_cfg:1.0",GUIDANCE=2 scripts/slurm_stellarai/rollout_val_sweep.sh
-# =====================================================================================
 set -uo pipefail
 
 export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}
@@ -43,7 +40,7 @@ export FORECAST_DEPTH=${FORECAST_DEPTH:-2}
 export WINDOW_SAMPLE=${WINDOW_SAMPLE:-live} VAL_WINDOW_SAMPLE=${VAL_WINDOW_SAMPLE:-first}
 export BATCH_SIZE=${BATCH_SIZE:-2}
 export ACCUM_STEPS=${ACCUM_STEPS:-4}
-# Activation checkpointing stays ON: without it block forcing runs out of 178 GB per GPU.
+# Activation checkpointing stays on: without it block forcing runs out of 178 GB per GPU.
 export GRAD_CKPT=${GRAD_CKPT:-1}
 export CLUSTER_ENV=${CLUSTER_ENV:-scripts/slurm_stellarai/_stellarai_common.sh}
 export SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-8}

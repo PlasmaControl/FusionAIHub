@@ -5,7 +5,7 @@ model out and decodes the ground-truth and predicted codes through the frozen
 codecs. Token accuracy and decoded nRMSE are reported against persistence (the last
 seed frame held constant), and a ground-truth versus prediction figure is rendered.
 
-Usage, in the frontier pixi environment::
+Usage, in the ``stellarai`` pixi environment::
 
     python -m tokamak_foundation_model.ignite.eval_dynamics \
         --ckpt <run>/dynamics_latest.pt --shot 200729 --out_dir <dir>
@@ -371,8 +371,9 @@ def load_shot_cache(cache_dir: Path, shot: str) -> Dict:
     return torch.load(path, map_location="cpu", weights_only=False)
 
 
-# Cached actuators are z-scored per shot, so gain or offset edits are no-ops; the
-# counterfactuals are structural.
+# Accepted ``actuator_mode`` forms. On per-shot z-scored actuators a gain or offset
+# edit is a no-op, so the physical-unit modes (scale, ramp, set, balance) need the
+# dataset-wide normalisation of IGNITE_ACT_GLOBAL.
 ACTUATOR_MODES = (
     "real",
     "zero",
@@ -389,7 +390,10 @@ ACTUATOR_MODES = (
 
 
 def _global_actuator_stats():
-    """Per-channel ``mu``, ``sd`` of the ``IGNITE_ACT_GLOBAL`` normalisation, or None."""
+    """Per-channel ``mu`` and ``sd`` of the ``IGNITE_ACT_GLOBAL`` normalisation.
+
+    Returns None when the variable or its stats file is missing.
+    """
     side_cache = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
     stats = Path(side_cache) / "act_global_stats.npz" if side_cache else None
     if stats is None or not stats.exists():
@@ -432,11 +436,12 @@ def _scale_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
 def _set_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
     """Set single actuator channels to physical values, in place, for ``set:`` modes.
 
-    ``spec`` is ``<group>[<i>,<j>...]=<value>@<frame>[-<end>]`` terms joined by ``+``: the
-    listed channels of the group (indices into its :data:`~.train_dynamics._ACT_SPEC`
-    columns, e.g. the 8 beam lines 15L, 15R, 21L, 21R, 30L, 30R, 33L, 33R) take ``value``
-    in physical units from ``frame`` to ``end`` (exclusive; default the end of the
-    window). Needs ``IGNITE_ACT_GLOBAL``, as :func:`_scale_actuators`.
+    ``spec`` is ``<group>[<i>,<j>...]=<value>@<frame>[-<end>]`` terms joined by
+    ``+``. The listed channels of the group (indices into its
+    :data:`~.train_dynamics._ACT_SPEC` columns, e.g. the 8 beam lines 15L, 15R, 21L,
+    21R, 30L, 30R, 33L, 33R) take ``value`` in physical units from ``frame`` to
+    ``end`` (exclusive; default the end of the window). Needs ``IGNITE_ACT_GLOBAL``,
+    as :func:`_scale_actuators`.
     """
     stats = _global_actuator_stats()
     if stats is None:
@@ -461,15 +466,15 @@ def _set_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
 
 
 def _balance_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
-    """Zero the net NBI torque by swapping co beams for counter beams, in place, for ``balance:``.
+    """Zero the net NBI torque with counter beams, in place, for ``balance:`` modes.
 
-    ``spec`` is ``off=<i>,..;counter=<j>,..;nm_per_mw=<rate>;kv=<voltage>@<frame>`` with beam
-    indices into the 8 beam lines (15L, 15R, 21L, 21R, 30L, 30R, 33L, 33R) of the ``pinj``,
-    ``beam_voltage`` and ``tinj`` groups. From ``frame`` on, the ``off`` beams are switched
-    off and, frame by frame, the ``counter`` beams share the torque that cancels the remaining
-    beams' torque: power ``torque / |nm_per_mw|``, voltage ``kv`` while on. The torque of
-    the other beams, and so the counter power, follows their recorded waveform, including the
-    ramp-down. Needs ``IGNITE_ACT_GLOBAL``.
+    ``spec`` is ``off=<i>,..;counter=<j>,..;nm_per_mw=<rate>;kv=<voltage>@<frame>``
+    with indices into the 8 beam lines (15L, 15R, 21L, 21R, 30L, 30R, 33L, 33R) of
+    the ``pinj``, ``beam_voltage`` and ``tinj`` groups. From ``frame`` on the ``off``
+    beams are switched off and, frame by frame, the ``counter`` beams share the
+    torque that cancels the remaining beams' torque: power ``torque / |nm_per_mw|``,
+    voltage ``kv`` while on. The remaining beams keep their recorded waveform,
+    ramp-down included, so the counter power follows it. Needs ``IGNITE_ACT_GLOBAL``.
     """
     stats = _global_actuator_stats()
     if stats is None:
@@ -505,13 +510,14 @@ def _balance_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
 
 
 def _ramp_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
-    """Hold an actuator group at its value at ``frame`` and ramp it, in place, for ``ramp:``.
+    """Hold an actuator group from ``frame`` on and ramp it, in place, for ``ramp:``.
 
-    ``spec`` is ``<group>=<factor>@<frame>/<ramp_frames>``. From ``frame`` (default ``K0``)
-    each channel follows ``I0 + (factor * I0 - I0) * clip((t - frame) / ramp_frames, 0, 1)``
-    in physical units, ``I0`` being its value at ``frame``: factor 1 holds ``I0``, factor
-    0.5 ramps to half of it over ``ramp_frames`` frames and holds. Needs the dataset-wide
-    normalisation (``IGNITE_ACT_GLOBAL``), as :func:`_scale_actuators`.
+    ``spec`` is ``<group>=<factor>@<frame>/<ramp_frames>``. From ``frame`` (default
+    ``K0``) each channel follows, in physical units,
+    ``I0 + (factor * I0 - I0) * clip((t - frame) / ramp_frames, 0, 1)``, where ``I0``
+    is its value at ``frame``: factor 1 holds ``I0``, factor 0.5 ramps to half of it
+    over ``ramp_frames`` frames and then holds. Needs ``IGNITE_ACT_GLOBAL``, as
+    :func:`_scale_actuators`.
     """
     stats = _global_actuator_stats()
     if stats is None:
@@ -565,7 +571,9 @@ def apply_actuator_mode(
         from ``frame`` on, :func:`_scale_actuators`) or
         ``"ramp:<group>=<factor>@<frame>/<ramp_frames>"`` (hold a group at its value at
         ``frame``, then ramp it linearly to ``factor`` times that value,
-        :func:`_ramp_actuators`).
+        :func:`_ramp_actuators`), or one of the ``set:``, ``balance:`` and
+        ``linear:`` forms of :data:`ACTUATOR_MODES` (:func:`_set_actuators`,
+        :func:`_balance_actuators`; ``linear:`` ramps into another mode).
     K0 : int
         First predicted frame; the seed frames stay real.
     cache_dir : path-like, default=None
@@ -594,7 +602,10 @@ def apply_actuator_mode(
     elif kind == "donor" and has_argument:
         if cache_dir is None:
             raise ValueError("donor mode needs cache_dir")
-        donor = load_shot_cache(Path(cache_dir), argument)["actuators"].float()
+        donor_cache = load_shot_cache(Path(cache_dir), argument)
+        # The donor must use the same normalisation as the edited shot.
+        _load_global_actuators(donor_cache, argument)
+        donor = donor_cache["actuators"].float()
         if donor.shape[0] < n_frames:
             raise RuntimeError(
                 f"donor {argument} has {donor.shape[0]} frames < F={n_frames}"
@@ -666,11 +677,14 @@ def _load_global_actuators(cache: Dict, shot) -> None:
 
 
 def _rank_device() -> torch.device:
-    """This rank's GPU: ``cuda:LOCAL_RANK`` when it sees all node GPUs, else ``cuda:0``."""
+    """This rank's GPU, or the CPU when there is none.
+
+    With one GPU visible per rank (Frontier) it is ``cuda:0``; with all of the node's
+    GPUs visible (StellarAI, ``SRUN_GPU_BIND=none``) it is ``cuda:LOCAL_RANK``, as in
+    ``train_codec._DDPState``.
+    """
     if not torch.cuda.is_available():
         return torch.device("cpu")
-    # One GPU visible per rank (Frontier) -> cuda:0; all node GPUs visible (StellarAI,
-    # SRUN_GPU_BIND=none) -> cuda:LOCAL_RANK, matching train_codec._DDPState.
     index = int(os.environ.get("LOCAL_RANK", "0")) if torch.cuda.device_count() > 1 else 0
     torch.cuda.set_device(index)
     return torch.device("cuda", index)
@@ -704,8 +718,8 @@ def slowts_denorm(codecs) -> Dict:
         std = getattr(codec_cfg, "channel_std", None)
         if family != "slowts" or method not in ("standardize", "log_standardize"):
             continue
-        # Only n_e, T_e and T_i: their figure rows carry units (_SLOWTS_UNITS). cer_rot's
-        # stats are broken on some channels (inverts to ~1e27) and mse has no unit row.
+        # Only n_e, T_e and T_i, whose figure rows carry units (_SLOWTS_UNITS). cer_rot
+        # has broken stats on some channels (inverts to ~1e27); mse has no unit row.
         if name not in _SLOWTS_UNITS:
             continue
         if mean is None or std is None:
@@ -875,7 +889,10 @@ def profile_converters(codecs, names=PROFILE_SIGNALS) -> Dict:
 
 
 def core_channels(gt: np.ndarray, k0: int, n_core: int) -> list:
-    """The ``n_core`` channels of (F, C) ``gt`` with the largest mean |value| after ``k0``."""
+    """The ``n_core`` channels of (F, C) ``gt`` with the largest mean |value|.
+
+    The mean is over the frames from ``k0`` on.
+    """
     with np.errstate(invalid="ignore"):
         level = np.nanmean(np.abs(gt[k0:]), axis=0)
     finite = np.isfinite(level)
@@ -941,6 +958,79 @@ def profile_skill(
         if np.isfinite(rmse) and rmse_persistence > 0:
             per_signal.append(1.0 - rmse / rmse_persistence)
     return float(np.mean(per_signal)) if len(per_signal) >= 2 else float("nan")
+
+
+def task_state(name: str, family: str, decoded: np.ndarray, convert=None) -> np.ndarray:
+    """Reduce one modality's decoded frames to the state the task scores.
+
+    Slow time series are converted to physical units (where ``convert`` has the
+    signal) and averaged over time within the frame, giving (F, C). Spectrograms
+    are averaged over time within the frame, keeping the frequency profile
+    (F, C, freq): the band power over time, not the turbulent texture. Filterscope
+    envelopes and camera frames are averaged over everything but the channel,
+    giving (F, C).
+    """
+    x = np.asarray(decoded, dtype=np.float64)
+    if family == "slowts" and convert and name in convert:
+        x = convert[name](x)
+    if family == "spectro":
+        return x.mean(axis=-1)
+    with np.errstate(invalid="ignore"):
+        return np.nanmean(x.reshape(x.shape[0], x.shape[1], -1), axis=-1)
+
+
+def task_skill(
+    gt_codes, pred_codes, k0: int, n_end: int, codecs, convert, device
+) -> Dict[str, float]:
+    """RMSE skill against persistence of every recorded modality of one rollout.
+
+    Each modality is decoded, reduced by :func:`task_state` and scored over frames
+    ``k0..n_end`` (the live part of the window): ``1 - rmse(prediction) /
+    rmse(persistence)``, persistence holding the last seed frame. A modality whose
+    codes do not change after the seed was not recorded and is skipped, as is one
+    whose state persistence already matches exactly.
+
+    Parameters
+    ----------
+    gt_codes, pred_codes : dict of str to torch.Tensor
+        Real and predicted codes ``(F, n_tok)`` of each modality.
+    k0 : int
+        Seed frames.
+    n_end : int
+        End of the scored frames (exclusive), at most the window length.
+    codecs : dict
+        ``{name: (codec, cfg, family)}`` from ``load_frozen_codecs``; modalities
+        without a codec are skipped.
+    convert : dict
+        Slow-TS converters to physical units, from :func:`profile_converters`.
+    device : torch.device
+        Where to decode.
+
+    Returns
+    -------
+    skill : dict of str to float
+        Per scored modality.
+    """
+    scores = {}
+    if n_end - k0 < 2:
+        return scores
+    for name, (codec, _cfg, family) in codecs.items():
+        truth_codes = gt_codes[name][:n_end]
+        if bool((truth_codes[k0:] == truth_codes[k0 - 1 : k0]).all()):
+            continue
+        gt, predicted = (
+            task_state(
+                name, family, decode_flat_chunked(codec, c[name][:n_end], device), convert
+            )
+            for c in (gt_codes, pred_codes)
+        )
+        truth = gt[k0:n_end]
+        with np.errstate(invalid="ignore"):
+            rmse = np.sqrt(np.nanmean((predicted[k0:n_end] - truth) ** 2))
+            rmse_persistence = np.sqrt(np.nanmean((gt[k0 - 1 : k0] - truth) ** 2))
+        if np.isfinite(rmse) and rmse_persistence > 1e-12:
+            scores[name] = float(1.0 - rmse / rmse_persistence)
+    return scores
 
 
 def _nrmse(pred: np.ndarray, gt: np.ndarray) -> float:
@@ -1458,7 +1548,7 @@ class _Figure:
         self.t_origin = t_origin
         self.plasma_end = plasma_end
         if plasma_end is not None:
-            # Show the camera frame in the middle of the predicted LIVE plasma.
+            # Show the camera frame in the middle of the predicted live plasma.
             last_live = int((plasma_end - t_origin) / FRAME_S)
             if K0 < last_live < F:
                 self.mid_frame = K0 + (last_live - K0) // 2
@@ -2216,9 +2306,8 @@ def _rollouts(context: _EvalContext, cache, shot):
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
         result = rollout(context.actuator_mode)
         # A counterfactual is measured against the same rollout under the real
-        # actuators, with an identical random stream.
-        # IGNITE_EVAL_NO_BASELINE=1 skips it (half the cost) when the real-actuator
-        # rollout is evaluated separately anyway.
+        # actuators, with an identical random stream. IGNITE_EVAL_NO_BASELINE=1 skips
+        # that baseline (half the cost) when the real rollout is evaluated anyway.
         skip = os.environ.get("IGNITE_EVAL_NO_BASELINE") == "1"
         baseline = None if context.actuator_mode == "real" or skip else rollout("real")
     return result, baseline
@@ -2809,7 +2898,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--consensus_mode",
         choices=("majority", "mean"),
         default="majority",
-        help="combine the candidates by near-1 majority or by their mean FSQ coordinates",
+        help="combine the candidates by near-1 majority or by their mean FSQ "
+        "coordinates",
     )
     add(
         "--consensus_independent",
@@ -2845,7 +2935,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "freeze | shuffle | donor:<shot> | group_zero:<group> | "
         "scale:<group>=<factor>[@<frame>] (physical units, e.g. scale:pinj=0@50 "
         "turns the beams off from frame 50) | ramp:<group>=<factor>@<frame>/<frames> "
-        "(hold the value at frame, ramp to factor times it over frames)",
+        "(hold the value at frame, ramp to factor times it over frames) | set:... | "
+        "balance:... | linear:... (full forms in eval_dynamics.ACTUATOR_MODES)",
     )
     add(
         "--rerender",

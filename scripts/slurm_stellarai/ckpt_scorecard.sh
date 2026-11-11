@@ -8,11 +8,10 @@
 #SBATCH --time=04:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# sai-n01g4: GPU 2 reports "busy or unavailable" at set_device (6 of 6 jobs there failed, 2026-10-24/26)
+# sai-n01g4: GPU 2 reports "busy or unavailable" at set_device.
 #SBATCH --exclude=sai-n01g4
-# =====================================================================================
-# Rollout scorecard of ONE frozen checkpoint (what the masked validation loss misses), on
-# one node (~10 min per rollout and GPU), in one or two jobs (STAGE):
+# Rollout scorecard of one frozen checkpoint, which shows what the masked validation loss
+# misses. Runs on one node (~10 min per rollout and GPU), in one or two jobs (STAGE):
 #   1. held-out rollout: the last 32 shots of the validation split, real actuators, scored
 #      in code space and for hallucinated / missed spectrogram activity
 #      (skipped when VAL_DIR points at an existing rollout of the same checkpoint)
@@ -20,15 +19,14 @@
 #   3. ECH response: ECH off at frame 50 on the 22 held-out shots with steady ECH
 # STAGE=all runs 1-3 (too long for 4 h); STAGE=val runs 1 and STAGE=resp runs 2-3, as two
 # jobs side by side. Whichever finishes second writes the scorecard. Response rollouts run
-# only shots without an archive yet, so an older 16-shot scorecard is topped up in place.
-# The response rollouts archive their real-actuator baseline (same random stream), so
+# only shots without an archive yet, so an older scorecard with fewer shots is topped up
+# in place. They also archive their real-actuator baseline (same random stream), so
 # analysis/checkpoint_scorecard.py scores dT_i / dT_e from the archives alone.
-# Shot lists come from analysis/select_response_shots.py (validation split, pins excluded);
-# they live here, not in --export, because sbatch --export splits values on commas.
+# Shot lists come from analysis/select_response_shots.py (validation split, pins excluded).
+# They are set here because sbatch --export splits values on commas.
 #   sbatch --export=ALL,RUN=ss75g_btf,CKPT_NAME=dynamics_step16800.pt scripts/slurm_stellarai/ckpt_scorecard.sh
 #   sbatch --export=ALL,RUN=ss75g_btf,CKPT_NAME=dynamics_step21000.pt,VAL_DIR=<existing val32 dir> ...
 # Output: runs/<RUN>/scorecard_<step>/{val32,nbi_off,ech_off}/
-# =====================================================================================
 set -uo pipefail
 
 export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}
@@ -65,7 +63,7 @@ if [ "$STAGE" != resp ]; then
     srun -N1 -n1 --gpus-per-task=1 --gpu-bind=none python analysis/rollout_hallucination.py --split "$PINNED" \
       --cache_dir "$CACHE_DIR" --codec_tmpl "$CODEC_TMPL" "$VAL"
   fi
-  # Expected frames (archived by rollouts since 2026-10-26; older archives have none).
+  # Expected frames (older archives have none).
   if [ ! -f "$VAL/hallucination_mean.json" ]; then
     srun -N1 -n1 --gpus-per-task=1 --gpu-bind=none python analysis/rollout_hallucination.py --split "$PINNED" \
       --cache_dir "$CACHE_DIR" --codec_tmpl "$CODEC_TMPL" --mean "$VAL"

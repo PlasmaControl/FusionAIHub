@@ -8,24 +8,22 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# sai-n01g4: GPU 2 reports "busy or unavailable" at set_device (2026-10-24/26)
+# sai-n01g4: GPU 2 reports "busy or unavailable" at set_device.
 #SBATCH --exclude=sai-n01g4
-# =====================================================================================
-# ss75g_l48 on Princeton StellarAI (NVIDIA B200): the ss75g_live recipe (live training
-# windows, deployment windows for validation, no block forcing) at DEPTH 48 instead of 16,
-# d_model 1024 and 16 heads unchanged. A 16-layer checkpoint cannot seed 48 layers, so this
-# trains from scratch, on the frozen split of ss75g_live (train/val/test identical), and
-# compares with ss75g_live at matched steps.
-#   LR 6e-4 = 1e-3 x sqrt(16/48), with a 1000-step warmup: the 16-layer rate untested
-#   this deep, from scratch.
-# Measured on one B200 node (job 6101): 72 GB of 180 GB per GPU at micro-batch 2, 5.2 s
-# per step at the start (scheduled sampling ramps in later), about 3x the 16-layer step.
+# ss75g_l48 on StellarAI (NVIDIA B200): the ss75g_live recipe (live training windows,
+# deployment windows for validation, no block forcing) at depth 48 instead of 16, with
+# d_model 1024 and 16 heads unchanged. A 16-layer checkpoint cannot seed 48 layers, so
+# this trains from scratch on the frozen split of ss75g_live and is compared with
+# ss75g_live at matched steps.
+#   LR 6e-4 = 1e-3 x sqrt(16/48), with a 1000-step warmup, since the 16-layer rate is
+#   untested this deep from scratch.
+# On one B200 node: 72 GB of 180 GB per GPU at micro-batch 2, 5.2 s per step at the start
+# (before scheduled sampling ramps in), about 3x the 16-layer step.
 # Effective batch 128 = micro-batch 2 x 64 GPUs; keep NODES x 8 x BATCH_SIZE x ACCUM_STEPS.
 #   sbatch scripts/slurm_stellarai/launch_ss75g_l48.sh
 #   sbatch -d afterany:<previous job id> scripts/slurm_stellarai/launch_ss75g_l48.sh
-# The rollout loss is left off so the depth comparison stays clean; fork it later with
-# WARM_FROM=<runs>/ss75g_l48 ROLLOUT_HORIZON=8 if ss75g_live_unroll scores better.
-# =====================================================================================
+# The rollout loss is off so that only depth differs from ss75g_live. To add it, fork with
+# WARM_FROM=<runs>/ss75g_l48 ROLLOUT_HORIZON=8.
 set -uo pipefail
 
 export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}

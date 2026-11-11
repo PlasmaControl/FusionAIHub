@@ -8,23 +8,21 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# =====================================================================================
-# ss75g_live_unroll on Princeton StellarAI (NVIDIA B200): the ss75g_live recipe plus the
-# ROLLOUT LOSS, warm-started from an ss75g_live checkpoint. After the masked loss, each
-# micro-batch unrolls ROLLOUT_HORIZON frames from its real seed: every frame predicted in
-# one pass from the seed and the frames already generated, fed back as straight-through
-# Gumbel samples so gradients run through the chain, every frame scored against the truth.
-# Validation adds rollout_ce (same unroll from k0, fixed noise): the number to compare
-# with ss75g_live's dynamics_latest.pt. Effective batch 128 = micro-batch 2 x 64 GPUs.
+# ss75g_live_unroll on StellarAI (NVIDIA B200): the ss75g_live recipe plus the rollout
+# loss, warm-started from an ss75g_live checkpoint. After the masked loss, each
+# micro-batch unrolls ROLLOUT_HORIZON frames from its real seed: every frame is predicted
+# in one pass from the seed and the frames already generated, fed back as straight-through
+# Gumbel samples so gradients run through the chain, and scored against the truth.
+# Validation adds rollout_ce (the same unroll from k0, fixed noise), to compare with
+# ss75g_live's dynamics_latest.pt. Effective batch 128 = micro-batch 2 x 64 GPUs.
 #
-# WARM_FROM (below) already holds dynamics_latest.pt and split_shots.json of the Frontier
+# WARM_FROM (below) holds dynamics_latest.pt and split_shots.json of the Frontier
 # ss75g_live run. From the repository root on a login node:
 #   sbatch scripts/slurm_stellarai/launch_ss75g_live_unroll.sh
-# The first leg copies both files into OUT_DIR and resumes from that step. Next legs
+# The first leg copies both files into OUT_DIR and resumes from that step. Later legs
 # resume from OUT_DIR/dynamics_latest.pt:
 #   sbatch -d afterany:<previous job id> scripts/slurm_stellarai/launch_ss75g_live_unroll.sh
 # On a different node or GPU count, keep NODES x GPUS x BATCH_SIZE x ACCUM_STEPS = 128.
-# =====================================================================================
 set -uo pipefail
 
 export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}
@@ -51,7 +49,7 @@ for path in "$REPO_DIR" "$CACHE_DIR" "$IGNITE_ACT_GLOBAL" "$LIVE_END_JSON"; do
   [ -e "$path" ] || { echo "[stellarai] missing: $path -- edit the paths at the top" >&2; exit 1; }
 done
 # launch_ss75full.sh forks WARM_FROM into OUT_DIR on the first leg (dynamics_latest.pt and
-# the frozen split_shots.json, so train/val/test match the Frontier arms exactly).
+# the frozen split_shots.json, so train/val/test match the Frontier runs).
 [ -f "$OUT_DIR/dynamics_latest.pt" ] || [ -f "$WARM_FROM/split_shots.json" ] || {
   echo "[stellarai] $WARM_FROM/split_shots.json missing -- copy it from the ss75g_live run" >&2; exit 1; }
 

@@ -75,10 +75,17 @@ ZERO_BASED = ("ts_core_temp", "cer_ti")
 # Momentum confinement time: the rotation answers a torque change within about this time.
 TAU_PHI_S = 0.1
 TORQUE_SCENARIOS = ("torque0", "balanced", "tq_lin_zero", "tq_lin_half")
-ACTUATORS = {"NBI (MW)": ("pinj", 1e-6), "ECH (MW)": ("ech_power", 1e-6), "torque (N m)": ("tinj", 1.0)}
+# Energy confinement time: T_e answers an ECH change within about this time.
+TAU_E_S = 0.1
+ECH_SCENARIOS = ("ech_off", "ech_lin_off", "ech_lin_half")
+# Response time marked after the switch, per scenario: (seconds, symbol, what changed).
+TIMESCALES = {**{k: (TAU_PHI_S, r"\tau_\phi", "torque") for k in TORQUE_SCENARIOS},
+              **{k: (TAU_E_S, r"\tau_E", "ECH") for k in ECH_SCENARIOS}}
+ACTUATORS = {"NBI (MW)": ("pinj", 1e-6), "ECH (MW)": ("ech_power", 1e-6), "torque (N m)": ("tinj", 1.0),
+             "gas (Torr L/s)": ("gas_flow", 1.0)}
 # Axis labels of the actuators (the ACTUATORS keys name them in the data files).
 ACT_SHOWN = {"NBI (MW)": r"$P_\mathrm{inj}$ (MW)", "torque (N m)": r"$T_\mathrm{inj}$ (N m)",
-             "ECH (MW)": r"$P_\mathrm{ECH}$ (MW)"}
+             "ECH (MW)": r"$P_\mathrm{ECH}$ (MW)", "gas (Torr L/s)": r"gas (Torr L/s)"}
 CAMERAS = ("tangtv_lower", "tangtv_upper")
 CAMERA_NAMES = {"tangtv_lower": "lower divertor camera", "tangtv_upper": "upper divertor camera"}
 
@@ -164,6 +171,11 @@ def extract(a):
     conv = _physical(codecs)
     out = {"shot": a.shot, "spectro": a.spectro, "switch_frame": a.switch_frame}
     runs = [key for key in RUNS if getattr(a, key)]
+    # --donor <shot>=<dirs>: rollouts under another shot's actuators (mode donor:<shot>).
+    donors = dict(x.split("=", 1) for x in a.donor)
+    for shot in donors:
+        setattr(a, f"donor_{shot}", donors[shot])
+        runs.append(f"donor_{shot}")
     for key in runs:
         out[f"dir__{key}"] = str(getattr(a, key))
     spec_ch = {}
@@ -179,7 +191,9 @@ def extract(a):
         codes = members[0]
         K0, F = int(codes["K0"]), int(codes["F"])
         out.update(k0=K0, n_frames=F)
-        for name in names:
+        # nearest:<m> picks the member on modality m, so decode m first.
+        target = a.spectro_member.partition(":")[2]
+        for name in sorted(names, key=lambda n: n != target):
             codec = codecs[name][0]
             each = [np.asarray(ev.decode_flat_chunked(codec, ev.archived(z, f"{a.pred}__{name}")[:F], device))
                     for z in members]
@@ -193,8 +207,11 @@ def extract(a):
                     continue  # constant code over the window: camera not recorded
                 # The camera has two views and some shots record only one: show the view
                 # whose measured image has structure (the other decodes to a flat field).
+                # Judge it inside a 10 px margin: a dead view can decode to a flat field
+                # with a dark edge band (204011 lower, raw channel 0), which wins on the
+                # whole image.
                 gt_mean = np.nanmean(np.asarray(decoded["gt"])[K0:F], axis=(0, 2))
-                view = int(np.argmax([np.nanstd(v) for v in gt_mean]))
+                view = int(np.argmax([np.nanstd(v[10:-10, 10:-10]) for v in gt_mean]))
                 for which, x in decoded.items():
                     if which == "gt" and f"camera_gt__{name}" in out:
                         continue
@@ -215,6 +232,15 @@ def extract(a):
                     if first:
                         out["spectro_fmax_khz"], out["spectro_gt"] = fmax, gt_img
                 img = ev._stitch(decoded["pred"], spec_ch[name]).astype(np.float32)
+                if a.spectro_member.startswith("nearest:") and len(each) > 1 and member is None \
+                        and name == target:
+                    # The seed closest to the measurement on modality <target>.
+                    ref = ev._stitch(decoded["gt"][K0:], spec_ch[name])
+                    member = int(np.argmin([np.mean((ev._stitch(x[K0:], spec_ch[name]) - ref) ** 2)
+                                            for x in each]))
+                    out["spectro_member"] = member
+                if member is not None and a.spectro_member.startswith("nearest:"):
+                    img = ev._stitch(each[member], spec_ch[name]).astype(np.float32)
                 if a.spectro_member == "medoid" and len(each) > 1:
                     # Averaging seeds halves the spectrogram's texture and flattens the mode
                     # lines' wander, so show one sampled rollout: the seed closest to the mean
@@ -234,10 +260,14 @@ def extract(a):
                 with np.errstate(invalid="ignore"):
                     # (F, C): physical value of each channel, averaged over the frame.
                     out[f"{which}__{key}__{name}"] = np.nanmean(conv[name](x), axis=-1)
-        mode = "real" if key == "real" else SCENARIOS[key][0].format(f=a.switch_frame)
+        if key.startswith("donor_"):
+            mode = "donor:" + key[len("donor_"):]
+        else:
+            mode = "real" if key == "real" else SCENARIOS[key][0].format(f=a.switch_frame)
         entry = torch.load(Path(os.environ["IGNITE_ACT_GLOBAL"]) / f"{a.shot}.pt",
                            map_location="cpu", weights_only=False)
-        edited = ev.apply_actuator_mode(entry["actuators_global"][:F].float(), mode, K0, F=F)
+        edited = ev.apply_actuator_mode(entry["actuators_global"][:F].float(), mode, K0,
+                                        cache_dir=a.cache_dir, F=F)
         mu, sd = ev._global_actuator_stats()
         phys = (edited * sd + mu).numpy()
         for label, (group, scale) in ACTUATORS.items():
@@ -328,19 +358,20 @@ def shared_legend(fig, a, extra=()):
                fontsize=a.font - 2)
 
 
-def _tau_box(ax, ctx):
-    """Mark the ~100 ms after a torque change, in which the rotation should respond, as a bar on
-    the time axis (not over the data)."""
+def _tau_box(ax, ctx, key):
+    """Mark the confinement time after an actuator change, in which the plasma should respond, as
+    a bar on the time axis (not over the data)."""
     from matplotlib.transforms import blended_transform_factory
 
     t0 = ctx["t_switch"]
-    ax.plot([t0, t0 + TAU_PHI_S], [0, 0], transform=blended_transform_factory(ax.transData, ax.transAxes),
+    ax.plot([t0, t0 + TIMESCALES[key][0]], [0, 0], transform=blended_transform_factory(ax.transData, ax.transAxes),
             color="0.25", lw=7, solid_capstyle="butt", clip_on=False, zorder=5)
 
 
-def _tau_handle():
+def _tau_handle(key):
+    seconds, symbol, what = TIMESCALES[key]
     return (plt.Line2D([], [], color="0.25", lw=7, solid_capstyle="butt"),
-            rf"$\tau_\phi \approx$ {TAU_PHI_S * 1e3:.0f} ms after torque change")
+            rf"${symbol} \approx$ {seconds * 1e3:.0f} ms after {what} change")
 
 
 def _tr(ctx, a, which, key, n):
@@ -477,8 +508,8 @@ def _draw_scenarios(ctx, a, sub, title, with_truth):
             if n in ZERO_BASED:
                 ax.set_ylim(bottom=0)
             _label_trace(ax, ctx, n, a.font)
-        if key in TORQUE_SCENARIOS:
-            _tau_box(ax_all[-1], ctx)
+        if key in TIMESCALES:
+            _tau_box(ax_all[-1], ctx, key)
         for ax in ax_all:
             ax.axvline(ctx["t_switch"], color=COLORS["scenario"], lw=1.2, ls=":")
             ax.set_xlim(t[0], t[-1])
@@ -488,8 +519,8 @@ def _draw_scenarios(ctx, a, sub, title, with_truth):
 def _save(fig, a, ctx):
     if a.kind != "camera":
         columns = [c for c in a.columns.split(",") if c]
-        extra = ([_tau_handle()] if a.kind != "validation" and set(columns) & set(TORQUE_SCENARIOS)
-                 else [])
+        marked = [c for c in columns if c in TIMESCALES] if a.kind != "validation" else []
+        extra = [_tau_handle(marked[0])] if marked else []
         shared_legend(fig, a, extra)
     fig.savefig(a.out, dpi=a.dpi)
     fig.savefig(Path(a.out).with_suffix(".pdf"))
@@ -596,8 +627,8 @@ def _draw_scenario_half(ctx, a, fig, key):
                 ax.set_ylim(min(lo - pad, 0) if floor else lo - pad, hi + pad)
     for ax in axes[-1]:
         ax.set_xlabel("time (s)")
-        if key in TORQUE_SCENARIOS:
-            _tau_box(ax, ctx)
+        if key in TIMESCALES:
+            _tau_box(ax, ctx, key)
 
 
 def plot_scenarios(a):
@@ -674,15 +705,19 @@ def main():
         optional = key in OPTIONAL_RUNS
         e.add_argument(f"--{key}", required=not optional, default="",
                        help=f"evaluation folder of the {key} rollout" + (" (optional)" if optional else ""))
+    e.add_argument("--donor", action="append", default=[], metavar="SHOT=DIRS",
+                   help="rollouts under another shot's actuators (actuator mode donor:SHOT), "
+                        "repeatable; DIRS as for --real")
     e.add_argument("--spectro", default="ece", help="spectrograms, comma-separated (ece, mhr, bes, co2, mirnov); "
                    "the first is the one in the scenario panels")
     e.add_argument("--spectro_channel", default="", help="channel per spectrogram, e.g. co2=1,bes=11 "
                    "(default: the channel whose frame means vary most; see analysis/demo_spectro_channels.py)")
     e.add_argument("--pred", choices=("pred", "mean"), default="pred",
                    help="prediction to show: sampled codes, or the expected frames (mean__*)")
-    e.add_argument("--spectro_member", choices=("mean", "medoid"), default="mean",
+    e.add_argument("--spectro_member", default="mean",
                    help="spectrograms of an ensemble: the decoded mean, or the one member closest to it "
-                   "(keeps the measured texture and mode-line wander; traces stay the mean)")
+                   "(keeps the measured texture and mode-line wander; traces stay the mean), or "
+                   "nearest:<modality>, the member closest to the measurement on that modality")
     e.add_argument("--cache_dir", required=True)
     e.add_argument("--codec_tmpl", required=True)
     e.add_argument("--data", required=True, help="output .npz")
