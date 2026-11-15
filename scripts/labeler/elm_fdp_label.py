@@ -24,14 +24,20 @@ Subcommands, each resumable (a shot already done is skipped):
     models of ``--models`` (a run folder in the ``labeler.elm.serve.load_models`` layout:
     ``fold<k>/model.pt``, ``fold<k>/fold.json`` with its threshold, ``run.json``). One shot at
     a time on its whole record: the network's GroupNorm sees the whole input, as in serving.
-    An instance run (``labeler.elm.inst.InstNet`` folds, e.g. ``round4/elm/inst/inst2``) takes
-    presence from its occupancy head at the mean ``occ_threshold`` and also writes the onsets of
-    the decoding its key record served (``results/<job>.onsets.csv``, ``onsets_ms`` in ``work/``).
+    An instance run (``labeler.elm.inst.InstNet`` folds, e.g. elm-inst2) takes presence from its
+    occupancy head at the mean ``occ_threshold`` and also writes the onsets of the decoding it
+    serves (``decoding.json``, else its key record; ``results/<job>.onsets.csv``, ``onsets_ms``
+    in ``work/``). Infer stops when ``work/`` holds another model run's labels: a shot with a
+    work file is skipped, so move ``work/`` and ``results/`` aside before a new model reruns.
 ``publish`` (login node): the label folder ``--out``, as ``ae_fdp_label.py publish`` (the
     deployment for the all-shot root, ``dev/edge_localized_mode/<root name>`` for any other).
+    For an instance run (``--models``) it has two layers, as the labeler: the span (the ELMy
+    period, ``spans.parquet`` and ``grid_1ms/``) and the individual ELMs (``individual.parquet``).
+    A folder takes one model run: move an older one aside first. Rerunning all shots with a
+    new model: ``docs/labeler/elm_fdp_rerun.md``.
 Coverage: ``ae_fdp_label.py coverage`` reads the published folder, not this root.
 
-**1 ms calls.** Millisecond ``k`` (``[k, k + 1)`` ms) is present when the models' mean event
+**1 ms calls.** Millisecond ``k`` (``[k, k + 1)`` ms) is present when the models' mean event (instance run: occupancy)
 probability is at least the mean of their thresholds. The assessed window ``[window_start_ms,
 window_end_ms)`` runs from the first to the last millisecond in ``[0, plasma end)`` whose ten
 grid cells all hold samples of both records; inside it a frame that is not in a span is absent
@@ -425,16 +431,44 @@ def load_inst_models(run_dir: Path, device) -> tuple[list, list[float], dict]:
         model.load_state_dict(state)
         models.append(model.to(device).eval())
         occ.append(float(info["occ_threshold"]))
-    for name in ("key2_record.json", "key_record.json"):
-        if (run_dir / name).is_file():
-            record = json.loads((run_dir / name).read_text())
-            served = dict(record["decodings"][record["primary"]], name=record["primary"], record=name)
-            break
+    return models, occ, served_decoding(run_dir)
+
+
+def served_decoding(run_dir: Path) -> dict:
+    """The onset decoding an instance run serves: ``decoding.json`` in the run folder (a copy
+    made for serving, e.g. the /projects model folder), else the primary of its key record
+    (``key2_record.json``, else ``key_record.json``)."""
+    run_dir = Path(run_dir)
+    if (run_dir / "decoding.json").is_file():
+        served = json.loads((run_dir / "decoding.json").read_text())
     else:
-        raise SystemExit(f"{run_dir} has no key record naming the decoding it served")
+        for name in ("key2_record.json", "key_record.json"):
+            if (run_dir / name).is_file():
+                record = json.loads((run_dir / name).read_text())
+                served = dict(record["decodings"][record["primary"]], name=record["primary"], record=name)
+                break
+        else:
+            raise SystemExit(f"{run_dir} has neither decoding.json nor a key record naming the decoding it served")
     if served.get("gate") is not None:
         raise SystemExit(f"{served['name']} is gated by occupancy; infer decodes only ungated runs")
-    return models, occ, served
+    return served
+
+
+def check_work_model(work: Path, models: Path) -> None:
+    """Stop when ``work/`` holds labels of another model run. A shot whose work file exists is
+    skipped, so a new model would otherwise label only the shots the last one missed. Move the
+    old ``work/`` and ``results/`` aside first (docs/labeler/elm_fdp_rerun.md)."""
+    with os.scandir(work) as it:
+        for entry in it:
+            if not entry.name.endswith(".npz") or entry.name.startswith("."):
+                continue
+            with np.load(entry.path) as z:
+                made_by = str(z["models"]) if "models" in z.files else "unknown"
+            if Path(made_by).resolve() != Path(models).resolve():
+                raise SystemExit(f"{work} holds labels made by {made_by} (e.g. {entry.name}), not {models}: "
+                                 f"move {work} and {work.parent / 'results'} aside first "
+                                 "(docs/labeler/elm_fdp_rerun.md)")
+            return
 
 
 def is_inst_run(run_dir: Path) -> bool:
@@ -451,6 +485,7 @@ def cmd_infer(args) -> None:
     in_dir, work, res_dir = ROOT / "inputs", ROOT / "work", ROOT / "results"
     work.mkdir(parents=True, exist_ok=True)
     res_dir.mkdir(parents=True, exist_ok=True)
+    check_work_model(work, Path(args.models))
     if args.list:
         shots = [s for s, _ in ae.read_list(Path(args.list))]
     else:
@@ -564,8 +599,8 @@ def cmd_infer(args) -> None:
             os.replace(tmp, work / f"{shot}.npz")
             for a, b in spans:
                 f_spans.write(f"{shot},{a},{b}\n")
-            if f_onsets is not None:
-                f_onsets.writelines(f"{shot},{v:.1f}\n" for v in extra["onsets_ms"])
+            if f_onsets is not None:  # cell centres, x.x5 ms: two decimals keep them exact
+                f_onsets.writelines(f"{shot},{v:.2f}\n" for v in extra["onsets_ms"])
                 f_onsets.flush()
             present = int(call.sum())
             f_shots.write(f"{shot},labeled,{w0},{w1},{present},{len(spans)},{end:g},{item['fs_hz']:.1f},"
@@ -602,7 +637,11 @@ def _git_sha() -> str:
 
 
 def _evaluation(models: Path | None) -> dict | None:
-    """The tier gate of the run (``elm_tiers/evaluation.json`` next to ``models/<role>``)."""
+    """The run's scores: an instance run's own ``evaluation.json`` (the served model folder's,
+    as is), else the tier gate (``elm_tiers/evaluation.json`` next to ``models/<role>``)."""
+    if models and is_inst_run(models):
+        f = models / "evaluation.json"
+        return dict(json.loads(f.read_text()), file=str(f)) if f.exists() else None
     f = models.parent.parent / "evaluation.json" if models else None
     if not f or not f.exists():
         return None
@@ -662,12 +701,154 @@ Shots whose `status` is not `labeled` have no window: see `meta.json` `statuses`
 """
 
 
+def labeled_onsets(lab, spans):
+    """``individual.parquet``: the onsets (``results/<job>.onsets.csv``) of each labeled shot's
+    labeled job, as ``ae.labeled_results`` keeps its spans; ``in_span`` when the onset's
+    millisecond lies in one of the shot's spans."""
+    import pandas as pd
+
+    parts = []
+    for f in sorted((ROOT / "results").glob("*.onsets.csv")):
+        d = pd.read_csv(f, on_bad_lines="skip")
+        d["job"] = f.name.split(".")[0]
+        parts.append(d)
+    cols = ["shot", "t_ms", "job"]
+    on = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
+    for col in ("shot", "t_ms"):  # a line cut by a killed job reads NaN here
+        on[col] = pd.to_numeric(on[col], errors="coerce")
+    on = on.dropna(subset=["shot", "t_ms"]).astype({"job": str})
+    win = lab[["job", "window_start_ms", "window_end_ms"]].reset_index().astype({"shot": "int64"})
+    on = on.astype({"shot": "int64"}).merge(win, on=["shot", "job"], how="inner")
+    # infer keeps only onsets in the window; a line cut by a killed job must not slip in
+    on = on[(on.t_ms >= on.window_start_ms) & (on.t_ms < on.window_end_ms)]
+    on = on.sort_values(["shot", "t_ms"], ignore_index=True)
+    # One sorted key over every shot: shot << 24 | ms (windows start at 0 ms, shots end well
+    # under 16.7e6 ms), so a span found for an earlier shot never contains the onset.
+    key = on.shot.to_numpy() << 24 | np.floor(on.t_ms.to_numpy()).astype(np.int64)
+    s = spans.sort_values(["shot", "t_start_ms"])
+    shot_s = s.shot.to_numpy().astype(np.int64) << 24
+    start, end = shot_s | s.t_start_ms.to_numpy(), shot_s | s.t_end_ms.to_numpy()
+    i = np.searchsorted(start, key, side="right") - 1
+    in_span = (i >= 0) & (key < end[np.maximum(i, 0)]) if len(start) else np.zeros(len(key), bool)
+    return pd.DataFrame({"shot": on.shot.astype("int32"), "t_ms": on.t_ms.astype("float64"),
+                         "in_span": in_span})
+
+
+def inst_model_block(models: Path) -> dict:
+    """meta.json's model block for an instance run: the occupancy rule of the span layer, the
+    decoding of the individual layer and the checkpoints' sha256."""
+    import hashlib
+
+    folds = sorted(models.glob("fold*/fold.json"))
+    occ = [float(json.loads(f.read_text())["occ_threshold"]) for f in folds]
+    served = served_decoding(models)
+    return {
+        "folds": len(folds), "fold_thresholds": occ, "threshold": float(np.mean(occ)),
+        "rule": ("span layer: a millisecond is present (ELMy period) when the folds' mean occupancy probability "
+                 ">= the mean of their occ_threshold"),
+        "individual": {
+            "decoding": served["name"], "onset_threshold": served["onset_threshold"],
+            "min_sep_ms": served["min_sep_ms"], "event_duration_ms": served["event_duration_ms"],
+            "rule": (f"one ELM at each peak of the folds' mean onset heatmap (0.1 ms cells) >= "
+                     f"{served['onset_threshold']}, none within {served['min_sep_ms']} ms of a higher one, inside "
+                     "the assessed window in a millisecond whose input is complete; t_ms is the peak cell's "
+                     "centre. The challenge-key size typing is not applied."),
+        },
+        "checkpoints_sha256": {f.parent.name: hashlib.sha256((f.parent / "model.pt").read_bytes()).hexdigest()
+                               for f in folds},
+    }
+
+
+INST_CAVEATS = [
+    "Model output, unreviewed: not ground truth. evaluation gives the model's development scores.",
+    ("Two layers, decoded apart from one model: spans.parquet (and grid_1ms) is the ELMy period from the "
+     "occupancy head, the stretch with ELMs and the quiet time between them included; individual.parquet "
+     "is one row per ELM from the onset head. An ELM can fall outside a span and a span can hold no ELM "
+     "(in_span says which)."),
+    ("Individual ELMs, within 2 ms, out of fold at onset threshold 0.53 (the nearest scored to the served "
+     "0.5; single fold models): Smith's windows (isolated ELMs) recall 0.99, precision 0.95; Ricardo "
+     "Shousha's shots (dense trains) recall 0.56, judged precision 0.91; in the reviewed ELM-free time about "
+     "7 detections a second, so an ELM with in_span false is suspect. On the DIII-D ELM challenge key "
+     "(24 windows, graded before, so not held out) at 0.5: precision 0.85, recall 0.56."),
+    "An ELM's end is not measured: each lasts the fixed event_duration_ms after its onset.",
+    "The model reads the D-alpha filterscopes FS02-04 and the DENV2F/3F density only.",
+    ("Trained on shots 164824-204937 (Smith's windows, the 119 reviewed shots and 57 of Ricardo Shousha's); "
+     "outside that range the output is untested."),
+    "Inside the window, a millisecond with an incomplete input record reads absent and holds no ELM.",
+    ("Shots with 20 kHz filterscopes (the 150000s) are labeled too but untested; shots.parquet fs_hz says "
+     "which."),
+    "The window end is the d3drdb pulse_length; shots after the snapshot's last shot are not candidates.",
+]
+
+
+def _readme_inst(meta: dict, model: str) -> str:
+    c, ind = meta["counts"], meta["model"]["individual"]
+    occ = ((meta.get("evaluation") or {}).get("span_occupancy_out_of_fold") or {})
+    gate = (f"\nSpan layer, out of fold on the reviewed shots' bins: AUROC {occ['auroc']:.3f}, F1 {occ['f1']:.3f}.\n"
+            if occ.get("auroc") is not None else "")
+    return f"""# ELMs on every FDP plasma shot: ELMy periods (1 ms grid) and individual ELMs
+
+Model output of `{model}` (`docs/labeler/elm_inst2.md`), two layers as the labeler has them:
+
+- **span** (`spans.parquet`, `{ae.GRID_DIR}/`): the ELMy period, present/absent on a 1 ms grid from the
+  occupancy head (the quiet time between ELMs included);
+- **individual** (`individual.parquet`): one row per ELM, its onset `t_ms` (0.1 ms) from the onset head
+  (peaks >= {ind['onset_threshold']}, {ind['min_sep_ms']:g} ms apart). An ELM lasts the fixed
+  {ind['event_duration_ms']:.2f} ms; its end is not measured.
+
+Unreviewed. Built {meta['published']} by `{meta['made_by']}` (git {meta['git_sha']}).
+{gate}
+Candidates {sum(c.values())}; labeled {c.get('labeled', 0)}; spans {meta['n_spans']}; ELMs {meta['n_elms']}
+({meta['n_elms_in_span']} inside a span); present {meta['present_ms'] / 3.6e6:.1f} h of
+{meta['assessed_ms'] / 3.6e6:.1f} h assessed. Status counts, scores and caveats: `meta.json`.
+
+```python
+import numpy as np, pandas as pd
+spans = pd.read_parquet("spans.parquet")          # shot, t_start_ms, t_end_ms  ([start, end) ms)
+elms = pd.read_parquet("individual.parquet")      # shot, t_ms (onset), in_span
+shots = pd.read_parquet("shots.parquet").set_index("shot")
+def elm_1ms(shot):
+    \"\"\"(t_ms, label) on the assessed window: 1 ELMy, 0 not.\"\"\"
+    w0, w1 = shots.loc[shot, ["window_start_ms", "window_end_ms"]].astype(int)
+    lab = np.zeros(w1 - w0, dtype=np.uint8)
+    for a, b in spans.loc[spans.shot == shot, ["t_start_ms", "t_end_ms"]].itertuples(index=False):
+        lab[a - w0:b - w0] = 1
+    return np.arange(w0, w1), lab
+onsets = elms.t_ms[elms.shot == shot].to_numpy()  # the shot's ELMs, ms
+```
+
+The span layer dense, one file a shot holding only the 0/1 list (1 present) as packed bits, 8 frames
+a byte, first frame in the top bit; its start and end are in `{ae.GRID_DIR}/index.csv`:
+
+```python
+grid = pd.read_csv("{ae.GRID_DIR}/index.csv").set_index("shot")             # shot, start_ms, end_ms, job
+n = grid.end_ms[shot] - grid.start_ms[shot]
+elm = np.unpackbits(np.fromfile(f"{ae.GRID_DIR}/{{shot // 1000}}/{{shot}}.bin", np.uint8), count=n)  # e.g. 200/200123.bin
+t_ms = grid.start_ms[shot] + np.arange(n)                            # frame [t, t + 1) ms; ends at end_ms
+```
+
+`valid.csv` lists every shot number of the d3drdb snapshot's range with `valid` 1 when the shot has
+ELM labels and 0 otherwise (no plasma, no usable record, or not run yet; `shots.parquet` `status`
+says which for the plasma candidates). A labeled shot with no ELM has no row in `individual.parquet`
+(`shots.parquet` `n_elms` 0).
+
+Frame `k` is `[k, k + 1)` ms. Outside `[window_start_ms, window_end_ms)` nothing was assessed.
+Shots whose `status` is not `labeled` have no window: see `meta.json` `statuses`.
+"""
+
+
 def cmd_publish(args) -> None:
     import pandas as pd
 
     cands = pd.read_csv(args.candidates)
     lab, spans, status_of = ae.shot_statuses()
     labeled = set(lab.index.astype(int))
+    models = Path(args.models) if args.models else None
+    inst = models is not None and is_inst_run(models)
+    if not inst and any((ROOT / "results").glob("*.onsets.csv")):
+        raise SystemExit(f"{ROOT}/results holds onsets of an instance run: pass its folder with --models")
+    elms = labeled_onsets(lab, spans) if inst else None
+    n_elms = elms.shot.value_counts() if inst else None
     rows = []
     for c in cands.itertuples(index=False):
         st, note = status_of(int(c.shot))
@@ -677,9 +858,11 @@ def cmd_publish(args) -> None:
             r.update(window_start_ms=int(L.window_start_ms), window_end_ms=int(L.window_end_ms),
                      present_ms=int(L.present_ms), n_spans=int(L.n_spans), fs_hz=float(L.fs_hz),
                      density_hz=float(L.density_hz), mean_prob=float(L.mean_prob))
+            if inst:
+                r["n_elms"] = int(n_elms.get(int(c.shot), 0))
         rows.append(r)
     table = pd.DataFrame(rows)
-    for col in ("window_start_ms", "window_end_ms", "present_ms", "n_spans"):
+    for col in ("window_start_ms", "window_end_ms", "present_ms", "n_spans") + (("n_elms",) if inst else ()):
         if col not in table:
             table[col] = pd.NA
         table[col] = table[col].astype("Int32")
@@ -688,20 +871,22 @@ def cmd_publish(args) -> None:
     first, last = ae.snapshot_range(cands)
     valid = pd.DataFrame({"shot": np.arange(first, last + 1, dtype=np.int32)})
     valid["valid"] = valid.shot.isin(labeled).astype(np.uint8)
-    models = Path(args.models) if args.models else None
     run = json.loads((models / "run.json").read_text()) if models and (models / "run.json").exists() else {}
-    thresholds = []
-    if models:
-        for f in sorted(models.glob("fold*/fold.json")):
-            thresholds.append(float(json.loads(f.read_text())["threshold"]))
+    if inst:
+        model = inst_model_block(models)
+    else:
+        thresholds = []
+        if models:
+            for f in sorted(models.glob("fold*/fold.json")):
+                thresholds.append(float(json.loads(f.read_text())["threshold"]))
+        model = {"folds": len(thresholds), "fold_thresholds": thresholds,
+                 "threshold": float(np.mean(thresholds)) if thresholds else None,
+                 "rule": "present when the folds' mean event probability >= the mean threshold"}
     meta = {
         "event": "edge_localized_mode",
         "published": ae.now(),
         "grid": "1 ms frames [k, k + 1) ms of the shot clock; spans [t_start_ms, t_end_ms)",
-        "model": {"run_dir": str(models) if models else None, "run_name": run.get("name"),
-                  "folds": len(thresholds), "fold_thresholds": thresholds,
-                  "threshold": float(np.mean(thresholds)) if thresholds else None,
-                  "rule": "present when the folds' mean event probability >= the mean threshold"},
+        "model": {"run_dir": str(models) if models else None, "run_name": run.get("name"), **model},
         "inputs": {"filterscopes": FS_TAGS, "density": DENSITY_TAGS,
                    "source": "FDP MDSplus trees (views/shots/<shot>/v1/mdsplus), byte ranges",
                    "grid": "0.1 ms cells from -50 ms: filterscope maximum, density mean (labeler.elm.inputs)",
@@ -710,6 +895,7 @@ def cmd_publish(args) -> None:
         "counts": counts, "n_spans": int(len(spans)),
         "present_ms": int(lab.present_ms.sum()) if len(lab) else 0,
         "assessed_ms": int((lab.window_end_ms - lab.window_start_ms).sum()) if len(lab) else 0,
+        **({"n_elms": len(elms), "n_elms_in_span": int(elms.in_span.sum())} if inst else {}),
         "made_by": "scripts/labeler/elm_fdp_label.py", "git_sha": _git_sha(),
         "evaluation": _evaluation(models),
         "statuses": {
@@ -750,19 +936,39 @@ def cmd_publish(args) -> None:
                                "(np.packbits, first frame in the top bit); index.csv gives start_ms, end_ms",
         },
     }
-    readme = _readme(meta, run.get("name") or (str(models) if models else "unknown"))
+    name = run.get("name") or (str(models) if models else "unknown")
+    files = [("valid.csv", lambda p: valid.to_csv(p, index=False)),
+             ("spans.parquet", lambda p: spans.to_parquet(p, index=False)),
+             ("shots.parquet", lambda p: table.to_parquet(p, index=False))]
+    if inst:
+        meta["caveats"] = INST_CAVEATS
+        meta["files"]["spans.parquet"] = "shot, t_start_ms, t_end_ms: the ELMy periods (span layer)"
+        meta["files"]["shots.parquet"] += "; n_elms: the shot's rows in individual.parquet"
+        meta["files"]["individual.parquet"] = (
+            "shot, t_ms, in_span: one row per ELM (individual layer); t_ms is its onset (0.1 ms cell centre), "
+            "it lasts model.individual.event_duration_ms; in_span when floor(t_ms) is in one of the shot's spans")
+        files.append(("individual.parquet", lambda p: elms.to_parquet(p, index=False)))
+        readme = _readme_inst(meta, name)
+    else:
+        readme = _readme(meta, name)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    for name, write in (("valid.csv", lambda p: valid.to_csv(p, index=False)),
-                        ("spans.parquet", lambda p: spans.to_parquet(p, index=False)),
-                        ("shots.parquet", lambda p: table.to_parquet(p, index=False)),
-                        ("meta.json", lambda p: Path(p).write_text(json.dumps(meta, indent=1))),
-                        ("README.md", lambda p: Path(p).write_text(readme))):
-        tmp = out / f".{name}.tmp"
+    # The grid index keeps the shots of earlier publishes, so a folder takes one model run only.
+    old = json.loads((out / "meta.json").read_text()).get("model", {}).get("run_dir") \
+        if (out / "meta.json").exists() else None
+    other_run = old and models and Path(old).resolve() != models.resolve()
+    if other_run or (not inst and (out / "individual.parquet").exists()):
+        raise SystemExit(f"{out} holds labels of another model run ({old}): move that folder aside first "
+                         "(docs/labeler/elm_fdp_rerun.md)")
+    files += [("meta.json", lambda p: Path(p).write_text(json.dumps(meta, indent=1))),
+              ("README.md", lambda p: Path(p).write_text(readme))]
+    for fname, write in files:
+        tmp = out / f".{fname}.tmp"
         write(tmp)
-        os.replace(tmp, out / name)
+        os.replace(tmp, out / fname)
     n_grid = ae.write_grid(out, lab, spans)
-    print(f"published to {out}: {counts}; {len(spans)} spans; {n_grid} grid files written", flush=True)
+    extra = f"; {len(elms)} ELMs ({int(elms.in_span.sum())} in a span)" if inst else ""
+    print(f"published to {out}: {counts}; {len(spans)} spans{extra}; {n_grid} grid files written", flush=True)
 
 
 # ------------------------------------------------------------------ main

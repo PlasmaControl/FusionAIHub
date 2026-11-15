@@ -146,6 +146,8 @@ GRID_FILES = {"train": "silver", "holdout": "holdout", "test": "gold"}
 #: `grid_1ms/` copy stays out: it holds nothing the spans and windows do not.
 FDP_DIR = "fdp_1ms"
 FDP_FILES = ("spans.parquet", "shots.parquet", "valid.csv", "meta.json", "README.md")
+#: Copied when a database has it: the ELM run's individual layer (one row per ELM).
+FDP_OPTIONAL = ("individual.parquet",)
 #: What a release directory holds at its top level: `build` replaces only such a one.
 RELEASE_ENTRIES = frozenset(
     {
@@ -1852,7 +1854,8 @@ def write_fdp(out: Path, databases: dict[str, Path], ctx: Context) -> dict:
         dest = out / FDP_DIR / event
         dest.mkdir(parents=True)
         kept = {}
-        for name in ("shots.parquet", "spans.parquet"):
+        optional = [n for n in FDP_OPTIONAL if (source / n).is_file()]
+        for name in ("shots.parquet", "spans.parquet", *optional):
             table = pq.read_table(source / name)
             shots = pc.cast(table.column("shot"), pa.int64())
             kept[name] = scrub_columns(
@@ -1884,6 +1887,11 @@ def write_fdp(out: Path, databases: dict[str, Path], ctx: Context) -> dict:
             "candidates": len(status),
             "labeled": status.count("labeled"),
             "spans": kept["spans.parquet"].num_rows,
+            **(
+                {"individual": kept["individual.parquet"].num_rows}
+                if "individual.parquet" in kept
+                else {}
+            ),
             "withheld_shots": withheld,
         }
     return written
@@ -2245,7 +2253,7 @@ def card(report: dict, signals: dict, tax: dict) -> str:
     if report.get("fdp_1ms"):
         add(
             "| `fdp_1ms/<event>/` | the all-shot 1 ms model labels: spans, shots, "
-            "valid, meta (model output, unreviewed) |"
+            "valid, meta, ELM individual events (model output, unreviewed) |"
         )
     add("| `release.json` | counts and the sha256 of every file |")
     add("")
@@ -2359,13 +2367,20 @@ def card(report: dict, signals: dict, tax: dict) -> str:
             "Inside a labeled shot's window, a ms that no span covers is absent "
             "(confinement: in no segment); outside it nothing was assessed. Blind "
             "cohort shots are withheld; gold shots (split `test`) are included and "
-            "are for evaluation only. Read them with `tokamaksi.fdp.open(event)`."
+            "are for evaluation only. Read them with `tokamaksi.fdp.open(event)`. "
+            "An event with single events too (ELM) adds `individual.parquet` "
+            "(`shot, t_ms, in_span`: one row per event, its onset in ms)."
         )
         add("")
         for event, item in report["fdp_1ms"].items():
+            single = (
+                f", {item['individual']:,} individual events"
+                if "individual" in item
+                else ""
+            )
             add(
                 f"- `{event}` (`{item['from']}`): {item['labeled']:,} labeled shots of "
-                f"{item['candidates']:,} candidates, {item['spans']:,} spans."
+                f"{item['candidates']:,} candidates, {item['spans']:,} spans{single}."
             )
         add("")
     if report["unshipped"]:

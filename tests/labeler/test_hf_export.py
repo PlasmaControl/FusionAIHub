@@ -849,6 +849,9 @@ def test_a_build_carries_the_1ms_model_labels_without_blind_shots_or_paths(
     pd.DataFrame({"shot": [SHOT, BLIND, GOLD], "valid": [1, 1, 0]}).to_csv(
         db / "valid.csv", index=False
     )
+    pd.DataFrame(
+        {"shot": [SHOT, BLIND], "t_ms": [12.35, 15.05], "in_span": [True, True]}
+    ).astype({"shot": "int32"}).to_parquet(db / "individual.parquet")
     (db / "meta.json").write_text(
         json.dumps({"model": {"checkpoint": f"{tmp_path}/models/m.pt"}, "caveats": []})
     )
@@ -861,7 +864,11 @@ def test_a_build_carries_the_1ms_model_labels_without_blind_shots_or_paths(
     report = hf_export.build(paths, out, fdp_root=root)
     assert report["problems"] == []
     folder = out / "fdp_1ms" / "disruption"
-    assert sorted(p.name for p in folder.iterdir()) == sorted(hf_export.FDP_FILES)
+    assert sorted(p.name for p in folder.iterdir()) == sorted(
+        hf_export.FDP_FILES + hf_export.FDP_OPTIONAL
+    )
+    individual = pd.read_parquet(folder / "individual.parquet")
+    assert individual.shot.tolist() == [SHOT] and individual.t_ms.tolist() == [12.35]
     shots = pd.read_parquet(folder / "shots.parquet")
     assert shots.shot.tolist() == [SHOT, GOLD]
     assert shots.note.tolist() == ["", "getservbyname failed: not in <path>/services"]
@@ -877,6 +884,7 @@ def test_a_build_carries_the_1ms_model_labels_without_blind_shots_or_paths(
         "candidates": 2,
         "labeled": 1,
         "spans": 1,
+        "individual": 1,
         "withheld_shots": 1,
     }
     assert {f"fdp_1ms/disruption/{n}" for n in hf_export.FDP_FILES} <= set(

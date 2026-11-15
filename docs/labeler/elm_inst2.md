@@ -4,6 +4,8 @@ Status: **trained and scored on the challenge key 2026-10-24 (run `round4/elm/in
 scripts not yet committed). Round 1 (type 5): neither decoding beats `elm-inst`. Round 2
 (type-2 threshold and size typing, below): `elm-inst2-sized` scores 1,635.7, the best so
 far.**
+All shots: `elm_fdp_label.py` serves it (span + individual ELMs; staged at
+`/projects/EKOLEMEN/tokamaksi/diiid/models/elm_inst2`, rerun steps in `elm_fdp_rerun.md`).
 `elm-inst` (`elm_inst.md`) with two changes the owner asked for on 2026-10-24: train it on
 Ricardo Shousha's ELM review of 2026-10-23, and give it a loss that rewards spikes (the
 old one was "too smooth": a train came out as a low plateau).

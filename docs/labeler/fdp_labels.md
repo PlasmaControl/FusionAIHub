@@ -15,6 +15,9 @@ folders were in `/projects/EKOLEMEN/fusionaihub_labels`.
 
 The database format is the same in `dev/` and `release/`: `spans.parquet`, `shots.parquet`,
 `valid.csv`, `meta.json`, `README.md` and `grid_1ms/`.
+The ELM database of an instance run (elm-inst2) adds `individual.parquet`, one row per ELM
+beside the ELMy-period spans. To rerun all shots with a new ELM model, see
+[elm_fdp_rerun.md](elm_fdp_rerun.md).
 
 ## Rules
 
