@@ -36,14 +36,15 @@ VERSION = "v6port"
 V5_CLASSES = ("1/1", "2/1", "3/1", "3/2", "4/3")
 CATEGORIES = {0: "absent", 1: "present", 2: "uncertain", 3: "not_observable"}
 #: Why a listed shot has no rows (`load`'s `skipped`): no files, a failed run, no window.
-NO_LABELS = "no labels computed (no port-v6 files)"
+NO_LABELS = "no labels computed (no label files)"
 FAILED = "labeller failed"
 NO_WINDOW = "no window"
 NOT_LABELLED = "not labelled"
-#: The info record's `status` of a shot the port labelled: with modes ("ok"), or with no
-#: |n| 1-3 track to find (a label of no mode). Any other status ("no corpus record", "no window:
-#: no Ip") is a shot with no label: it is not written as an all-absent shot.
-LABELLED = ("ok", "no n=1-3 tracks")
+#: The info record's `status` of a shot the labeller labelled: with modes ("ok"), or having
+#: looked and found no peak or no |n| 1-3 track (a label of no mode; omnimode's
+#: `modes.pipeline.SEEN_NOTHING`). Any other status ("no corpus record", "no window: no Ip",
+#: "no TokEye mask") is a shot with no label: it is not written as an all-absent shot.
+LABELLED = ("ok", "no peaks", "no n=1-3 tracks")
 
 
 def table_file(root, event: str, version: str = VERSION) -> Path:

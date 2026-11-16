@@ -53,7 +53,7 @@ SPAN_COLUMNS = [
 ]
 STATUSES = {
     "labeled": "run; its window, spans and grid file are in the database",
-    "no_labels": "no port-v6 labels were computed for the shot (no files)",
+    "no_labels": "no labels were computed for the shot (no label files)",
     "no_window": "omnimode found no assessed window for the shot (no Ip record)",
     "failed": "the labeller failed on the shot (a read error or a model error in its info record)",
 }

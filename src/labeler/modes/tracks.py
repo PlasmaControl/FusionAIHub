@@ -28,6 +28,9 @@ from labeler.mhd import pipeline
 
 #: The toroidal numbers the port emits and this package labels.
 SCOPE_N = (1, 2, 3)
+#: The frame columns read: `labeler.mhd.rows` and `labeler.modes.cells` use only these, and a
+#: frames file holds about 70 (an all-shot publish would otherwise hold them all in memory).
+FRAME_COLUMNS = ["family_id", "t_ms"]
 #: `m/n`, as the label model names its classes (`labeler.mhd.labelmodel.NAMES`).
 CLASS = re.compile(r"(\d+)/(\d+)\Z")
 
@@ -61,7 +64,7 @@ def has_labels(directory, shot: int) -> bool:
 
 
 def read_shot(directory, shot: int) -> pipeline.Shot | None:
-    """The shot's info record, tracks and frames as written; None without the three files.
+    """The shot's info record, tracks and frames (`FRAME_COLUMNS`); None without the three files.
 
     Nothing is dropped here: `apply_rules` does that, so a count of what the rules removed is
     possible. The caller decides which shots may be read."""
@@ -73,7 +76,7 @@ def read_shot(directory, shot: int) -> pipeline.Shot | None:
         int(shot),
         info,
         pd.read_parquet(paths["tracks"]),
-        pd.read_parquet(paths["frames"]),
+        pd.read_parquet(paths["frames"], columns=FRAME_COLUMNS),
     )
 
 

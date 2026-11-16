@@ -71,6 +71,12 @@ Status: PROPOSED, NOT CHECKED. The rows are model output with the labeller's own
 They are to be superseded by the labeller redesign, which also adds the "n>3" and "n=0" classes
 that this version does not have.
 
+The labeller redesign (omnimode `labeller-redesign`, variant `ermap-magrot`, TokEye front end)
+labels every shot from 185000 to 204999 on StellarAI, apart from omnimode's sealed lists:
+[mode_fdp_allshots.md](mode_fdp_allshots.md). `scripts/labeler/mode_all_shots.py` fetches the
+inputs over FDP (`labeler.modes.fetch`) and runs omnimode's own commands. `publish --labeller
+redesign` then writes `dev/mhd_n<K>/omnimode_ermap_magrot_fdp_1ms/`.
+
 - Source: omnimode port-v6. The equilibrium is the shot's own tree in omnimode's info record,
   EFIT02ER first, else EFIT02 or EFIT01.
 - Rules (owner, 2026-11-07):

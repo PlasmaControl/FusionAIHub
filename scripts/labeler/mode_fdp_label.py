@@ -184,6 +184,51 @@ def cmd_roster(args) -> None:
         assert len(again) == counts["new"], event
 
 
+def labeller_text(labeller: str, ready, trees, freeze) -> tuple[dict, list[str]]:
+    """`(source, note)` of the database's meta.json for the labeller that wrote `--labels`."""
+    from collections import Counter
+
+    if labeller == "port-v6":
+        source = {
+            "labels": "omnimode port-v6 (<shot>.json, .tracks.parquet, .frames.parquet)",
+            "equilibrium": "each shot's own tree in omnimode's info record "
+            f"(EFIT02ER first, else EFIT02 or EFIT01): {trees}",
+            "freeze": freeze,
+            "status": "proposed, not checked; to be superseded by the labeller redesign",
+        }
+        note = [
+            (
+                "Proposed, not checked: model output of omnimode port-v6, to be superseded by "
+                "the labeller redesign. Only a shot with a tier above unverified was audited."
+            ),
+            "Unlabelled tracks and abstentions (uncertain, no rotation, q_min above) are not written.",
+        ]
+        return source, note
+    eq = Counter()  # shots per equilibrium source any of their tracks used
+    for _, got in ready:
+        eq.update({str(v) for v in got.info.get("eq_sources") or ()})
+    source = {
+        "labels": "omnimode labeller redesign, variant ermap-magrot, TokEye 1.0 front end "
+        "(<shot>.json, .tracks.parquet, .frames.parquet)",
+        "inputs": "Mirnov (wall pair, poloidal pairs M3/M5/M89, six toroidal probes), Ip, the er "
+        "equilibrium ladder and CER rotation (ZIPFIT TROTFIT); no ECE, no CO2",
+        "equilibrium": "per track, the first rung with slices of EFIT02ER, CAKE, EFIT02 or "
+        "EFITRT2 (the last two at half p); CAKE is absent from an all-shot FDP run",
+        "eq_sources_shots": dict(eq),
+        "trees": trees,
+        "freeze": freeze,
+        "status": "proposed, not checked: no expert reference set scores this run",
+    }
+    note = [
+        (
+            "Proposed, not checked: model output of omnimode's redesigned labeller (ermap-magrot), "
+            "run on FDP inputs. Only a shot with a tier above unverified was audited."
+        ),
+        "Unlabelled tracks and abstentions (uncertain, no rotation, q_min above) are not written.",
+    ]
+    return source, note
+
+
 def cmd_publish(args) -> None:
     from labeler.modes import fdp, suggest
 
@@ -198,25 +243,12 @@ def cmd_publish(args) -> None:
     trees = sorted(
         {str((got.info.get("inputs") or {}).get("tree")) for _, got in ready}
     )
-    source = {
-        "labels": "omnimode port-v6 (<shot>.json, .tracks.parquet, .frames.parquet)",
-        "equilibrium": "each shot's own tree in omnimode's info record "
-        f"(EFIT02ER first, else EFIT02 or EFIT01): {trees}",
-        "freeze": freeze,
-        "status": "proposed, not checked; to be superseded by the labeller redesign",
-    }
+    source, note = labeller_text(args.labeller, ready, trees, freeze)
     rules = [
         "harmonics are not labelled: a track with harm true is dropped, an independent m/n stays",
         "scope |n| = 1, 2, 3 with their m; a later redesign adds the n>3 and n=0 classes",
         "only labelled modes are written (status m/n, MAP class at P >= 0.9 inside the gate)",
         "amplitudes are uncalibrated and not carried",
-    ]
-    note = [
-        (
-            "Proposed, not checked: model output of omnimode port-v6, to be superseded by "
-            "the labeller redesign. Only a shot with a tier above unverified was audited."
-        ),
-        "Unlabelled tracks and abstentions (uncertain, no rotation, q_min above) are not written.",
     ]
     for event in EVENTS:
         out = Path(args.out_root) / event / args.run
@@ -317,6 +349,12 @@ def main(argv=None) -> None:
         help="<out-root>/<event>/<run>/ is written",
     )
     u.add_argument("--run", required=True)
+    u.add_argument(
+        "--labeller",
+        choices=("port-v6", "redesign"),
+        default="port-v6",
+        help="which omnimode labeller wrote --labels, for meta.json's source (default %(default)s)",
+    )
     audited(u)
     args = p.parse_args(argv)
     {
