@@ -124,6 +124,60 @@ class DiskBudget:
 # another user.
 REDIRECT_DIR = 'fdp_refetch'
 
+# Archive copies over the login node's NFS mount of TigerData reach ~7 MB/s per
+# stream and ~60 MB/s in all (measured 2026-11-15), about 33 min per 16 GB raw file.
+# `--archive-mode globus` moves them DTN to DTN instead (StellarAI scratch DTN ->
+# TigerData collection); it needs `globus login` and the collection's data_access
+# consent once.
+ARCHIVE_MODE = 'nfs'
+GLOBUS_CLI = Path.home() / '.pixi/bin/globus'
+GLOBUS_SRC = ('0b091761-42ba-4e22-95cb-fe7afcf3f8e0', Path('/scratch/gpfs'))
+GLOBUS_DST = ('52d95801-fced-4b1e-951b-63836783b175',
+              Path('/tigerdata/EKOLEMEN/d3d_fusion_data'))
+GLOBUS_POLL_S, GLOBUS_MAX_FAULTS = 30, 20
+
+
+def globus(*args):
+    out = subprocess.run([str(GLOBUS_CLI), *args, '-F', 'json'], capture_output=True,
+                         text=True, timeout=300)
+    if out.returncode:
+        raise RuntimeError(f'globus {" ".join(args[:2])}: {out.stderr.strip()[-300:]}')
+    return json.loads(out.stdout)
+
+
+def globus_copy(job, job_path, raw, tmp):
+    """Transfer ``raw`` to ``tmp`` with Globus and wait for it.
+
+    The task id is kept in the job, so a restarted driver waits for the same task
+    instead of starting another. A task that keeps faulting (permissions, an
+    expired consent) is cancelled and the copy fails like an NFS one.
+    """
+    task = job.get('globus_task')
+    if not task:
+        src = f'{GLOBUS_SRC[0]}:/{raw.resolve().relative_to(GLOBUS_SRC[1])}'
+        dst = f'{GLOBUS_DST[0]}:/{tmp.relative_to(GLOBUS_DST[1])}'
+        # No --verify-checksum: it re-reads the whole file at both ends, and TigerData
+        # reads at ~23 MB/s, longer than the transfer. Globus checks the data in
+        # transit; the archive is checked by size, and the raw file can be fetched
+        # again from FDP.
+        task = globus('transfer', src, dst, '--notify', 'off',
+                      '--label', f'archive {job["shot"]}')['task_id']
+        job.update(globus_task=task)
+        bulk.pilot.save_json(job_path, job)
+    while True:
+        info = globus('task', 'show', task)
+        if info['status'] == 'SUCCEEDED':
+            job.pop('globus_task')
+            return
+        if info['status'] == 'FAILED' or info.get('faults', 0) >= GLOBUS_MAX_FAULTS:
+            if info['status'] != 'FAILED':
+                globus('task', 'cancel', task)
+            job.pop('globus_task')
+            raise RuntimeError(f'Globus task {task} {info["status"]}: '
+                               f'{info.get("nice_status")}, {info.get("faults")} faults')
+        time.sleep(GLOBUS_POLL_S)
+
+
 def archive_job(job_path):
     """Copy/hash once, verify the temporary file once, then atomically replace."""
     job = json.loads(job_path.read_text())
@@ -147,18 +201,27 @@ def archive_job(job_path):
                    attempts=job.get('attempts', 0) + 1)
         bulk.pilot.save_json(job_path, job)
         source_stat = raw.stat()
-        digest = hashlib.sha256()
-        with raw.open('rb') as src, tmp.open('wb') as dst:
-            for data in iter(lambda: src.read(8*1024**2), b''):
-                digest.update(data)
-                dst.write(data)
-            dst.flush()
-            os.fsync(dst.fileno())
-        expected = digest.hexdigest()
-        job.update(status='verifying', sha256=expected)
-        bulk.pilot.save_json(job_path, job)
-        if bulk.pilot.digest(tmp) != expected:
-            raise ValueError('TigerData temporary-file checksum mismatch')
+        if ARCHIVE_MODE == 'globus':
+            globus_copy(job, job_path, raw, tmp)
+            if tmp.stat().st_size != source_stat.st_size:
+                raise ValueError('TigerData temporary-file size mismatch')
+            # The receipt's checksum, of the local file (GPFS, fast).
+            expected = bulk.pilot.digest(raw)
+            job.update(status='verifying', sha256=expected)
+            bulk.pilot.save_json(job_path, job)
+        else:
+            digest = hashlib.sha256()
+            with raw.open('rb') as src, tmp.open('wb') as dst:
+                for data in iter(lambda: src.read(8*1024**2), b''):
+                    digest.update(data)
+                    dst.write(data)
+                dst.flush()
+                os.fsync(dst.fileno())
+            expected = digest.hexdigest()
+            job.update(status='verifying', sha256=expected)
+            bulk.pilot.save_json(job_path, job)
+            if bulk.pilot.digest(tmp) != expected:
+                raise ValueError('TigerData temporary-file checksum mismatch')
         verified = tmp.stat()
         os.replace(tmp, target)
         published = target.stat()
@@ -420,7 +483,11 @@ def main():
     parser.add_argument('--control', type=Path, required=True)
     parser.add_argument('--per-direction', type=int, default=8)
     parser.add_argument('--archive-workers', type=int, default=4)
+    parser.add_argument('--archive-mode', choices=('nfs', 'globus'), default='nfs',
+                        help='copy raw files to TigerData over NFS or with Globus')
     args = parser.parse_args()
+    global ARCHIVE_MODE
+    ARCHIVE_MODE = args.archive_mode
     control = args.control.resolve()
     control.mkdir(parents=True, exist_ok=True)
     global_lock = (control / '.controller.lock').open('a')
@@ -430,6 +497,7 @@ def main():
         reservation_bytes=RESERVATION, file_limit_bytes=FILE_LIMIT,
         source_sha256=bulk.pilot.digest(Path(__file__).resolve()),
         per_direction=args.per_direction, archive_workers=args.archive_workers,
+        archive_mode=args.archive_mode,
     ))
     roots = dict(ascending=args.ascending.resolve(),
                  descending=args.descending.resolve())
@@ -575,6 +643,13 @@ def main():
                 archive_errors={f'{d}:{s}': error for (d, s), error
                                 in archive_errors.items()},
             ))
+            # On SIGTERM/SIGINT stop as soon as no fetch/encode is running. Queued
+            # archive copies are durable (archive_job.json, raw kept until verified)
+            # and the next start resumes them, so a restart must not wait for the
+            # whole archive queue (that blocked fetching for ~9 h on 2026-11-11).
+            # Copies already running finish when the executor shuts down.
+            if stop.is_set() and not compute:
+                break
             if (not compute and not transfers and not archive_pending
                     and notifications.empty()):
                 if stop.is_set():
