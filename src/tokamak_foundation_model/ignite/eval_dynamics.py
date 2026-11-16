@@ -20,6 +20,12 @@ IGNITE_DATA_DIR
     H5 directory of the measured signals.
 IGNITE_EVAL_BF16
     ``1`` runs the rollout under bf16 autocast, which lowers accuracy.
+IGNITE_HISTORY_CACHE
+    ``1`` (the default of this CLI) keeps the committed frames' temporal keys and
+    values during a rollout, so each decode step runs one frame instead of the whole
+    history (``MaskGITDynamics.rollout(history_cache=...)``); about 8x faster per
+    shot, same result up to float rounding. ``0`` runs the full pass. Library calls
+    (e.g. training's skill check) default to ``0``.
 IGNITE_ACT_GLOBAL
     Must match training, see :func:`load_model`.
 IGNITE_FIG_*, IGNITE_CMAP_*
@@ -386,6 +392,7 @@ ACTUATOR_MODES = (
     "set:<group>[<i>,...]=<value>@<frame>[-<end>][+...]",
     "balance:off=<i>,..;counter=<j>,..;nm_per_mw=<rate>;kv=<kV>@<frame>",
     "linear:<ramp_frames>[/<amount>]:<mode>",
+    "file:<plan.npz>",
 )
 
 
@@ -573,7 +580,8 @@ def apply_actuator_mode(
         ``frame``, then ramp it linearly to ``factor`` times that value,
         :func:`_ramp_actuators`), or one of the ``set:``, ``balance:`` and
         ``linear:`` forms of :data:`ACTUATOR_MODES` (:func:`_set_actuators`,
-        :func:`_balance_actuators`; ``linear:`` ramps into another mode).
+        :func:`_balance_actuators`; ``linear:`` ramps into another mode), or
+        ``"file:<plan.npz>"`` (the ``act_norm`` array of a shot-designer plan).
     K0 : int
         First predicted frame; the seed frames stay real.
     cache_dir : path-like, default=None
@@ -621,6 +629,17 @@ def apply_actuator_mode(
         _set_actuators(edited, argument, K0, n_frames)
     elif kind == "balance" and has_argument:
         _balance_actuators(edited, argument, K0, n_frames)
+    elif kind == "file" and has_argument:
+        # A whole actuator plan from the shot designer (designer.simulate.export): the
+        # normalised actuators of every cache frame, measured except where edited.
+        plan = torch.as_tensor(np.load(argument)["act_norm"], dtype=edited.dtype)
+        if plan.shape[0] < n_frames or plan.shape[1] != edited.shape[1]:
+            raise ValueError(f"plan {argument} has shape {tuple(plan.shape)}; needs at "
+                             f"least ({n_frames}, {edited.shape[1]})")
+        # The seed frames are never edited, so they identify the shot and normalisation.
+        if not torch.allclose(plan[:K0], act[:K0].to(plan.dtype), atol=1e-3):
+            raise ValueError(f"plan {argument} was built for another shot or normalisation")
+        edited[predicted] = plan[predicted]
     elif kind == "linear" and has_argument:
         # Ramp from the measured actuators into another mode's: every channel moves
         # linearly, frame by frame, from its measured value to the target mode's value
@@ -786,8 +805,9 @@ def rollout_shot(
         Classifier-free guidance weight (:meth:`MaskGITDynamics.generate_frame`).
     decode : dict, default=None
         Further rollout options: ``gate``, ``consensus_n``, ``consensus_q``,
-        ``consensus_mode``
-        (:meth:`MaskGITDynamics.rollout`).
+        ``consensus_mode`` (:meth:`MaskGITDynamics.rollout`); ``infer`` (modalities
+        generated while all others keep their measured codes) and ``seed_from``
+        (``{modality: shot}``, seed frames taken from another shot).
     start : int, default=0
         First frame of the window in the shot: the seed is frames
         ``start..start+K0``. Frame indices of ``actuator_mode`` count from it.
@@ -817,7 +837,57 @@ def rollout_shot(
         cache_dir=cache_dir,
         F=n_frames,
     )
-    with_mean = model.can_return_mean and int((decode or {}).get("consensus_n", 1)) <= 1
+    decode = dict(decode or {})
+    for name, donor in (decode.pop("seed_from", None) or {}).items():
+        # Seed one modality from another shot (it did not record in this one); the
+        # measurement kept for scoring is still this shot's.
+        if name not in names:
+            raise ValueError(f"--seed_from: unknown modality {name}")
+        if cache_dir is None:
+            raise ValueError("--seed_from needs cache_dir")
+        donor_codes = load_shot_cache(Path(cache_dir), str(donor))["codes"][name]
+        if donor_codes.shape[0] < start + K0:
+            raise ValueError(f"--seed_from: {donor} has fewer than {start + K0} frames")
+        seed_codes[name] = (
+            donor_codes[start : start + K0].long().unsqueeze(0).to(device)
+        )
+    infer = [n for n in decode.pop("infer", None) or () if n]
+    if decode.pop("infer_blind", False):
+        if not infer:
+            raise ValueError("--infer_blind needs --infer")
+        # The inferred modalities are also hidden from the history ([MASK]).
+        decode["blind"] = list(infer)
+    if decode.pop("infer_bootstrap", False):
+        if "blind" not in decode:
+            raise ValueError("--infer_bootstrap needs --infer_blind")
+        decode["bootstrap_blind"] = True
+    absent_shot = decode.pop("forbid_absent", None)
+    if absent_shot:
+        # Never sample an inferred modality's "not recorded" frame: the constant codes
+        # it has in a shot where it did not record.
+        if not infer or cache_dir is None:
+            raise ValueError("--forbid_absent needs --infer and cache_dir")
+        absent = load_shot_cache(Path(cache_dir), str(absent_shot))["codes"]
+        decode["forbid"] = {}
+        for name in infer:
+            frames = absent[name].long()
+            if not bool((frames == frames[:1]).all()):
+                raise ValueError(
+                    f"--forbid_absent: {name} records in {absent_shot} (codes change)"
+                )
+            decode["forbid"][name] = frames[0].to(device)
+    if infer:
+        # Inference of missing modalities: every other modality keeps its measured
+        # codes in every predicted frame; only ``infer`` is generated.
+        unknown = sorted(set(infer) - set(names))
+        if unknown:
+            raise ValueError(f"--infer: unknown modalities {unknown}")
+        decode["known_codes"] = {
+            name: codes[name].long().unsqueeze(0).to(device)
+            for name in names
+            if name not in infer
+        }
+    with_mean = model.can_return_mean and int(decode.get("consensus_n", 1)) <= 1
     trajectory = model.rollout(
         seed_codes,
         actuators.unsqueeze(0).to(device),
@@ -826,7 +896,7 @@ def rollout_shot(
         generator=generator,
         guidance=guidance,
         return_mean=with_mean,
-        **(decode or {}),
+        **decode,
     )
     mean = None
     if with_mean:
@@ -2331,6 +2401,8 @@ def _archive_codes(context: _EvalContext, shot, result: Rollout, baseline: Optio
         }
 
     try:
+        # The archive is written before the figures, which create out_dir otherwise.
+        Path(context.out_dir).mkdir(parents=True, exist_ok=True)
         np.savez_compressed(
             Path(context.out_dir) / f"codes_{shot}_step{context.step}.npz",
             K0=np.int32(result.k0),
@@ -2601,6 +2673,12 @@ def run(
         f"[eval] model loaded: d_model={cfg.d_model} depth={cfg.depth} "
         f"heads={cfg.n_heads} step={step} K0={n_seed} max_frames={cfg.max_frames} "
         f"frame_tokens={cfg.tokens_per_frame}",
+        flush=True,
+    )
+    log(
+        "[eval] history cache: "
+        + ("on" if os.environ.get("IGNITE_HISTORY_CACHE", "0") == "1" else "off")
+        + " (IGNITE_HISTORY_CACHE; applies to plain rollouts without guidance)",
         flush=True,
     )
     codec_tmpl = _codec_template(codec_tmpl, manifest, manifest_error, log)
@@ -2907,6 +2985,40 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="consensus over independent rollouts (an ensemble) instead of candidates "
         "that share the committed history",
     )
+    add(
+        "--infer",
+        default="",
+        help="comma list of modalities to infer from the others: every other "
+        "modality keeps its measured codes in every predicted frame and only these "
+        "are generated (missing-diagnostic inference); empty = plain rollout",
+    )
+    add(
+        "--infer_blind",
+        action="store_true",
+        help="with --infer: the inferred modalities are also [MASK] in every history "
+        "frame, seed included, so they come from the other modalities alone",
+    )
+    add(
+        "--infer_bootstrap",
+        action="store_true",
+        help="with --infer_blind: only the first predicted frame is generated blind; "
+        "it then stands in for the inferred modalities' seed frames, so no later "
+        "frame sees [MASK] in its history",
+    )
+    add(
+        "--forbid_absent",
+        default="",
+        help="shot in which the --infer modalities did not record: their constant "
+        "'not recorded' codes there are never sampled, so an inferred diagnostic "
+        "cannot be generated as switched off",
+    )
+    add(
+        "--seed_from",
+        default="",
+        help="comma list <modality>:<shot>: that modality's seed frames are taken from "
+        "the other shot (same cache), e.g. tangtv_upper:203489, to give a modality "
+        "that did not record a seed; the scored measurement stays this shot's",
+    )
     add("--seed", type=int, default=0, help="rollout seed")
     add("--k0", type=int, default=0, help="seed frames; 0 = the checkpoint's k0_seed")
     add(
@@ -2975,6 +3087,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv=None):
     """Run the evaluation or the curation selected by the command line."""
+    os.environ.setdefault("IGNITE_HISTORY_CACHE", "1")  # inference: history cache on
     args = build_arg_parser().parse_args(argv)
     if args.curate:
         shots = None
@@ -3019,6 +3132,13 @@ def main(argv=None):
             "consensus_q": args.consensus_q,
             "consensus_mode": args.consensus_mode,
             "consensus_shared": not args.consensus_independent,
+            "infer": [x.strip() for x in args.infer.split(",") if x.strip()],
+            "infer_blind": args.infer_blind,
+            "infer_bootstrap": args.infer_bootstrap,
+            "forbid_absent": args.forbid_absent.strip() or None,
+            "seed_from": dict(
+                x.strip().split(":", 1) for x in args.seed_from.split(",") if x.strip()
+            ),
         },
         actuator_mode=args.actuator_mode,
     )

@@ -15,13 +15,13 @@ from __future__ import annotations
 
 import math
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .dynamics import DynamicsBackbone
+from .dynamics import DynamicsBackbone, HistoryCache
 from .dynamics_config import DynamicsConfig
 from .frame_layout import code_to_coords, coords_to_code
 
@@ -881,6 +881,9 @@ class MaskGITDynamics(nn.Module):
         gate: float = 0.0,
         return_mean: bool = False,
         gumbel: Optional[float] = None,
+        known: Optional[Dict[str, torch.Tensor]] = None,
+        cache: Optional[HistoryCache] = None,
+        forbid: Optional[Dict[str, torch.Tensor]] = None,
     ):
         """Generate the codes of the next frame by iterative unmasking.
 
@@ -912,6 +915,19 @@ class MaskGITDynamics(nn.Module):
         gumbel : float, default=None
             Scale of the annealed Gumbel noise on the reveal order; ``None`` uses
             ``IGNITE_MASKGIT_GUMBEL``.
+        known : dict of str to torch.LongTensor of shape (B, n_tok), default=None
+            Codes of modalities that are known in this frame (e.g. measured). They
+            are revealed from the first step, so the other modalities are generated
+            conditioned on them, and they are returned unchanged.
+        cache : HistoryCache, default=None
+            Cached keys and values of ``past_codes`` as the model sees them
+            (:meth:`DynamicsBackbone.start_history_cache`). Each decode step then
+            runs only the new frame. Not with ``guidance != 1``.
+        forbid : dict of str to torch.LongTensor of shape (n_tok,), default=None
+            Per modality, one code per token position that is never sampled (its
+            logit is set to ``-inf``), e.g. the modality's "not recorded" frame, so
+            an inferred diagnostic cannot be generated as switched off. Categorical
+            head only.
 
         Returns
         -------
@@ -942,6 +958,9 @@ class MaskGITDynamics(nn.Module):
             m.name: torch.zeros((batch, m.n_tok), dtype=torch.bool, device=device)
             for m in cfg.modalities
         }
+        for name, codes in (known or {}).items():
+            frame[name] = codes.to(device=device, dtype=torch.long).clone()
+            revealed[name][:] = True
 
         guided = float(guidance) != 1.0
         if guided and not isinstance(self.output, _CategoricalOutput):
@@ -950,6 +969,22 @@ class MaskGITDynamics(nn.Module):
             raise ValueError("the confidence gate needs the categorical head")
         if return_mean and not isinstance(self.output, _CategoricalOutput):
             raise ValueError("the expected frame needs the categorical head")
+        if guided and cache is not None:
+            raise ValueError("the history cache does not support guidance")
+        if forbid and not isinstance(self.output, _CategoricalOutput):
+            raise ValueError("forbid needs the categorical head")
+        forbid = {
+            name: codes.to(device=device, dtype=torch.long)
+            for name, codes in (forbid or {}).items()
+        }
+
+        def _without_forbidden(logits):
+            for name, codes in forbid.items():
+                values = logits[name][:, -1:]
+                index = codes.view(1, 1, -1, 1).expand(values.shape[0], 1, -1, 1)
+                values = values.scatter(-1, index, float("-inf"))
+                logits[name] = torch.cat([logits[name][:, :-1], values], dim=1)
+            return logits
         mean = {}
         # Probability of each committed code when it was revealed (for the gate).
         committed_p = {
@@ -962,6 +997,12 @@ class MaskGITDynamics(nn.Module):
             act_null = torch.arange(2 * batch, device=device) >= batch
 
         def _next_frame_logits():
+            if cache is not None:
+                return self.backbone.next_frame_logits(
+                    cache,
+                    {name: codes.unsqueeze(1) for name, codes in frame.items()},
+                    actuators[:, -1:],
+                )
             sequence = {
                 name: torch.cat([past_codes[name], frame[name].unsqueeze(1)], dim=1)
                 for name in frame
@@ -979,7 +1020,7 @@ class MaskGITDynamics(nn.Module):
 
         keep_masked = _cosine_keep_fractions(cfg.maskgit_decode_steps)
         for step, masked_fraction in enumerate(keep_masked):
-            logits = _next_frame_logits()
+            logits = _without_forbidden(_next_frame_logits())
             if return_mean and step == 0:
                 mean = {
                     m.name: self._expected_coords(logits[m.name][:, -1])
@@ -1013,11 +1054,13 @@ class MaskGITDynamics(nn.Module):
         for m in cfg.modalities:
             still_masked = ~revealed[m.name]
             if bool(still_masked.any()):
-                logits = _next_frame_logits()[m.name][:, -1]
+                logits = _without_forbidden(_next_frame_logits())[m.name][:, -1]
                 fill = self.output.mode(logits, generator)
                 frame[m.name] = torch.where(still_masked, fill, frame[m.name])
         if gate > 0.0:
             for m in cfg.modalities:
+                if known and m.name in known:
+                    continue
                 unsure = committed_p[m.name] < gate
                 frame[m.name] = torch.where(
                     unsure, past_codes[m.name][:, -1], frame[m.name]
@@ -1079,6 +1122,11 @@ class MaskGITDynamics(nn.Module):
         consensus_shared: bool = True,
         return_mean: bool = False,
         gumbel: Optional[float] = None,
+        known_codes: Optional[Dict[str, torch.Tensor]] = None,
+        blind: Optional[Sequence[str]] = None,
+        history_cache: Optional[bool] = None,
+        forbid: Optional[Dict[str, torch.Tensor]] = None,
+        bootstrap_blind: bool = False,
     ):
         """Roll out ``n_predict`` frames autoregressively in code space.
 
@@ -1122,6 +1170,33 @@ class MaskGITDynamics(nn.Module):
             ``consensus_n == 1``.
         gumbel : float, default=None
             Reveal-order noise of every frame (:meth:`generate_frame`).
+        known_codes : dict of str to torch.LongTensor of shape (B, >= K0 + n_predict, n_tok), default=None
+            Inference of missing modalities: the listed modalities take these codes
+            in every predicted frame (and so in the history of the next), and only
+            the others are generated, conditioned on them (:meth:`generate_frame`
+            ``known``). Plain rollout only (``consensus_n == 1``).
+        blind : sequence of str, default=None
+            Modalities the model never sees in the history: they are ``[MASK]`` in
+            every seed and earlier predicted frame, so each of their frames is
+            generated from the other modalities alone. The returned trajectory keeps
+            the seed codes and the generated frames. No model was trained with
+            ``[MASK]`` in the history, so this is outside the training distribution.
+            Plain rollout only (``consensus_n == 1``).
+        history_cache : bool, default=None
+            Keep the committed frames' temporal keys and values
+            (:class:`HistoryCache`), so each decode step runs one frame instead of
+            the whole history. Same result up to floating-point rounding. ``None``
+            reads ``IGNITE_HISTORY_CACHE`` (``1`` = on) and falls back to the full
+            pass where the cache does not apply (guidance, consensus, lag
+            embedding); ``True`` raises there instead.
+        forbid : dict of str to torch.LongTensor of shape (n_tok,), default=None
+            Codes never sampled in any predicted frame (:meth:`generate_frame`).
+        bootstrap_blind : bool, default=False
+            With ``blind``: only the first predicted frame is generated blind. Its
+            codes then replace the blind modalities' seed frames in the history the
+            model sees (the returned seed stays the real one), and the rollout
+            continues with every modality visible, so no later frame sees ``[MASK]``
+            in its history.
 
         Returns
         -------
@@ -1143,6 +1218,36 @@ class MaskGITDynamics(nn.Module):
         n_candidates = max(1, int(consensus_n))
         if return_mean and n_candidates > 1:
             raise ValueError("return_mean needs consensus_n == 1")
+        if known_codes and n_candidates > 1:
+            raise ValueError("known_codes needs consensus_n == 1")
+        blind = set(blind or ())
+        if bootstrap_blind and not blind:
+            raise ValueError("bootstrap_blind needs blind")
+        unknown = set(forbid or ()) - set(trajectory)
+        if unknown:
+            raise ValueError(f"forbid: unknown modalities {sorted(unknown)}")
+        if forbid and n_candidates > 1:
+            raise ValueError("forbid needs consensus_n == 1")
+        seen_seed = {}  # modality -> seed frames shown to the model instead of its own
+        if blind and n_candidates > 1:
+            raise ValueError("blind needs consensus_n == 1")
+        cache_applies = (
+            n_candidates == 1
+            and float(guidance) == 1.0
+            and self.backbone.supports_history_cache()
+        )
+        if history_cache and not cache_applies:
+            raise ValueError(
+                "history_cache needs consensus_n == 1, guidance == 1 and no lag embedding"
+            )
+        if history_cache is None:
+            # Read at call time: eval_dynamics' CLI turns it on by default, while
+            # training's own rollouts (the skill check) keep the full pass.
+            history_cache = os.environ.get("IGNITE_HISTORY_CACHE", "0") == "1"
+        use_cache = history_cache and cache_applies
+        unknown = blind - set(trajectory)
+        if unknown:
+            raise ValueError(f"blind: unknown modalities {sorted(unknown)}")
         levels = list(cfg.fsq_levels)
         means = {
             name: [code_to_coords(codes, levels)]
@@ -1176,8 +1281,23 @@ class MaskGITDynamics(nn.Module):
                     for name, codes in combined.items()
                 }
             return combined
+        def _as_seen(codes_by_name):
+            seen = {}
+            for name, codes in codes_by_name.items():
+                if name in blind:
+                    codes = torch.full_like(codes, self._mask_id(name))
+                elif name in seen_seed and codes.shape[1] > n_seed:
+                    codes = torch.cat([seen_seed[name], codes[:, n_seed:]], dim=1)
+                seen[name] = codes
+            return seen
+
+        cache = None
+        if use_cache:
+            cache = self.backbone.start_history_cache(
+                _as_seen(trajectory), actuators[:, :n_seed]
+            )
         for t in range(n_predict):
-            history = trajectory
+            history = _as_seen(trajectory)
             frame_actuators = actuators[:, : n_seed + t + 1]
             if n_candidates > 1:
                 history = {
@@ -1194,6 +1314,13 @@ class MaskGITDynamics(nn.Module):
                 gate=gate,
                 return_mean=return_mean,
                 gumbel=gumbel,
+                known=(
+                    {name: c[:, n_seed + t] for name, c in known_codes.items()}
+                    if known_codes
+                    else None
+                ),
+                cache=cache,
+                forbid=forbid,
             )
             if return_mean:
                 next_frame, frame_mean = next_frame
@@ -1214,6 +1341,25 @@ class MaskGITDynamics(nn.Module):
                 name: torch.cat([codes, next_frame[name].unsqueeze(1)], dim=1)
                 for name, codes in trajectory.items()
             }
+            if bootstrap_blind and t == 0:
+                # The first blind frame stands in for the blind modalities' seed.
+                seen_seed = {
+                    name: next_frame[name].unsqueeze(1).expand(-1, n_seed, -1).clone()
+                    for name in blind
+                }
+                blind = set()
+                if cache is not None:
+                    cache = self.backbone.start_history_cache(
+                        _as_seen(trajectory), actuators[:, : n_seed + 1]
+                    )
+                continue
+            if cache is not None and t + 1 < n_predict:
+                committed = {name: codes.unsqueeze(1) for name, codes in next_frame.items()}
+                self.backbone.extend_history_cache(
+                    cache,
+                    _as_seen(committed),
+                    actuators[:, n_seed + t : n_seed + t + 1],
+                )
         if return_mean:
             return trajectory, {name: torch.cat(v, dim=1) for name, v in means.items()}
         return trajectory

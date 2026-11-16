@@ -199,6 +199,62 @@ class FactorizedSTBlock(nn.Module):
         flat = flat + self.ffn(self.fn(flat))
         return flat.reshape(B, Fr, N, d)
 
+    def forward_keep_temporal_kv(self, x: torch.Tensor):
+        """:meth:`forward`, also returning the temporal attention keys and values.
+
+        Inference only (the history cache, :class:`HistoryCache`). The output equals
+        :meth:`forward` up to floating-point rounding.
+
+        Returns
+        -------
+        x : torch.Tensor of shape (B, F, N, d)
+        keys, values : torch.Tensor of shape (B * N, heads, F, head_dim)
+        """
+        B, Fr, N, d = x.shape
+        per_frame = x.reshape(B * Fr, N, d)
+        per_frame = per_frame + self.spatial(self.sn(per_frame))
+        x = per_frame.reshape(B, Fr, N, d)
+        per_token = x.permute(0, 2, 1, 3).reshape(B * N, Fr, d)
+        q, k, v = self.temporal._project(self.tn(per_token))
+        attended = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        per_token = per_token + self.temporal._output(attended, per_token.shape)
+        x = per_token.reshape(B, N, Fr, d).permute(0, 2, 1, 3)
+        flat = x.reshape(B * Fr * N, d)
+        flat = flat + self.ffn(self.fn(flat))
+        return flat.reshape(B, Fr, N, d), k, v
+
+    def forward_next_frame(self, x: torch.Tensor, past_k: torch.Tensor, past_v: torch.Tensor):
+        """Apply the block to one new frame, given the cached history.
+
+        Spatial attention and the FFN act on the frame alone; in temporal attention
+        each of its tokens attends to the cached keys and values of the same token
+        in every earlier frame and to itself. Because temporal attention is causal,
+        that is exactly what :meth:`forward` computes for the last frame.
+
+        Parameters
+        ----------
+        x : torch.Tensor of shape (B, 1, N, d)
+        past_k, past_v : torch.Tensor of shape (B * N, heads, P, head_dim)
+
+        Returns
+        -------
+        x : torch.Tensor of shape (B, 1, N, d)
+        keys, values : torch.Tensor of shape (B * N, heads, 1, head_dim)
+            This frame's temporal keys and values, for appending to the cache.
+        """
+        B, Fr, N, d = x.shape
+        per_frame = x.reshape(B, N, d)
+        per_frame = per_frame + self.spatial(self.sn(per_frame))
+        per_token = per_frame.reshape(B * N, 1, d)
+        q, k, v = self.temporal._project(self.tn(per_token))
+        attended = F.scaled_dot_product_attention(
+            q, torch.cat([past_k, k], dim=-2), torch.cat([past_v, v], dim=-2)
+        )
+        per_token = per_token + self.temporal._output(attended, per_token.shape)
+        flat = per_token.reshape(B * N, d)
+        flat = flat + self.ffn(self.fn(flat))
+        return flat.reshape(B, 1, N, d), k, v
+
     def forward_two_stream(self, history: torch.Tensor, query: torch.Tensor):
         """Apply the block to a history and a query stream of shape (B, F, N, d).
 
@@ -270,6 +326,26 @@ class ActuatorCrossAttention(nn.Module):
         v = v.reshape(B * Fr, self.n_act, n_heads, d // n_heads).transpose(1, 2)
         attended = F.scaled_dot_product_attention(q, k, v)
         return self.o(attended.transpose(1, 2).reshape(B, Fr, N, d))
+
+
+class HistoryCache:
+    """Temporal keys and values of the committed frames, per block (inference only).
+
+    Built by :meth:`DynamicsBackbone.start_history_cache`, extended by one frame at a
+    time with :meth:`DynamicsBackbone.extend_history_cache`. Storage is allocated
+    once for ``max_frames``; at d1024 it is ``2 * depth * B * tokens * max_frames *
+    d_model`` floats (16 GB for 16 blocks, one sample, 100 frames in float32).
+    """
+
+    def __init__(self, keys, values, length: int):
+        self.keys = keys
+        self.values = values
+        self.length = length
+
+    def past(self, block: int):
+        """Keys and values of block ``block`` over the committed frames."""
+        n = self.length
+        return self.keys[block][:, :, :n], self.values[block][:, :, :n]
 
 
 class DynamicsBackbone(nn.Module):
@@ -353,7 +429,7 @@ class DynamicsBackbone(nn.Module):
             )
         return self.out_norm(query)
 
-    def _embed(self, codes, actuators, act_null=None) -> torch.Tensor:
+    def _embed(self, codes, actuators, act_null=None, frame_offset: int = 0) -> torch.Tensor:
         """Token embeddings plus the actuator term.
 
         ``act_null`` (B,) drops the whole actuator term of those samples, the
@@ -361,7 +437,7 @@ class DynamicsBackbone(nn.Module):
         actuators at their normalised mean, which still add the projection bias, so
         no new parameter is needed and older checkpoints load unchanged.
         """
-        x = self.tok.embed(codes)
+        x = self.tok.embed(codes, frame_offset=frame_offset)
         B, Fr, N, d = x.shape
         if actuators.shape != (B, Fr, self.cfg.actuator_dim):
             raise ValueError(
@@ -373,6 +449,88 @@ class DynamicsBackbone(nn.Module):
         if self.act_cross is not None:
             conditioning = conditioning + self.act_cross(x, actuators)
         return x + (conditioning if keep is None else conditioning * keep)
+
+    def supports_history_cache(self) -> bool:
+        """Whether :meth:`start_history_cache` applies (no lag embedding)."""
+        return int(getattr(self.tok, "lag_k", 0)) == 0
+
+    @torch.no_grad()
+    def start_history_cache(
+        self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor
+    ) -> HistoryCache:
+        """Run the committed frames once and keep every block's temporal keys/values.
+
+        Parameters
+        ----------
+        codes : dict of str to torch.LongTensor of shape (B, P, n_tok)
+            Committed frames, as the model should see them (e.g. blind modalities
+            already set to ``[MASK]``).
+        actuators : torch.Tensor of shape (B, P, actuator_dim)
+            Their actuators.
+        """
+        if not self.supports_history_cache():
+            raise ValueError("the history cache does not support lag_embed_k > 0")
+        x = self._embed(codes, actuators)
+        B, P, N, _d = x.shape
+        size = self.cfg.max_frames
+        keys, values = [], []
+        for block in self.blocks:
+            x, k, v = block.forward_keep_temporal_kv(x)
+            store_k = k.new_empty(k.shape[0], k.shape[1], size, k.shape[3])
+            store_v = torch.empty_like(store_k)
+            store_k[:, :, :P] = k
+            store_v[:, :, :P] = v
+            keys.append(store_k)
+            values.append(store_v)
+        return HistoryCache(keys, values, P)
+
+    @torch.no_grad()
+    def next_frame_logits(
+        self,
+        cache: HistoryCache,
+        frame_codes: Dict[str, torch.Tensor],
+        frame_actuators: torch.Tensor,
+    ) -> Dict[str, torch.Tensor]:
+        """Head outputs of one new frame after the cached history.
+
+        Equals the last frame of :meth:`forward` on the history plus this frame, up
+        to floating-point rounding, at the cost of one frame instead of all of them.
+
+        Parameters
+        ----------
+        frame_codes : dict of str to torch.LongTensor of shape (B, 1, n_tok)
+        frame_actuators : torch.Tensor of shape (B, 1, actuator_dim)
+
+        Returns
+        -------
+        logits : dict of str to torch.Tensor of shape (B, 1, n_tok, n_out)
+        """
+        x, _ = self._cached_frame(cache, frame_codes, frame_actuators, keep=False)
+        return self.tok.logits(self.out_norm(x))
+
+    @torch.no_grad()
+    def extend_history_cache(
+        self,
+        cache: HistoryCache,
+        frame_codes: Dict[str, torch.Tensor],
+        frame_actuators: torch.Tensor,
+    ) -> None:
+        """Append a committed frame (shapes as :meth:`next_frame_logits`) to ``cache``."""
+        if cache.length >= self.cfg.max_frames:
+            raise ValueError(f"history cache full at max_frames={self.cfg.max_frames}")
+        self._cached_frame(cache, frame_codes, frame_actuators, keep=True)
+        cache.length += 1
+
+    def _cached_frame(self, cache, frame_codes, frame_actuators, keep: bool):
+        x = self._embed(frame_codes, frame_actuators, frame_offset=cache.length)
+        n = cache.length
+        for index, block in enumerate(self.blocks):
+            past_k, past_v = cache.past(index)
+            x, k, v = block.forward_next_frame(x, past_k, past_v)
+            if keep:
+                cache.keys[index][:, :, n : n + 1] = k
+                cache.values[index][:, :, n : n + 1] = v
+        return x, None
 
     def _checkpointed(self, function, recompute: bool, *inputs):
         if not recompute:

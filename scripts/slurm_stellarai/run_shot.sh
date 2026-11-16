@@ -29,7 +29,28 @@
 # OUT_DIR    results (default ./ignite_<shot>_<scenario>): a figure of measured vs
 #            predicted signals, the predicted codes and eval_metrics.json per seed
 #
-# The shot must be in the frame-code cache (shots 190000-204999).
+# INFER      comma list of modalities to infer from the others (default none): every
+#            other modality keeps its measured codes in every predicted frame and only
+#            these are generated, e.g. INFER=cer_ti+cer_rot (eval_dynamics --infer;
+#            + separates, since sbatch --export splits values on commas)
+# INFER_BLIND=1  with INFER: the inferred modalities are also hidden ([MASK]) in every
+#            history frame, seed included (eval_dynamics --infer_blind)
+# INFER_BOOTSTRAP=1  with INFER_BLIND: only the first predicted frame is blind; it then
+#            fills the inferred modalities' seed (eval_dynamics --infer_bootstrap)
+# FORBID_ABSENT  shot where the INFER modalities did not record: their 'not recorded'
+#            codes are never sampled (eval_dynamics --forbid_absent)
+# SEED_FROM  <modality>:<shot>[+...] (default none): that modality's seed frames come
+#            from another shot of the same cache, for a diagnostic that did not record,
+#            e.g. SEED_FROM=tangtv_upper:203489 (eval_dynamics --seed_from)
+# HISTORY_CACHE  1 (default) keeps the history's attention keys/values during the
+#            rollout (~8x faster, same result up to rounding); 0 = full pass
+# CACHE_DIR  frame-code cache holding the shot (default: the training cache, shots
+#            190000-204999; FDP shots are in models/ignite_fdp_*/frame_codes)
+# ACT_GLOBAL actuator side cache with the shot's entry and act_global_stats.npz (default:
+#            the training cache's; the shot designer passes a folder of links)
+#
+# The shot designer runs its plans as SCENARIO=file:<plan.npz>; such a run also keeps
+# the same seed's rollout under the measured actuators (real__ keys in the archive).
 set -euo pipefail
 
 SHOT=${SHOT:?set SHOT, e.g. sbatch --export=ALL,SHOT=204011 run_shot.sh}
@@ -54,20 +75,26 @@ esac
 
 cd "$REPO"
 source scripts/slurm_stellarai/_stellarai_common.sh
-export IGNITE_ACT_GLOBAL=$MODELS/ignite_prod_v4/act_global  # actuator scaling used in training
+export IGNITE_ACT_GLOBAL=${ACT_GLOBAL:-$MODELS/ignite_prod_v4/act_global}  # actuator scaling used in training
 export IGNITE_EVAL_RAW_GT=0       # compare with the measurements in the cache
 export IGNITE_MASKGIT_GUMBEL=3    # sampling noise; without it spectrogram modes go flat
+export IGNITE_HISTORY_CACHE=${HISTORY_CACHE:-1}  # 0 = full pass instead of the history cache
 export IGNITE_EVAL_MODALITIES=ece,bes,mhr,co2,mirnov,ts_core_temp,ts_core_density,ts_tangential_temp,ts_tangential_density,cer_ti,cer_rot,mse,filterscopes,tangtv_lower,tangtv_upper
 
 for seed in $SEEDS; do
     python -m tokamak_foundation_model.ignite.eval_dynamics \
         --ckpt "$CKPT" \
         --shot "$SHOT" \
-        --cache_dir "$MODELS/ignite_prod_v4/frame_codes" \
+        --cache_dir "${CACHE_DIR:-$MODELS/ignite_prod_v4/frame_codes}" \
         --codec_tmpl "$MODELS/ignite_codecs_v4/{m}/codec_best.pt" \
         --actuator_mode "$mode" \
         --temperature 1.0 \
         --seed "$seed" \
+        --infer "$(echo "${INFER:-}" | tr '+' ',')" \
+        --seed_from "$(echo "${SEED_FROM:-}" | tr '+' ',')" \
+        $([ "${INFER_BLIND:-0}" = 1 ] && echo --infer_blind) \
+        $([ "${INFER_BOOTSTRAP:-0}" = 1 ] && echo --infer_bootstrap) \
+        --forbid_absent "${FORBID_ABSENT:-}" \
         --out_dir "$OUT_DIR/seed$seed"
 done
 echo "results in $OUT_DIR"

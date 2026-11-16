@@ -53,6 +53,17 @@ cd "$REPO_DIR"
 source "$CLUSTER_ENV"
 mkdir -p "$OUT"
 VAL=${VAL_DIR:-$OUT/val32}
+# STAGE=seed: only the held-out rollout, one more sampled rollout (SEED, Gumbel reveal
+# noise GUMBEL, default 3 as in the paper figures) into val32_g<GUMBEL>_seed<SEED>/. Seeds
+# together give the spread of the prediction (analysis/paper_figures/summary_performance.py).
+if [ "$STAGE" = seed ]; then
+  export SEED=${SEED:?set SEED} IGNITE_MASKGIT_GUMBEL=${GUMBEL:-3}
+  DIR=$OUT/val32_g${IGNITE_MASKGIT_GUMBEL}_seed$SEED
+  echo "[scorecard] $(date '+%H:%M') $RUN step $STEP: held-out rollout, seed $SEED, Gumbel $IGNITE_MASKGIT_GUMBEL"
+  ( export VAL_TAIL=32 VAL_N=438 SPLIT_SEED=42 OUT_DIR=$DIR; bash scripts/slurm_frontier/eval_dynamics.sh )
+  echo "[scorecard] $(date '+%H:%M') seed done: $(ls "$DIR"/codes_*.npz 2>/dev/null | wc -l) archives"
+  exit 0
+fi
 if [ "$STAGE" != resp ]; then
   if [ -z "${VAL_DIR:-}" ] && [ ! -f "$VAL/hallucination.json" ]; then
     echo "[scorecard] $(date '+%H:%M') $RUN step $STEP: held-out rollout"

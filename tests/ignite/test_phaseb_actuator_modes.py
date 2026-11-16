@@ -226,3 +226,24 @@ def test_rollout_reads_global_actuators_by_shot(tmp_path, monkeypatch):
             torch.Generator().manual_seed(0),
             torch.device("cpu"),
         )
+
+
+def test_seed_from_takes_one_modality_seed_from_another_shot(monkeypatch):
+    """--seed_from: the named modality's seed frames come from the donor shot, every
+    other modality and the scored measurement stay this shot's."""
+    cfg, model, cache = _tiny_setup()
+    _, _, donor = _tiny_setup()
+    g = torch.Generator().manual_seed(5)
+    donor["codes"]["b"] = torch.randint(0, 16, donor["codes"]["b"].shape, generator=g)
+    monkeypatch.setattr(ed, "load_shot_cache", lambda d, s: donor if s == "999" else None)
+    gen = torch.Generator().manual_seed(0)
+    out = ed.rollout_shot(model, cfg, cache, cfg.k0_seed, 0.9, gen, torch.device("cpu"),
+                          cache_dir="x", decode={"seed_from": {"b": "999"}})
+    k0 = cfg.k0_seed
+    assert torch.equal(out.pred_codes["b"][:k0], donor["codes"]["b"][:k0])
+    assert torch.equal(out.pred_codes["a"][:k0], cache["codes"]["a"][:k0])
+    assert torch.equal(out.gt_codes["b"], cache["codes"]["b"])
+    assert not _same(out.pred_codes, _roll(cfg, model, cache, "real"))
+    with pytest.raises(ValueError, match="unknown modality"):
+        ed.rollout_shot(model, cfg, cache, k0, 0.9, gen, torch.device("cpu"),
+                        cache_dir="x", decode={"seed_from": {"zz": "999"}})
