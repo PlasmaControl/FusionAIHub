@@ -164,7 +164,7 @@ def extract(a):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     spectros = [x for x in a.spectro.split(",") if x]
-    names = list(SLOW) + spectros + list(CAMERAS)
+    names = list(SLOW) + spectros + list(CAMERAS) + (["filterscopes"] if a.filterscopes else [])
     codecs = td.load_frozen_codecs(names, repo=Path.cwd(), tmpl=a.codec_tmpl)
     for codec, _cfg, _fam in codecs.values():
         codec.to(device)
@@ -201,6 +201,22 @@ def extract(a):
                 "gt": ev.decode_flat_chunked(codec, ev.archived(codes, f"gt__{name}")[:F], device),
                 "pred": np.mean(each, axis=0),
             }
+            if name == "filterscopes":
+                # Envelope (F, C, E): log1p(rms / env_eps) of the per-channel standardized,
+                # 2 ms-detrended signal in 10 ms bins. Inverted to the RMS fluctuation in the
+                # signal's own units (ph/cm^2/sr/s). Every seed is kept, since averaging
+                # seeds smears the ELM bursts; filterscopes_pred is their physical mean.
+                cfg = codecs[name][1]
+                std = np.asarray(cfg.channel_std, dtype=np.float64)[None, :, None]
+
+                def phys(x, eps=float(cfg.env_eps), std=std):
+                    return (eps * np.expm1(np.asarray(x, dtype=np.float64)) * std).astype(np.float32)
+
+                out.setdefault("filterscopes_gt", phys(decoded["gt"]))
+                runs_fs = np.stack([phys(x) for x in each])
+                out[f"filterscopes_members__{key}"] = runs_fs
+                out[f"filterscopes_pred__{key}"] = runs_fs.mean(axis=0)
+                continue
             if name in CAMERAS:
                 gt_codes = codes[f"gt__{name}"][K0:F]
                 if (gt_codes == gt_codes[:1]).all():
@@ -218,6 +234,11 @@ def extract(a):
                     # (F, H, W): the recorded view, averaged over the frame's sub-frames.
                     frames = np.nanmean(np.asarray(x)[:, view], axis=1).astype(np.float16)
                     out[f"camera_gt__{name}" if which == "gt" else f"camera_pred__{key}__{name}"] = frames
+                if a.camera_member >= 0:
+                    # One sampled rollout instead of the seed mean (same frame reduction).
+                    one = np.nanmean(np.asarray(each[a.camera_member])[:, view], axis=1)
+                    out[f"camera_member__{key}__{name}"] = one.astype(np.float16)
+                    out["camera_member"] = a.camera_member
                 continue
             if name in spectros:
                 first = name == spectros[0]
@@ -718,6 +739,10 @@ def main():
                    help="spectrograms of an ensemble: the decoded mean, or the one member closest to it "
                    "(keeps the measured texture and mode-line wander; traces stay the mean), or "
                    "nearest:<modality>, the member closest to the measurement on that modality")
+    e.add_argument("--filterscopes", action="store_true",
+                   help="also decode the filterscope envelopes, every seed (filterscopes_*)")
+    e.add_argument("--camera_member", type=int, default=-1,
+                   help="also store the camera frames of this ensemble member (camera_member__*)")
     e.add_argument("--cache_dir", required=True)
     e.add_argument("--codec_tmpl", required=True)
     e.add_argument("--data", required=True, help="output .npz")
