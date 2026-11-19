@@ -852,6 +852,46 @@ def rollout_shot(
             donor_codes[start : start + K0].long().unsqueeze(0).to(device)
         )
     infer = [n for n in decode.pop("infer", None) or () if n]
+    hide = [n for n in decode.pop("hide", None) or () if n]
+    # A diagnostic that did not record in the initial state (the same codes in every
+    # seed frame: the codec's code of a zero-filled window) is [MASK] there, its
+    # "not recorded" codes are never sampled, and it is predicted with all others,
+    # as --hide does. No information from any other shot is used. On by default from
+    # the CLI (IGNITE_MASK_ABSENT, read at call time), off for library calls.
+    mask_absent = decode.pop("mask_absent", None)
+    if mask_absent is None:
+        mask_absent = os.environ.get("IGNITE_MASK_ABSENT", "0") == "1"
+    # Forbid the masked diagnostic's "not recorded" codes (it must then be predicted as
+    # recording). Off by default: the masked diagnostic is predicted freely, which may
+    # again be "not recorded" (IGNITE_MASK_FORBID=1 or --mask_forbid 1 turns it on).
+    mask_forbid = decode.pop("mask_forbid", None)
+    if mask_forbid is None:
+        mask_forbid = os.environ.get("IGNITE_MASK_FORBID", "0") == "1"
+    absent_seed = {}
+    if mask_absent and not infer and int(decode.get("consensus_n", 1)) <= 1:
+        for name in names:
+            if name in hide:
+                continue
+            seed = codes[name][:K0]
+            if bool((seed == seed[:1]).all()):
+                absent_seed[name] = seed[0].long().to(device)
+        if absent_seed:
+            print(f"[eval] not recorded in the initial state, masked and predicted: "
+                  f"{sorted(absent_seed)}")
+            hide = hide + sorted(absent_seed)
+    if hide:
+        # Missing diagnostics in a free rollout: the hidden modalities are [MASK] in
+        # the seed; the first predicted frame generates them from the other
+        # modalities' seed and then stands in for their seed, and every modality,
+        # hidden or not, is generated autoregressively (nothing held at its
+        # measurement).
+        if infer:
+            raise ValueError("--hide and --infer exclude each other")
+        unknown = sorted(set(hide) - set(names))
+        if unknown:
+            raise ValueError(f"--hide: unknown modalities {unknown}")
+        decode["blind"] = list(hide)
+        decode["bootstrap_blind"] = True
     if decode.pop("infer_blind", False):
         if not infer:
             raise ValueError("--infer_blind needs --infer")
@@ -862,20 +902,28 @@ def rollout_shot(
             raise ValueError("--infer_bootstrap needs --infer_blind")
         decode["bootstrap_blind"] = True
     absent_shot = decode.pop("forbid_absent", None)
+    forbid_mods = [n for n in decode.pop("forbid_mods", None) or () if n]
+    if forbid_mods and not absent_shot:
+        raise ValueError("--forbid_modalities needs --forbid_absent")
     if absent_shot:
         # Never sample an inferred modality's "not recorded" frame: the constant codes
         # it has in a shot where it did not record.
-        if not infer or cache_dir is None:
-            raise ValueError("--forbid_absent needs --infer and cache_dir")
+        # In a plain rollout (complete initial state, nothing removed) the modalities
+        # are given by --forbid_modalities.
+        if not (infer or hide or forbid_mods) or cache_dir is None:
+            raise ValueError("--forbid_absent needs --infer, --hide or "
+                             "--forbid_modalities, and cache_dir")
         absent = load_shot_cache(Path(cache_dir), str(absent_shot))["codes"]
         decode["forbid"] = {}
-        for name in infer:
+        for name in infer or hide or forbid_mods:
             frames = absent[name].long()
             if not bool((frames == frames[:1]).all()):
                 raise ValueError(
                     f"--forbid_absent: {name} records in {absent_shot} (codes change)"
                 )
             decode["forbid"][name] = frames[0].to(device)
+    for name, frame in absent_seed.items() if mask_forbid else ():
+        decode.setdefault("forbid", {}).setdefault(name, frame)
     if infer:
         # Inference of missing modalities: every other modality keeps its measured
         # codes in every predicted frame; only ``infer`` is generated.
@@ -2993,6 +3041,40 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "are generated (missing-diagnostic inference); empty = plain rollout",
     )
     add(
+        "--hide",
+        default="",
+        help="comma list of modalities missing from the initial state ([MASK] in the "
+        "seed): the first predicted frame generates them from the other modalities "
+        "and then stands in for their seed; every modality is then predicted "
+        "autoregressively as in a plain rollout (excludes --infer)",
+    )
+    add(
+        "--mask_absent",
+        type=int,
+        choices=(0, 1),
+        default=None,
+        help="1 (default from the CLI, IGNITE_MASK_ABSENT): a diagnostic that did not "
+        "record in the initial state is [MASK] there and predicted with all others; "
+        "0: it is continued as recorded (constant 'not recorded' frame). Not with "
+        "--infer or consensus",
+    )
+    add(
+        "--mask_forbid",
+        type=int,
+        choices=(0, 1),
+        default=None,
+        help="with --mask_absent: 1 never samples the masked diagnostic's 'not "
+        "recorded' codes (it must be predicted as recording); 0 (default, "
+        "IGNITE_MASK_FORBID) predicts it freely",
+    )
+    add(
+        "--forbid_modalities",
+        default="",
+        help="with --forbid_absent and neither --infer nor --hide: comma list of "
+        "modalities whose 'not recorded' codes are never sampled in a plain rollout "
+        "(the initial state is kept as measured)",
+    )
+    add(
         "--infer_blind",
         action="store_true",
         help="with --infer: the inferred modalities are also [MASK] in every history "
@@ -3088,6 +3170,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv=None):
     """Run the evaluation or the curation selected by the command line."""
     os.environ.setdefault("IGNITE_HISTORY_CACHE", "1")  # inference: history cache on
+    os.environ.setdefault("IGNITE_MASK_ABSENT", "1")  # inference: absent seeds masked
     args = build_arg_parser().parse_args(argv)
     if args.curate:
         shots = None
@@ -3133,6 +3216,10 @@ def main(argv=None):
             "consensus_mode": args.consensus_mode,
             "consensus_shared": not args.consensus_independent,
             "infer": [x.strip() for x in args.infer.split(",") if x.strip()],
+            "hide": [x.strip() for x in args.hide.split(",") if x.strip()],
+            "forbid_mods": [x.strip() for x in args.forbid_modalities.split(",") if x.strip()],
+            "mask_absent": None if args.mask_absent is None else bool(args.mask_absent),
+            "mask_forbid": None if args.mask_forbid is None else bool(args.mask_forbid),
             "infer_blind": args.infer_blind,
             "infer_bootstrap": args.infer_bootstrap,
             "forbid_absent": args.forbid_absent.strip() or None,

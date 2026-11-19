@@ -18,6 +18,7 @@ Run on a login node::
         pixi run --frozen -e stellarai python analysis/paper_figures/make_figures.py
 """
 import argparse
+import functools
 import os
 from pathlib import Path
 import sys
@@ -45,7 +46,7 @@ PALETTE = {"truth": "#56b4e9", "real": "#e07b1a", "scenario": "#7b3294"}
 WIDTH, FONT = 6.5, 9
 # Heights (in) at which figures 1 and 2 fit one page with their captions in main.tex
 # (letterpaper, 1 in margins, 12 pt); included at 1:1, never scaled.
-HEIGHT_FIG1, HEIGHT_FIG2 = 5.5, 5.4
+HEIGHT_FIG1, HEIGHT_FIG2 = 5.65, 5.4
 LW = {"truth": 2.6, "real": 1.3, "scenario": 1.3}
 T0, FRAME = 1.0, 0.05
 
@@ -111,6 +112,10 @@ CHORDS = {
     # n_e on the core chord (Z 0.03 m, as T_e): edge chords (Z > 0.6 m) respond to the beam
     # rebalancing about three times as strongly as the core (-19 % vs -7 % at ch 19 / 41).
     "204011_torque": {"cer_rot": 1, "cer_ti": 0, "ts_core_temp": 41, "ts_core_density": 41},
+    # ECH of 204011: T_e and n_e on the innermost core chord (Z 0.03 m). Switching ECH off
+    # raises the core n_e (density pump-out reversed, 8/8 seeds on the chords Z < 0.65 m);
+    # the edge chord of Fig 1 (ch 19, Z 0.66 m) barely responds.
+    "204011_ech": {"ts_core_temp": 41, "ts_core_density": 41, "cer_ti": 24, "cer_rot": 1},
     "201240_torque": {"cer_rot": 1, "cer_ti": 0, "ts_core_temp": 43, "ts_core_density": 21},
     "201240_ech": {"ts_core_temp": 43, "ts_core_density": 21, "cer_ti": 24, "cer_rot": 1},
     "201081": {"ts_core_temp": 41, "ts_core_density": 22, "cer_ti": 18, "cer_rot": 16},
@@ -268,8 +273,30 @@ def chord_label(ctx, n):
 
 # Waterfall channel sets: every TS core chord; the CER tangential chords T01-T16 (one
 # radial fan, core to edge).
-WATERFALL = {"ts_core_temp": range(0, 44), "ts_core_density": range(0, 44), "cer_ti": range(0, 16),
-             "cer_rot": range(0, 16)}
+WATERFALL = {"ts_core_temp": range(0, 44), "ts_core_density": range(0, 44)}
+# CER profiles: outboard chords only (inboard views, R < 1.6 m, see a different projection of
+# the rotation and would zigzag against the outboard ones at the same psi_N).
+CER_R_MIN = 1.6
+
+
+def cer_profile_chords(ctx):
+    """Codec indices of the CER chords drawn in T_i and |v_tor| profiles: the same chords
+    for both, i.e. every tangential chord with geometry, outboard of CER_R_MIN, that the
+    shot recorded for both TEMP and ROT and whose measurement decodes to finite values in
+    both (cer_rot T01/T03 have corrupt stats and decode to NaN)."""
+    d, shot = ctx["d"], ctx["shot"]
+    radii = cer_radii(shot)
+    both = set(cer_recorded(shot, "cer_ti")) & set(cer_recorded(shot, "cer_rot"))
+    out = []
+    for c in sorted(both):
+        if not any(b in radii.get(f"T{c + 1:02d}", {}) for b in CER_PREFER):
+            continue
+        if cer_r(ctx, [c])[0] < CER_R_MIN:
+            continue
+        if all(np.isfinite(np.asarray(d[f"gt__real__{n}"], float)[:, c]).any()
+               for n in ("cer_ti", "cer_rot")):
+            out.append(c)
+    return np.array(out, dtype=int)
 
 
 def live_end(ctx):
@@ -290,14 +317,12 @@ def cut(ctx, y):
 def profile_chords(ctx, n):
     """Chords of profile signal ``n`` the shot recorded and their positions (Z for TS, R
     for CER), sorted by position."""
-    d = ctx["d"]
-    chans = np.array(list(WATERFALL[n]))
     if n.startswith("ts_core"):
+        chans = np.array(list(WATERFALL[n]))
         chans = chans[chans < len(ts_positions(ctx["shot"]))]
         xpos = ts_z(ctx, chans)
     else:
-        chans = np.array([c for c in chans if c in cer_recorded(ctx["shot"], n)
-                          and np.isfinite(np.asarray(d[f"gt__real__{n}"], float)[:, c]).any()])
+        chans = cer_profile_chords(ctx)
         xpos = cer_r(ctx, chans)
     order = np.argsort(xpos)
     return chans[order], xpos[order]
@@ -306,49 +331,52 @@ def profile_chords(ctx, n):
 DASH = (0, (3, 1.5))
 
 
-def ts_rho(shot, chans, times):
-    """sqrt(psi_N) of TS core chords ``chans`` at ``times`` (s), from the EFIT01 slice
-    nearest each time (``geqdsk_<shot>.npz``, written by ``fetch_geqdsk.py``); None
-    without it. The chords sit at R = 1.94 m, so the innermost reaches about 0.3."""
+@functools.lru_cache(maxsize=None)
+def _efit_slice(shot, k):
+    """psi_N on the (Z, R) grid of EFIT01 slice ``k`` of ``shot``, as a spline."""
     from scipy.interpolate import RectBivariateSpline
+    e = _efit(shot)
+    pn = (e["PSIRZ"][k] - e["SSIMAG"][k]) / (e["SSIBRY"][k] - e["SSIMAG"][k])
+    return RectBivariateSpline(e["Z"], e["R"], pn)
+
+
+@functools.lru_cache(maxsize=None)
+def _efit(shot):
     path = WORK / f"geqdsk_{shot}.npz"
     if not path.exists():
-        return None
-    e = np.load(path)
-    rz = ts_positions(shot)[list(chans)]
+        raise FileNotFoundError(f"{path} missing: run fetch_geqdsk.py {shot}")
+    return dict(np.load(path))
+
+
+def chord_psin(shot, n, chans, times):
+    """psi_N of the chords ``chans`` of profile signal ``n`` at each of ``times`` (s),
+    ``(len(times), len(chans))``, from the EFIT01 slice nearest each time
+    (``geqdsk_<shot>.npz`` in WORK, written by ``fetch_geqdsk.py``). TS core chords sit
+    at their scattering volume (R, Z); CER tangential chords where their view crosses
+    the beam (:func:`cer_r`, :func:`cer_z`). Profiles of every figure are plotted against
+    it; a changed-actuator prediction is placed on the measured equilibrium."""
+    shot = str(shot)
+    if n.startswith("ts"):
+        rz = ts_positions(shot)[list(chans)]
+    else:
+        ctx = {"shot": shot}
+        rz = np.stack([cer_r(ctx, chans), cer_z(ctx, chans)], 1)
+    gt = _efit(shot)["GTIME"]
     out = []
-    for tt in times:
-        k = int(np.argmin(np.abs(e["GTIME"] - 1e3 * tt)))
-        sp = RectBivariateSpline(e["Z"], e["R"], e["PSIRZ"][k])
-        psi = np.array([sp(z, r)[0, 0] for r, z in rz])
-        pn = (psi - e["SSIMAG"][k]) / (e["SSIBRY"][k] - e["SSIMAG"][k])
-        out.append(np.sqrt(np.clip(pn, 0, None)))
+    for tt in np.atleast_1d(times):
+        sp = _efit_slice(shot, int(np.argmin(np.abs(gt - 1e3 * tt))))
+        out.append(sp.ev(rz[:, 1], rz[:, 0]))
     return np.array(out)
 
 
-def ts_rmid(shot, chans, times):
-    """Outboard-midplane major radius (m) of the flux surface through each TS core chord
-    ``chans`` at ``times`` (s), and of the separatrix, from the EFIT01 slice nearest each
-    time; (None, None) without it. The chords themselves all sit at R = 1.94 m."""
-    from scipy.interpolate import RectBivariateSpline
-    path = WORK / f"geqdsk_{shot}.npz"
-    if not path.exists():
-        return None, None
-    e = np.load(path)
-    rz = ts_positions(shot)[list(chans)]
-    out, sep = [], []
-    for tt in times:
-        k = int(np.argmin(np.abs(e["GTIME"] - 1e3 * tt)))
-        sp = RectBivariateSpline(e["Z"], e["R"], e["PSIRZ"][k])
-        norm = lambda p: (p - e["SSIMAG"][k]) / (e["SSIBRY"][k] - e["SSIMAG"][k])  # noqa: E731
-        pn = norm(np.array([sp(z, r)[0, 0] for r, z in rz]))
-        # psi_N along the outboard midplane, from the magnetic axis outwards.
-        rr = np.linspace(e["RMAXIS"][k], e["R"][-1], 400)
-        pm = norm(sp(e["ZMAXIS"][k], rr)[0])
-        mono = np.maximum.accumulate(pm)
-        out.append(np.interp(pn, mono, rr))
-        sep.append(float(np.interp(1.0, mono, rr)))
-    return np.array(out), float(np.mean(sep))
+PSIN_LABEL = r"$\psi_N$"
+
+
+def smooth_profile(n, x):
+    """(F, C) profile frames: absolute value where the signal is shown as one, then the
+    3-frame running mean of the traces."""
+    x = np.abs(x) if n in dc.ABSOLUTE else x
+    return np.stack([np.nanmean(x[max(0, k - 1):k + 2], axis=0) for k in range(len(x))])
 
 
 def profile_frames(ctx, which, key, n, chans):
@@ -358,8 +386,7 @@ def profile_frames(ctx, which, key, n, chans):
     scale = dc.LABELS[n][1]
 
     def smooth(x):
-        x = np.abs(x) if n in dc.ABSOLUTE else x
-        return np.stack([np.nanmean(x[max(0, k - 1):k + 2], axis=0) for k in range(len(x))])
+        return smooth_profile(n, x)
 
     m = members(ctx) if which == "pred" else None
     k = f"members__{key}__{n}"
@@ -370,9 +397,9 @@ def profile_frames(ctx, which, key, n, chans):
 
 
 def profile_time_panel(fig, spec, ctx, n, runs, labels, start, step=5, colorbar=True,
-                       t_range=(3.5, 6.0), legend=True, cbar_spec=None, rho=False,
+                       t_range=(3.5, 6.0), legend=True, cbar_spec=None,
                        free_bottom=0.32):
-    """Profile of ``n`` against chord position, one line every ``step`` frames from
+    """Profile of ``n`` against psi_N (EFIT01, per frame), one line every ``step`` frames from
     frame ``start`` to the plasma end, coloured by time (one time scale per figure, so
     one colour bar serves every panel). ``runs``: ``(which, key)`` pairs drawn solid and
     dashed, named ``labels`` in the panel legend. Predictions carry a band of one standard
@@ -382,7 +409,7 @@ def profile_time_panel(fig, spec, ctx, n, runs, labels, start, step=5, colorbar=
     from matplotlib.lines import Line2D
     t = ctx["t"]
     end = live_end(ctx)
-    chans, xpos = profile_chords(ctx, n)
+    chans, _ = profile_chords(ctx, n)
     frames = list(range(start, min(end + 1, len(t)), step))
     norm = Normalize(vmin=t_range[0], vmax=t_range[1])
     cmap = matplotlib.colormaps["viridis"]
@@ -395,28 +422,19 @@ def profile_time_panel(fig, spec, ctx, n, runs, labels, start, step=5, colorbar=
     else:
         ax, cax_spec = fig.add_subplot(spec), cbar_spec
     styles = ("-", DASH)
-    # rho: TS from core to edge in sqrt(psi_N) (EFIT, per slice); else chord height Z
-    # (TS) or major radius R (CER).
-    sep = None
-    if rho == "rmid" and n.startswith("ts"):
-        rho, sep = ts_rmid(ctx["shot"], chans, t[frames])
-    elif rho and n.startswith("ts"):
-        rho, sep = ts_rho(ctx["shot"], chans, t[frames]), 1.0
-    else:
-        rho = None
+    psin = chord_psin(ctx["shot"], n, chans, t[frames])
     for (which, key), ls in zip(runs, styles):
         mu, sd = profile_frames(ctx, which, key, n, chans)
         for j, k in enumerate(frames):
             col = cmap(norm(t[k]))
-            x = rho[j] if rho is not None else xpos
+            o = np.argsort(psin[j])
+            x = psin[j][o]
             if sd is not None:
-                ax.fill_between(x, mu[k] - sd[k], mu[k] + sd[k], color=col, alpha=0.2, lw=0)
-            ax.plot(x, mu[k], color=col, ls=ls, lw=1.0 if ls == "-" else 1.2)
-    if rho is not None:
-        ax.axvline(sep, color="0.6", lw=0.6, ls=":", zorder=0)
-        ax.set_xlabel(r"$\sqrt{\psi_N}$" if sep == 1.0 else "R, outboard midplane (m)")
-    else:
-        ax.set_xlabel("Z (m)" if n.startswith("ts") else "R (m)")
+                ax.fill_between(x, (mu[k] - sd[k])[o], (mu[k] + sd[k])[o], color=col,
+                                alpha=0.2, lw=0)
+            ax.plot(x, mu[k][o], color=col, ls=ls, lw=1.0 if ls == "-" else 1.2)
+    ax.axvline(1.0, color="0.6", lw=0.6, ls=":", zorder=0)
+    ax.set_xlabel(PSIN_LABEL)
     ax.set_ylabel(dc.LABELS[n][0])
     headroom(ax, 0.3, zero=True)
     if legend:
@@ -433,8 +451,7 @@ def profile_time_panel(fig, spec, ctx, n, runs, labels, start, step=5, colorbar=
 
 def waterfall(fig, spec, ctx, n, runs, step=5, elev=24, azim=-58, label=None, start=None,
               thick=(2.5, 3.5, 4.5, 5.5), late_front=False, slices=False):
-    """3D waterfall of the profile of ``n`` over chord height Z (TS) or major radius R (CER)
-    and time, on the chords the shot recorded.
+    """3D waterfall of the profile of ``n`` over psi_N (EFIT01, per frame) and time, on the chords the shot recorded.
 
     ``runs``: ``(which, key, role)`` triples, e.g. ``("gt", "real", "truth")``. A thin,
     faint profile every ``step`` frames (0.25 s) from ``start`` (default: the measurement
@@ -445,19 +462,19 @@ def waterfall(fig, spec, ctx, n, runs, step=5, elev=24, azim=-58, label=None, st
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
     d, t, k0 = ctx["d"], ctx["t"], ctx["k0"]
     ax = fig.add_subplot(spec, projection="3d", computed_zorder=False)
-    chans = np.array(list(WATERFALL[n]))
     is_ts = n.startswith("ts_core")
     if is_ts:  # real chords only, plotted at their height Z
+        chans = np.array(list(WATERFALL[n]))
         chans = chans[chans < len(ts_positions(ctx["shot"]))]
         xpos = ts_z(ctx, chans)
-    else:  # recorded chords with a usable measurement, at their major radius R
-        chans = np.array([c for c in chans if c in cer_recorded(ctx["shot"], n)
-                          and np.isfinite(np.asarray(d[f"gt__real__{n}"], float)[:, c]).any()])
+    else:  # the T_i/|v_tor| chord pairs (cer_profile_chords), at their major radius R
+        chans = cer_profile_chords(ctx)
         xpos = cer_r(ctx, chans)
     order = np.argsort(xpos)
-    chans, xpos = chans[order], xpos[order]
+    chans = chans[order]
     scale = dc.LABELS[n][1]
     end = live_end(ctx)
+    psin = chord_psin(ctx["shot"], n, chans, t)
     k_thick = {int(round((tt - T0) / FRAME)) for tt in thick}
     for which, key, role in runs:
         x = np.asarray(d[f"{which}__{key}__{n}"], float)[:, chans] * scale
@@ -468,36 +485,38 @@ def waterfall(fig, spec, ctx, n, runs, step=5, elev=24, azim=-58, label=None, st
         first = start if start is not None else (0 if which == "gt" else k0)
         ls = (0, (3, 1.5)) if role == "scenario" else "-"
         for k in range(first, min(end + 1, len(t))):
+            o = np.argsort(psin[k])
+            xpos, xk = psin[k][o], x[k][o]
             if k in k_thick:
                 if slices:
                     # The time slice as a translucent sheet under the profile.
-                    ok = np.isfinite(x[k])
-                    verts = [list(zip(xpos[ok], np.full(ok.sum(), t[k]), x[k][ok]))
+                    ok = np.isfinite(xk)
+                    verts = [list(zip(xpos[ok], np.full(ok.sum(), t[k]), xk[ok]))
                              + [(xpos[ok][-1], t[k], 0.0), (xpos[ok][0], t[k], 0.0)]]
                     sheet = Poly3DCollection(verts, facecolor=PALETTE[role], alpha=0.13,
                                              edgecolor="none")
                     sheet.set_zorder(3.5)
                     ax.add_collection3d(sheet)
-                ax.plot(xpos, np.full(len(chans), t[k]), x[k], color=PALETTE[role],
+                ax.plot(xpos, np.full(len(chans), t[k]), xk, color=PALETTE[role],
                         lw=2.2 if role == "truth" else 1.4, ls=ls,
                         zorder=4 if role == "truth" else 5)
             elif (k - first) % step == 0:
-                ax.plot(xpos, np.full(len(chans), t[k]), x[k], color=PALETTE[role],
+                ax.plot(xpos, np.full(len(chans), t[k]), xk, color=PALETTE[role],
                         lw=0.5, ls=ls, alpha=0.35, zorder=2 if role == "truth" else 3)
     ax.view_init(elev=elev, azim=azim)
     if slices:  # long time axis: the slices spread out in depth
         ax.set_box_aspect((1.0, 2.2, 0.8), zoom=1.0)
         for tt in thick:
-            ax.text(xpos[0], tt, 0.0, f"{tt:g} s", fontsize=FONT - 2.5, color="0.35",
+            ax.text(np.nanmin(psin), tt, 0.0, f"{tt:g} s", fontsize=FONT - 2.5, color="0.35",
                     ha="right", va="top", zorder=6)
     else:
         ax.set_box_aspect(None, zoom=0.86)  # room for the z tick labels inside the cell
-    ax.set_xlabel("Z (m)" if is_ts else "R (m)", fontsize=FONT - 1, labelpad=-8)
+    ax.set_xlabel(PSIN_LABEL, fontsize=FONT - 1, labelpad=-8)
     ax.set_ylabel("time (s)", fontsize=FONT - 1, labelpad=-8)
     ax.set_zlabel(dc.LABELS[n][0], fontsize=FONT - 1, labelpad=-6)
     ax.tick_params(labelsize=FONT - 1.5, pad=-3)
     from matplotlib.ticker import MaxNLocator
-    ax.set_xticks([0.0, 0.4, 0.8] if is_ts else [1.8, 2.0, 2.2])
+    ax.set_xticks([0.0, 0.5, 1.0])
     ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%g"))
     ax.zaxis.set_major_locator(MaxNLocator(4))
     ax.zaxis.set_major_formatter(plt.FormatStrFormatter("%g"))
@@ -628,6 +647,14 @@ INFER_CASES = (
     ("204011", "cer_bs", ("cer_ti", "cer_rot")),
     ("204011", "tvlower_bs", ("tangtv_lower",)),
     ("204011", "tvupper_bs", ("tangtv_upper",)),
+    # Removed from the initial state (eval_dynamics --hide): every diagnostic is then
+    # predicted autoregressively, nothing held at its measurement. Archives
+    # RUN_DIR/_hide_<shot>_<what>_s30000_g3/. These are the ones Fig 5 shows.
+    ("204011", "hide_ts", ("ts_core_temp", "ts_core_density", "ts_tangential_temp",
+                           "ts_tangential_density")),
+    ("204011", "hide_cer", ("cer_ti", "cer_rot")),
+    ("204011", "hide_tvlower", ("tangtv_lower",)),
+    ("204011", "hide_tvupper", ("tangtv_upper",)),
 )
 INFER = WORK / "infer"
 
@@ -648,7 +675,8 @@ def extract_infer():
     conv = ev.profile_converters(codecs, list(dc.SLOW))
     INFER.mkdir(parents=True, exist_ok=True)
     for shot, tag, mods in INFER_CASES:
-        dirs = sorted((RUN_DIR / f"_infer_{shot}_{tag}_s{STEP}_g3").glob("seed*"))
+        name = (f"_hide_{shot}_{tag[5:]}" if tag.startswith("hide_") else f"_infer_{shot}_{tag}")
+        dirs = sorted((RUN_DIR / f"{name}_s{STEP}_g3").glob("seed*"))
         arcs = [np.load(next(x.glob(f"codes_{shot}_step*.npz")), allow_pickle=True)
                 for x in dirs]
         if not arcs:
@@ -939,12 +967,19 @@ def spectro_img(ax, img, gt, fmax, role, ylim, t):
     ax.grid(False)
 
 
-def actuator_panel(ax, ctx, act):
-    """Measured actuator ``act`` (one of the data file's ``act__real__*`` keys) to the plasma end."""
+def actuator_panel(ax, ctx, act, label_above=False):
+    """Measured actuator ``act`` (one of the data file's ``act__real__*`` keys) to the plasma
+    end. ``label_above``: its name above the panel instead of in a box inside it (short
+    panels, where the box covers the trace)."""
     ax.plot(ctx["t"], cut(ctx, ctx["d"][f"act__real__{act}"]), color="0.25", lw=1.1, zorder=2)
     ax.axvline(T0 + FRAME * ctx["k0"], color="0.55", lw=0.7, ls=":", zorder=1)
-    headroom(ax, 0.35, zero=True)
-    box(ax, act)
+    if label_above:
+        headroom(ax, 0.1, zero=True)
+        ax.text(0.0, 1.06, act, transform=ax.transAxes, ha="left", va="bottom",
+                fontsize=FONT - 1.5, color="0.3")
+    else:
+        headroom(ax, 0.35, zero=True)
+        box(ax, act)
 
 
 # ---------------------------------------------------------------------------- figure 1
@@ -954,17 +989,27 @@ def frame_at(ctx, time_s):
 
 def profile_snapshot(ax, ctx, n, time_s, runs=(("real", "real"),), ref=None,
                      measured=True, label_x=True, show_time=True):
-    """Profile of ``n`` against chord position at one time: measured chords as dots,
+    """Profile of ``n`` against psi_N at one time (EFIT01 slice nearest it): measured
+    chords as dots,
     each prediction (``runs``: ``(key, role)``) as a line with a band of one standard
     deviation of the sampled rollouts, and ``ref`` = ``(which, key, time_s)`` as a thin
     grey dashed reference profile (e.g. the initial state)."""
-    chans, xpos = profile_chords(ctx, n)
+    chans, _ = profile_chords(ctx, n)
+
+    def placed(k):
+        """psi_N of the chords at frame ``k`` and the order that sorts them."""
+        x = chord_psin(ctx["shot"], n, chans, [ctx["t"][k]])[0]
+        o = np.argsort(x)
+        return x[o], o
+
     if ref is not None:
         which, key, t_ref = ref
         mu, _sd = profile_frames(ctx, which, key, n, chans)
-        ax.plot(xpos, mu[frame_at(ctx, t_ref)], color="0.45", lw=0.8, ls=(0, (3, 2)),
-                zorder=2)
+        kr = frame_at(ctx, t_ref)
+        xr, o = placed(kr)
+        ax.plot(xr, mu[kr][o], color="0.45", lw=0.8, ls=(0, (3, 2)), zorder=2)
     k = frame_at(ctx, time_s)
+    xpos, o = placed(k)
     for run in runs:
         # (key, role) or (key, role, colour, linestyle)
         key, role = run[:2]
@@ -972,34 +1017,34 @@ def profile_snapshot(ax, ctx, n, time_s, runs=(("real", "real"),), ref=None,
         ls = run[3] if len(run) > 3 else ("--" if role == "scenario" else "-")
         mu, sd = profile_frames(ctx, "pred", key, n, chans)
         if sd is not None:
-            ax.fill_between(xpos, mu[k] - sd[k], mu[k] + sd[k], color=col, alpha=0.3,
-                            lw=0, zorder=3)
-        ax.plot(xpos, mu[k], color=col, lw=LW[role], ls=ls, zorder=4)
+            ax.fill_between(xpos, (mu[k] - sd[k])[o], (mu[k] + sd[k])[o], color=col,
+                            alpha=0.3, lw=0, zorder=3)
+        ax.plot(xpos, mu[k][o], color=col, lw=LW[role], ls=ls, zorder=4)
     if measured:
         mu, _sd = profile_frames(ctx, "gt", "real", n, chans)
-        ax.plot(xpos, mu[k], ls="none", marker="o", ms=2.6, mew=0,
+        ax.plot(xpos, mu[k][o], ls="none", marker="o", ms=2.6, mew=0,
                 color=PALETTE["truth"], zorder=5)
     if show_time:
         ax.text(0.97, 0.97, f"{ctx['t'][k]:.2f}".rstrip("0").rstrip(".") + " s",
                 transform=ax.transAxes, ha="right", va="top", fontsize=FONT - 1.5,
                 color="0.3", zorder=10)
     if label_x:
-        ax.set_xlabel("Z (m)" if n.startswith("ts") else "R (m)")
+        ax.set_xlabel(PSIN_LABEL)
     else:
         plt.setp(ax.get_xticklabels(), visible=False)  # shared x: keep the ticker
     return ax
 
 
-def inner_ticks(ax, n=3, margin=0.12):
-    """Up to ``n`` x ticks, none within ``margin`` of either edge, so that the tick
-    labels of panels placed side by side do not run into each other."""
-    from matplotlib.ticker import MaxNLocator
-    lo, hi = ax.get_xlim()
-    w = hi - lo
-    ticks = [v for v in MaxNLocator(n).tick_values(lo, hi)
-             if lo + margin * w <= v <= hi - margin * w]
-    ax.set_xticks(ticks)
-    ax.set_xlim(lo, hi)
+def psin_axes(axes):
+    """One psi_N range for a row of profile panels, from 0 to just past the outermost
+    chord, with two ticks (0.5, 1 when it reaches the separatrix, else 0.3, 0.6)."""
+    hi = max(np.nanmax(ln.get_xdata()) for ax in axes for ln in ax.get_lines()
+             if len(ln.get_xdata()))
+    hi *= 1.04
+    for ax in axes:
+        ax.set_xlim(0, hi)
+        ax.set_xticks([0.5, 1.0] if hi >= 1.0 else [0.3, 0.6])
+        ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%g"))
 
 
 def mark_times(ax, times):
@@ -1033,8 +1078,7 @@ def profile_row(fig, spec, ctx, a, n, times, runs, trace_runs, ref=None, label_x
             ax.set_title(f"{ts:g} s", fontsize=FONT - 0.5, pad=2)
             ax.texts[-1].remove()
         axes.append(ax)
-    for ax in axes:
-        inner_ticks(ax)
+    psin_axes(axes)
     lo = min(x.get_ylim()[0] for x in axes)
     hi = max(x.get_ylim()[1] for x in axes)
     axes[0].set_ylim(0 if n in dc.ZERO_BASED else lo, hi + 0.25 * (hi - lo))
@@ -1061,13 +1105,13 @@ def figure1():
     fig = plt.figure(figsize=(WIDTH, HEIGHT_FIG1))
     # Margins in inches (legend 0.32 in on top), so they survive a change of height.
     outer = fig.add_gridspec(4, 1, height_ratios=[0.36, 3.9, 1.7, 0.95], hspace=0.36,
-                             left=0.085, right=0.94, top=1 - 0.32 / HEIGHT_FIG1,
+                             left=0.085, right=0.94, top=1 - 0.47 / HEIGHT_FIG1,
                              bottom=0.02 / HEIGHT_FIG1)
     # a: the measured actuators that drive the rollout.
     acts = outer[0].subgridspec(1, 4, wspace=0.42)
     for i, act in enumerate(("NBI (MW)", "torque (N m)", "ECH (MW)", "gas (Torr L/s)")):
         ax = fig.add_subplot(acts[0, i])
-        actuator_panel(ax, ctx, act)
+        actuator_panel(ax, ctx, act, label_above=True)
         ax.set_xlim(1, 6)  # time (s), as every trace below; no label, as in Fig. 2
     # b: per profile signal, its profile at four times (initial state as a grey dashed
     # reference) and the time trace of one chord with those times marked.
@@ -1134,7 +1178,7 @@ SIDES_ALL = [
      "act": "torque (N m)", "resp": "cer_rot", "second": "cer_ti", "spec_default": "mhr",
      "spec_names": ("mhr", "mirnov"),
      "cols": [("tq_lin_zero", r"torque $\to$ 0"), ("tq_lin_half", r"torque $\to$ ½")]},
-    {"shot": "204011", "data": "ramps/demo_204011_ramps_data.npz", "chords": "204011",
+    {"shot": "204011", "data": "ramps/demo_204011_ramps_data.npz", "chords": "204011_ech",
      "act": "ECH (MW)", "resp": "ts_core_temp", "second": "ts_core_density", "spec_default": "ece",
      "spec_names": ("ece", "co2"),
      "cols": [("ech_lin_off", r"ECH $\to$ 0"), ("ech_lin_half", r"ECH $\to$ ½")]},
@@ -1253,13 +1297,13 @@ def figure2_shot(shot):
             profile_snapshot(ax, ctx, n, ts, runs=(("real", "real"),
                                                     (keys[0], "scenario"),
                                                     (keys[1], "scenario", HALF, ":")))
-            inner_ticks(ax)
             if j == 0:
                 ax.set_ylabel(dc.LABELS[n][0])
                 box(ax, "TS" if n.startswith("ts") else "CER", size=FONT - 2.5)
             else:
                 plt.setp(ax.get_yticklabels(), visible=False)
             prof.append(ax)
+        psin_axes(prof)
         headroom(prof[0], 0.3, zero=True)
     legend(fig, [("truth", "measured"), ("real", "replay (measured actuators)"),
                  ("scenario", "changed actuator and its prediction")], y=1 - 0.36 / HEIGHT_FIG2,
@@ -1302,13 +1346,56 @@ def short_label(ax, n):
 GAS = "gas (Torr L/s)"
 
 
-def brightness_panel(ax, ctx, crop, runs=(("real", "real", None),)):
-    t, k0 = ctx["t"], ctx["k0"]
-    gt, _ = cams(ctx)
-    simple_trace(ax, t, brightness(gt, crop), "truth")
+# Emission-front height Z_E (m) in the lower divertor camera, from the detachment
+# analysis of the exported camera files (export_camera_sav.py, EFIT01 geometry). Those files
+# come from the maskfree soup, so other models' figures keep the peaking measure.
+ZE_FILE = HERE / "ze_dz_paper.pk"
+ZE_ENS = "ens8_soup_maskfree"
+
+
+@functools.lru_cache(maxsize=None)
+def front_height(fig, shot):
+    """{run key or 'truth': (t, Z_E)} of one figure's shot, or None without Z_E data."""
+    if DATA.name != ZE_ENS or not ZE_FILE.exists():
+        return None
+    import pickle
+    with open(ZE_FILE, "rb") as f:
+        rows = pickle.load(f)["data"][fig]
+    out = {}
+    for r in rows:
+        if str(int(r["shot"])) != shot:
+            continue
+        series = r["series"]
+        key = "truth" if series.startswith("measured") else series.split(", ")[1]
+        key = key.replace("donor", "donor_") if key.startswith("donor") else key
+        out[key] = (np.asarray(r["time"], float), np.asarray(r["ze"], float))
+    return out
+
+
+def camera_series(ctx, crop, fig, key):
+    """(t, y, k0) of the camera trace of run ``key`` ('truth' = measured): Z_E where the
+    detachment analysis has it, else the emission peaking."""
+    ze = front_height(fig, ctx["shot"])
+    if ze:
+        t, y = ze[key]
+        return t, y, None
+    frames = cams(ctx)[0] if key == "truth" else cams(ctx, key)[1]
+    return ctx["t"], brightness(frames, crop), None if key == "truth" else ctx["k0"]
+
+
+def camera_label(ax, ctx, fig):
+    if front_height(fig, ctx["shot"]):
+        ax.set_ylabel(r"$Z_E$"); box(ax, "lower divertor emission front height (m)")
+    else:
+        ax.set_ylabel("peaking"); box(ax, "lower divertor camera emission peaking (σ)")
+
+
+def brightness_panel(ax, ctx, crop, fig, runs=(("real", "real", None),)):
+    simple_trace(ax, *camera_series(ctx, crop, fig, "truth")[:2], "truth")
     for key, role, ls in runs:
-        simple_trace(ax, t, brightness(cams(ctx, key)[1], crop), role, k0=k0, ls=ls)
-    ax.set_ylabel("peaking"); box(ax, "lower divertor camera emission peaking (σ)")
+        t, y, k0 = camera_series(ctx, crop, fig, key)
+        simple_trace(ax, t, y, role, k0=k0, ls=ls)
+    camera_label(ax, ctx, fig)
 
 
 def figure3():
@@ -1330,7 +1417,7 @@ def figure3():
             trace_panel(ax, ctx, a, n)
             unit = short_label(ax, n)
             ax.texts[-1].set_text(ax.texts[-1].get_text() + f" {unit}")
-        brightness_panel(axes[3], ctx, crop); headroom(axes[3], 0.45)
+        brightness_panel(axes[3], ctx, crop, "fig3_detachment"); headroom(axes[3], 0.45)
         for r, ax in enumerate(axes):
             ax.set_xlim(1, 6)
             ax.yaxis.set_major_locator(plt.MaxNLocator(3))
@@ -1355,13 +1442,15 @@ def figure3():
 # session stand in: 201081's initial state (1-2 s) rolled out under the actuators of 201079 and
 # 201083 (gas-fuelled like 201081) and of 201084 (the gas trajectory that should
 # not detach). Actuator mode donor:<shot>.
-# Each path differs from the others in shade and in line style (dash, solid, dot), so that
+# Each path differs from the others in shade and in line style (dash, dot, dash-dot), so that
 # no two are told apart by dash pattern alone.
 # Named by what the gas path does (source shot in brackets): A keeps the puff on longer
 # than 201081, B starts it 0.5 s later, C has no puff (gas off at 2.5 s).
+# Measured is solid, so the paths take the next styles in the standard order: dashed,
+# dotted, dash-dot.
 CANDIDATES = (("donor_201079", "A", (0, (4.0, 1.6)), "#201079", "#3d1150", "longer puff"),
-              ("donor_201083", "B", "-", "#201083", "#7b3294", "delayed puff"),
-              ("donor_201084", "C", (0, (1.0, 1.3)), "#201084", "#b884d0", "no puff"))
+              ("donor_201083", "B", (0, (1.0, 1.3)), "#201083", "#7b3294", "delayed puff"),
+              ("donor_201084", "C", (0, (4.0, 1.4, 1.0, 1.4)), "#201084", "#b884d0", "no puff"))
 
 
 def figure4():
@@ -1377,15 +1466,15 @@ def figure4():
     crop = crop_of(cam_gt, k0)
     simple_trace(ax_gas, t, d[f"act__real__{GAS}"], "truth")
     trace_panel(ax_ne, ctx, a, "ts_core_density", runs=())
-    brightness_panel(ax_br, ctx, crop, runs=())
+    brightness_panel(ax_br, ctx, crop, "fig4_gas_paths", runs=())
     n = "ts_core_density"
     for key, letter, ls, _src, col, _what in CANDIDATES:
         simple_trace(ax_gas, t, d[f"act__{key}__{GAS}"], "scenario", k0=k0, ls=ls, color=col)
         ne = pred_trace(ctx, a, key, n)
         draw_band(ax_ne, ctx, a, key, n, "scenario", k0 - 1, color=col)
         simple_trace(ax_ne, t, ne, "scenario", k0=k0, ls=ls, color=col)
-        br = brightness(cams(ctx, key)[1], crop)
-        simple_trace(ax_br, t, br, "scenario", k0=k0, ls=ls, color=col)
+        tb, br, kb = camera_series(ctx, crop, "fig4_gas_paths", key)
+        simple_trace(ax_br, tb, br, "scenario", k0=kb, ls=ls, color=col)
     unit = short_label(ax_ne, n)
     ax_ne.texts[-1].set_text(ax_ne.texts[-1].get_text() + f" {unit}")
     ax_gas.set_ylabel("gas"); box(ax_gas, "GASA (Torr L/s)")
@@ -1423,7 +1512,10 @@ CER_GAPS_200729 = ((2.0, 2.5), (3.0, 3.5))  # beam modulation, Section "Further 
 
 def infer_traces(ctx, a, shot, tag, n):
     """Traces of signal ``n`` of every inferred rollout (``INFER_CASES``), made as the
-    plotted ones, or None before ``--infer-data`` has run."""
+    plotted ones, or None before ``--infer-data`` has run. ``tag`` None: the replay's
+    sampled rollouts (complete initial state)."""
+    if tag is None:
+        return member_traces(ctx, a, "real", n)
     path = INFER / f"infer_{shot}_{tag}.npz"
     if not path.exists():
         return None
@@ -1465,66 +1557,92 @@ def infer_panel(ax, ctx, a, n, shot, tag, gaps=(), free=False):
 def figure5():
     ctx, a = context(DATA / "demo_204011_val_data.npz", channels=CHORDS["204011"])
     t, k0 = ctx["t"], ctx["k0"]
-    cam, cam_free = cams(ctx)
 
     def inferred_camera(tag, name):
         path = INFER / f"infer_204011_{tag}.npz"
         return (np.asarray(np.load(path)[f"camera_pred__infer__{name}"], np.float32)
                 if path.exists() else None)
 
-    # TS and CER of 204011 are hidden including their own history (blind + bootstrap).
-    # The lower camera is hidden from 2 s on with its own predictions as history
-    # (--infer): fully hidden it draws one strike leg instead of two (55 % error vs 12 %).
-    cam_inf = inferred_camera("tvlower", CAM)
-    upper_inf = inferred_camera("tvupper_bs", "tangtv_upper")
-    height = 5.0 if FIG5_FREE else 4.5
+    # TS and CER of 204011 removed from the initial state (--hide), and the upper divertor
+    # camera, which did not record: all diagnostics predicted autoregressively from 2 s,
+    # nothing held at its measurement.
+    upper_inf = inferred_camera("hide_tvupper", "tangtv_upper")
+    height = 5.9
     fig = plt.figure(figsize=(WIDTH, height))
-    outer = fig.add_gridspec(3, 1, height_ratios=[1.0, 0.74 if FIG5_FREE else 0.5, 0.28],
-                             hspace=0.62 if FIG5_FREE else 0.8, left=0.08,
+    outer = fig.add_gridspec(3, 1, height_ratios=[1.0, 1.05, 0.3],
+                             hspace=0.55, left=0.08,
                              right=0.99, top=1 - 0.5 / height, bottom=0.01)
     top = outer[0].subgridspec(1, 3, wspace=0.35)
-    # a, b: a measured diagnostic of 204011 hidden and inferred from the others.
-    for i, (n, tag, what) in enumerate((("ts_core_temp", "ts_bs", "TS hidden"),
-                                        ("cer_rot", "cer_bs", "CER hidden"))):
+    # a, b: a measured diagnostic of 204011 removed from the initial state.
+    for i, (n, tag, what) in enumerate((("ts_core_temp", "hide_ts", "TS"),
+                                        ("cer_rot", "hide_cer", "CER"))):
         ax = fig.add_subplot(top[0, i])
         infer_panel(ax, ctx, a, n, "204011", tag, free=FIG5_FREE)
-        box(ax, f"{what}: " + chord_label(ctx, n), size=FONT - 2.5)
+        box(ax, f"no {what} initial state: " + chord_label(ctx, n), size=FONT - 2.5)
         ax.text(-0.2, 1.04, "#204011", transform=ax.transAxes, fontsize=FONT, fontweight="bold")
-    # c: CER of 200729 where there is no measurement (beam modulation).
+    # c: CER of 200729 through the beam-modulation gaps, where there is no measurement:
+    # the replay from the complete initial state.
     c2, a2 = context(DATA / "demo_200729_g1_data.npz", channels=CHORDS["200729"])
     ax = fig.add_subplot(top[0, 2])
-    infer_panel(ax, c2, a2, "cer_ti", "200729", "cer", gaps=CER_GAPS_200729, free=FIG5_FREE)
+    infer_panel(ax, c2, a2, "cer_ti", "200729", None, gaps=CER_GAPS_200729)
     ax.text(np.mean(CER_GAPS_200729[0]), 0.04, "no CER", transform=ax.get_xaxis_transform(),
             ha="center", fontsize=FONT - 1.5, color="0.35")
     box(ax, chord_label(c2, "cer_ti"), size=FONT - 2.5)
     ax.text(-0.2, 1.04, "#200729", transform=ax.transAxes, fontsize=FONT, fontweight="bold")
-    # d: the lower divertor camera of 204011 hidden and inferred, against its measurement
-    # and the rollout without the other diagnostics.
+    # d: profiles of the removed diagnostics against psi_N at the camera times: measured
+    # chords as dots, the inferred prediction as the mean of its seeds with a band of one
+    # standard deviation.
     times = (2.5, 3.5, 4.5, 5.5)
-    # The rollout without the other diagnostics' measurements is not shown: the figure
-    # compares the inferred diagnostic with its measurement only (FIG5_FREE=1 adds it).
-    rows = [("truth", cam), ("real", cam_inf)] + ([("free", cam_free)] if FIG5_FREE else [])
-    cells = [[(role, x, tt) if x is not None else (role, None, "pending") for tt in times]
-             for role, x in rows]
-    axs = camera_grid(fig, outer[1], cells, col_labels=[f"{tt:.1f} s" for tt in times],
-                      row_labels=["measured", "inferred", "rollout"][:len(rows)],
-                      crop=crop_of(cam, k0),
-                      wspace=0.03, hspace=0.06)
-    p0 = axs[0][0].get_position()
-    fig.text(p0.x0, p0.y1 + 0.03, "#204011, lower divertor camera hidden",
-             fontsize=FONT, color="0.25", ha="left", va="bottom")
-    # e: the upper divertor camera of 204011, which did not record: inferred only.
+    rows = outer[1].subgridspec(2, len(times), hspace=0.12, wspace=0.08)
+    for r, (n, tag, what) in enumerate((("ts_core_temp", "hide_ts", "TS"),
+                                        ("cer_rot", "hide_cer", "CER"))):
+        chans, _ = profile_chords(ctx, n)
+        gt_p, _ = profile_frames(ctx, "gt", "real", n, chans)
+        path = INFER / f"infer_204011_{tag}.npz"
+        inf = None
+        if path.exists():
+            z = np.load(path)
+            each = np.stack([smooth_profile(n, np.asarray(x, float)[:, chans] * dc.LABELS[n][1])
+                             for x in z[f"members__infer__{n}"]])
+            inf = np.nanmean(each, 0), np.nanstd(each, 0)
+        axes = []
+        for j, ts in enumerate(times):
+            ax = fig.add_subplot(rows[r, j], sharey=axes[0] if axes else None)
+            k = frame_at(ctx, ts)
+            x = chord_psin("204011", n, chans, [t[k]])[0]
+            o = np.argsort(x)
+            if inf is not None:
+                mu, sd = inf
+                ax.fill_between(x[o], (mu[k] - sd[k])[o], (mu[k] + sd[k])[o],
+                                color=PALETTE["real"], alpha=0.3, lw=0, zorder=3)
+                ax.plot(x[o], mu[k][o], color=PALETTE["real"], lw=LW["real"], zorder=4)
+            ax.plot(x[o], gt_p[k][o], ls="none", marker="o", ms=2.6, mew=0,
+                    color=PALETTE["truth"], zorder=5)
+            if r == 0:
+                ax.set_title(f"{ts:g} s", fontsize=FONT - 0.5, pad=2)
+                plt.setp(ax.get_xticklabels(), visible=False)
+            else:
+                ax.set_xlabel(PSIN_LABEL)
+            if j == 0:
+                ax.set_ylabel(dc.LABELS[n][0])
+                box(ax, f"no {what} initial state", size=FONT - 2.5)
+            else:
+                plt.setp(ax.get_yticklabels(), visible=False)
+            axes.append(ax)
+        psin_axes(axes)
+        headroom(axes[0], 0.25, zero=True)
+    # e: the upper divertor camera of 204011, which did not record: predicted only.
     up_cells = [[("real", upper_inf, tt) if upper_inf is not None else ("real", None, "pending")
                  for tt in times]]
-    crop_up = crop_of(upper_inf, k0) if upper_inf is not None else None
-    axs_up = camera_grid(fig, outer[2], up_cells, row_labels=["inferred"], crop=crop_up,
-                         wspace=0.03, hspace=0.06)
-    p1 = axs_up[0][0].get_position()
-    fig.text(p1.x0, p1.y1 + 0.012, "#204011, upper divertor camera: not recorded",
+    axs = camera_grid(fig, outer[2], up_cells, col_labels=[f"{tt:.1f} s" for tt in times],
+                      row_labels=["predicted"],
+                      crop=crop_of(upper_inf, k0) if upper_inf is not None else None,
+                      wspace=0.03, hspace=0.06)
+    p0 = axs[0][0].get_position()
+    fig.text(p0.x0, p0.y1 + 0.03, "#204011, upper divertor camera: not recorded",
              fontsize=FONT, color="0.25", ha="left", va="bottom")
-    legend(fig, [("truth", "measured"),
-                 ("real", "inferred from the other diagnostics' measurements")], y=0.985,
-           extra=[(plt.Line2D([], [], color=FREE, lw=1.0, ls="--"), "rollout without them")]
+    legend(fig, [("truth", "measured"), ("real", "predicted")], y=0.985,
+           extra=[(plt.Line2D([], [], color=FREE, lw=1.0, ls="--"), "replay")]
            if FIG5_FREE else ())
     fig.savefig(OUT / "fig5_missing_diagnostics.png"); fig.savefig(OUT / "fig5_missing_diagnostics.pdf")
     plt.close(fig)
@@ -1532,7 +1650,7 @@ def figure5():
 
 def profile_diff_panel(fig, spec, ctx, n, key, start, step=5, t_range=(3.5, 6.0),
                        colorbar=True):
-    """Changed actuator minus replay of TS profile ``n`` against sqrt(psi_N), one line
+    """Changed actuator minus replay of profile ``n`` against psi_N, one line
     every ``step`` frames from ``start``, coloured by time; band: the two runs' standard
     deviations over the sampled rollouts, added in quadrature."""
     from matplotlib import cm
@@ -1541,7 +1659,7 @@ def profile_diff_panel(fig, spec, ctx, n, key, start, step=5, t_range=(3.5, 6.0)
     end = live_end(ctx)
     chans, _ = profile_chords(ctx, n)
     frames = list(range(start, min(end + 1, len(t)), step))
-    rho = ts_rho(ctx["shot"], chans, t[frames])
+    psin = chord_psin(ctx["shot"], n, chans, t[frames])
     norm = Normalize(vmin=t_range[0], vmax=t_range[1])
     cmap = matplotlib.colormaps["viridis"]
     sub = spec.subgridspec(1, 2, width_ratios=[1.0, 0.04], wspace=0.05)
@@ -1550,14 +1668,15 @@ def profile_diff_panel(fig, spec, ctx, n, key, start, step=5, t_range=(3.5, 6.0)
     mu_c, sd_c = profile_frames(ctx, "pred", key, n, chans)
     for j, k in enumerate(frames):
         col = cmap(norm(t[k]))
-        dlt = mu_c[k] - mu_r[k]
+        o = np.argsort(psin[j])
+        dlt = (mu_c[k] - mu_r[k])[o]
         if sd_r is not None and sd_c is not None:
-            err = np.hypot(sd_r[k], sd_c[k])
-            ax.fill_between(rho[j], dlt - err, dlt + err, color=col, alpha=0.2, lw=0)
-        ax.plot(rho[j], dlt, color=col, lw=1.1)
+            err = np.hypot(sd_r[k], sd_c[k])[o]
+            ax.fill_between(psin[j][o], dlt - err, dlt + err, color=col, alpha=0.2, lw=0)
+        ax.plot(psin[j][o], dlt, color=col, lw=1.1)
     ax.axhline(0, color="0.4", lw=0.6)
     ax.axvline(1.0, color="0.6", lw=0.6, ls=":", zorder=0)
-    ax.set_xlabel(r"$\sqrt{\psi_N}$")
+    ax.set_xlabel(PSIN_LABEL)
     ax.set_ylabel(r"$\Delta$" + dc.LABELS[n][0])
     box(ax, "changed minus replay", size=FONT - 2.5)
     if colorbar:
@@ -1681,14 +1800,13 @@ def figure6():
         ax.set_xlabel("time (s)")
         headroom(ax, 0.25, zero=True)
         box(ax, lab.replace("-", "\u2212"), size=FONT - 2.5)
-    # f: the rotation profile against R at the profile times of Fig. 2, one panel per
+    # f: the rotation profile against psi_N at the profile times of Fig. 2, one panel per
     # time: measured chords as dots, replay and plan as lines with a band of one standard
     # deviation of the sampled rollouts (3-frame smoothing, as the traces).
-    rec = [c for c in range(16) if c in cer_recorded("204011", "cer_rot")
-           and np.isfinite(d["gt__cer_rot"][0, :, c]).any()]
-    R = cer_r({"shot": "204011"}, rec)
-    o = np.argsort(R)
-    rec, R = list(np.array(rec)[o]), R[o]
+    # The chords of Fig. 1's profiles (same shot and measurement).
+    rec = list(profile_chords({"shot": "204011",
+                               "d": np.load(DATA / "demo_204011_val_data.npz",
+                                            allow_pickle=True)}, "cer_rot")[0])
 
     def profile(which):
         x = np.abs(d[f"{which}__cer_rot"][:, :, rec]) * dc.LABELS["cer_rot"][1]
@@ -1701,22 +1819,25 @@ def figure6():
     for j_, ts in enumerate(PROFILE_TIMES_FIG2):
         ax = fig.add_subplot(sl[j_], sharey=prof[0] if prof else None)
         k = int(round((ts - T0) / FRAME))
+        R = chord_psin("204011", "cer_rot", rec, [ts])[0]
+        o = np.argsort(R)
+        R = R[o]
         for which, role, ls in (("real", "real", "-"), ("pred", "scenario", "--")):
             mu, sd = profile(which)
-            ax.fill_between(R, mu[k] - sd[k], mu[k] + sd[k], color=COL[role], alpha=0.3, lw=0,
-                            zorder=3)
-            ax.plot(R, mu[k], color=COL[role], lw=LW[role], ls=ls, zorder=4)
-        ax.plot(R, gt_p[k], ls="none", marker="o", ms=2.6, mew=0, color=COL["truth"], zorder=5)
+            ax.fill_between(R, (mu[k] - sd[k])[o], (mu[k] + sd[k])[o], color=COL[role],
+                            alpha=0.3, lw=0, zorder=3)
+            ax.plot(R, mu[k][o], color=COL[role], lw=LW[role], ls=ls, zorder=4)
+        ax.plot(R, gt_p[k][o], ls="none", marker="o", ms=2.6, mew=0, color=COL["truth"], zorder=5)
         ax.text(0.97, 0.97, f"{ts:g} s", transform=ax.transAxes, ha="right", va="top",
                 fontsize=FONT - 1.5, color="0.3", zorder=10)
-        ax.set_xlabel("R (m)")
-        inner_ticks(ax)
+        ax.set_xlabel(PSIN_LABEL)
         if j_ == 0:
             ax.set_ylabel(dc.LABELS["cer_rot"][0])
             box(ax, "CER", size=FONT - 2.5)
         else:
             plt.setp(ax.get_yticklabels(), visible=False)
         prof.append(ax)
+    psin_axes(prof)
     headroom(prof[0], 0.3, zero=True)
     legend(fig, [("truth", "measured"), ("real", "replay (measured actuators)"),
                  ("scenario", "designed trajectory and its prediction")], y=0.985, ncol=2,
@@ -1726,7 +1847,7 @@ def figure6():
 
 
 def extra_ts_profiles():
-    """Not a paper figure: TS T_e and n_e from core to edge (sqrt(psi_N), EFIT01) for the
+    """Not a paper figure: TS T_e and n_e from core to edge (psi_N, EFIT01) for the
     replay of 204011 (measured vs prediction) and the torque -> 0 and ECH -> 0 changes
     (replay vs changed), time-coloured with the band of the sampled predictions."""
     cases = [("demo_204011_val_data.npz", "204011", [("gt", "real"), ("pred", "real")],
@@ -1745,15 +1866,15 @@ def extra_ts_profiles():
         for c, n in enumerate(("ts_core_temp", "ts_core_density")):
             ax = profile_time_panel(fig, g[r, c], ctx, n, runs, labels, start=ctx[start],
                                     step=step, t_range=rng, colorbar=c == 1, legend=c == 0,
-                                    rho="rmid", free_bottom=0)
+                                    free_bottom=0)
             if c == 0:
                 ax.set_title(title, loc="left", fontsize=FONT, pad=3)
 
     out = OUT / "extra"
     out.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out / "ts_profiles_R.png"); fig.savefig(out / "ts_profiles_R.pdf")
+    fig.savefig(out / "ts_profiles_psin.png"); fig.savefig(out / "ts_profiles_psin.pdf")
     plt.close(fig)
-    print("wrote", out / "ts_profiles_R.pdf")
+    print("wrote", out / "ts_profiles_psin.pdf")
 
 
 if __name__ == "__main__":

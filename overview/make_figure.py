@@ -5,8 +5,13 @@ Content (all text, structure, row/column meaning) is taken unchanged from overvi
 Style from the CER figure: IBM Plex Sans, numbered step headers, light rounded boxes, solid output boxes,
 thin dark arrows, small layer glyphs, CER palette (one colour per row).
 
-  python3 make_figure.py   -> overview_architecture_restyled.{html,pdf,png}
+  python3 make_figure.py           -> overview_architecture_restyled.{html,pdf,png}
+  python3 make_figure.py methods   -> methods/<tokenizer or dynamics>.{html,pdf,png}, the Methods
+                                      figures in the same style (no DIII-D render)
+
+Chrome: ``google-chrome`` on the PATH, or the binary in ``$CHROME``.
 """
+import os
 import json
 import subprocess
 from pathlib import Path
@@ -15,6 +20,7 @@ import numpy as np
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent
+CHROME = os.environ.get("CHROME", "google-chrome")
 PRINT_W_PT = 1.38 * 6.5 * 72            # included at width = 1.38\textwidth
 
 ROWS = {  # one CER palette colour per row: (face, dark, fill)
@@ -269,7 +275,7 @@ L.forEach((it,i)=>{{const x=12+(i%2)*230, y=H+34+Math.floor(i/2)*28;
 def render(html):
     import re
     src = HERE / "overview_architecture_restyled.html"
-    base = ["google-chrome", "--headless=new", "--no-sandbox", "--disable-gpu", "--virtual-time-budget=8000"]
+    base = [CHROME, "--headless=new", "--no-sandbox", "--disable-gpu", "--virtual-time-budget=8000"]
     # pass 1: measure the content size
     src.write_text(html.replace("__W__", "3600").replace("__H__", "2000"))
     probe = HERE / "_probe.png"
@@ -292,4 +298,9 @@ def render(html):
 
 
 if __name__ == "__main__":
-    render(main())
+    import sys
+    if sys.argv[1:] == ["methods"]:
+        from methods_figures import build_all
+        build_all()
+    else:
+        render(main())

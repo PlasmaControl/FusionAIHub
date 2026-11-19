@@ -6,7 +6,6 @@
 #SBATCH --gpus-per-node=8
 #SBATCH --cpus-per-task=8
 #SBATCH --time=12:00:00
-#SBATCH --exclude=sai-n01g4
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 # ss75g_spec on StellarAI (NVIDIA B200): ss75g_live_unroll with the spectrograms

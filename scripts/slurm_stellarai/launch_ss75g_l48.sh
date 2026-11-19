@@ -8,8 +8,6 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# sai-n01g4: GPU 2 reports "busy or unavailable" at set_device.
-#SBATCH --exclude=sai-n01g4
 # ss75g_l48 on StellarAI (NVIDIA B200): the ss75g_live recipe (live training windows,
 # deployment windows for validation, no block forcing) at depth 48 instead of 16, with
 # d_model 1024 and 16 heads unchanged. A 16-layer checkpoint cannot seed 48 layers, so
@@ -41,6 +39,16 @@ export STEPS=${STEPS:-30000}
 export SNAPSHOT_EVERY=${SNAPSHOT_EVERY:-2000}
 export BATCH_SIZE=${BATCH_SIZE:-2}
 export ACCUM_STEPS=${ACCUM_STEPS:-1}
+# ACCUM_STEPS=auto: pick it from the allocated node count so that nodes x 8 x BATCH_SIZE x
+# ACCUM_STEPS = EFFECTIVE_BATCH. Lets a flexible-size job (sbatch -N 2,4) resume any leg.
+EFFECTIVE_BATCH=${EFFECTIVE_BATCH:-128}
+if [ "$ACCUM_STEPS" = auto ]; then
+  per_step=$(( ${SLURM_JOB_NUM_NODES:?} * 8 * BATCH_SIZE ))
+  (( EFFECTIVE_BATCH % per_step == 0 )) || {
+    echo "[stellarai] $SLURM_JOB_NUM_NODES nodes x 8 x $BATCH_SIZE does not divide $EFFECTIVE_BATCH" >&2; exit 1; }
+  export ACCUM_STEPS=$(( EFFECTIVE_BATCH / per_step ))
+  echo "[stellarai] $SLURM_JOB_NUM_NODES nodes -> ACCUM_STEPS=$ACCUM_STEPS (effective batch $EFFECTIVE_BATCH)"
+fi
 export CLUSTER_ENV=${CLUSTER_ENV:-scripts/slurm_stellarai/_stellarai_common.sh}
 export SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-8}
 export NUM_WORKERS=${NUM_WORKERS:-2}

@@ -7,7 +7,6 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=120G
 #SBATCH --time=01:00:00
-#SBATCH --exclude=sai-n01g4
 #SBATCH --output=ignite_shot_%j.out
 #
 # Simulate one DIII-D shot with IGNITE on StellarAI.
@@ -37,7 +36,11 @@
 #            history frame, seed included (eval_dynamics --infer_blind)
 # INFER_BOOTSTRAP=1  with INFER_BLIND: only the first predicted frame is blind; it then
 #            fills the inferred modalities' seed (eval_dynamics --infer_bootstrap)
-# FORBID_ABSENT  shot where the INFER modalities did not record: their 'not recorded'
+# HIDE       comma list of modalities missing from the initial state (default none):
+#            they are [MASK] in the seed, and every modality is predicted
+#            autoregressively, nothing held at its measurement, e.g. HIDE=cer_ti+cer_rot
+#            (eval_dynamics --hide; excludes INFER)
+# FORBID_ABSENT  shot where the INFER or HIDE modalities did not record: their 'not recorded'
 #            codes are never sampled (eval_dynamics --forbid_absent)
 # SEED_FROM  <modality>:<shot>[+...] (default none): that modality's seed frames come
 #            from another shot of the same cache, for a diagnostic that did not record,
@@ -91,6 +94,7 @@ for seed in $SEEDS; do
         --temperature 1.0 \
         --seed "$seed" \
         --infer "$(echo "${INFER:-}" | tr '+' ',')" \
+        --hide "$(echo "${HIDE:-}" | tr '+' ',')" \
         --seed_from "$(echo "${SEED_FROM:-}" | tr '+' ',')" \
         $([ "${INFER_BLIND:-0}" = 1 ] && echo --infer_blind) \
         $([ "${INFER_BOOTSTRAP:-0}" = 1 ] && echo --infer_bootstrap) \

@@ -247,3 +247,35 @@ def test_seed_from_takes_one_modality_seed_from_another_shot(monkeypatch):
     with pytest.raises(ValueError, match="unknown modality"):
         ed.rollout_shot(model, cfg, cache, k0, 0.9, gen, torch.device("cpu"),
                         cache_dir="x", decode={"seed_from": {"zz": "999"}})
+
+
+def test_mask_absent_masks_a_diagnostic_that_did_not_record(monkeypatch):
+    """A modality whose seed frames are all the same codes (not recorded) is [MASK] in
+    the seed and predicted with the others, never as its 'not recorded' codes; a
+    recorded modality's seed is untouched, and mask_absent off is the plain rollout."""
+    cfg, model, cache = _tiny_setup()
+    k0 = cfg.k0_seed
+    absent = torch.randint(0, 16, (cfg.modalities[1].n_tok,), generator=torch.Generator().manual_seed(3))
+    cache["codes"]["b"] = absent.expand(cache["n_frames"], -1).clone()
+
+    def roll(decode):
+        return ed.rollout_shot(model, cfg, cache, k0, 0.9, torch.Generator().manual_seed(0),
+                               torch.device("cpu"), decode=decode)
+
+    off = roll({"mask_absent": False})
+    assert _same(off.pred_codes, _roll(cfg, model, cache, "real"))
+    free = roll({"mask_absent": True})  # masked, predicted freely (default)
+    assert torch.equal(free.pred_codes["a"][:k0], cache["codes"]["a"][:k0])
+    assert not _same(free.pred_codes, off.pred_codes)
+    on = roll({"mask_absent": True, "mask_forbid": True})
+    pred_b = on.pred_codes["b"][k0:]
+    assert not bool((pred_b == absent).any())  # forbidden code at every token position
+    assert torch.equal(on.pred_codes["a"][:k0], cache["codes"]["a"][:k0])
+    assert torch.equal(on.gt_codes["b"], cache["codes"]["b"])
+    # The library default is off; the CLI sets IGNITE_MASK_ABSENT=1.
+    monkeypatch.delenv("IGNITE_MASK_ABSENT", raising=False)
+    assert _same(roll({}).pred_codes, off.pred_codes)
+    monkeypatch.setenv("IGNITE_MASK_ABSENT", "1")
+    assert _same(roll({}).pred_codes, free.pred_codes)
+    monkeypatch.setenv("IGNITE_MASK_FORBID", "1")
+    assert _same(roll({}).pred_codes, on.pred_codes)

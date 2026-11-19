@@ -135,6 +135,17 @@ GLOBUS_SRC = ('0b091761-42ba-4e22-95cb-fe7afcf3f8e0', Path('/scratch/gpfs'))
 GLOBUS_DST = ('52d95801-fced-4b1e-951b-63836783b175',
               Path('/tigerdata/EKOLEMEN/d3d_fusion_data'))
 GLOBUS_POLL_S, GLOBUS_MAX_FAULTS = 30, 20
+# Globus mode: every queued job is handed to Globus at once, GLOBUS_BATCH files per
+# task, and the archive workers only finish jobs whose task has ended (size check,
+# rename, raw unlink). Waiting on a running copy in a worker held all workers on the
+# oldest copies while finished ones queued behind them (~85 MB/s instead of ~180).
+GLOBUS_BATCH, GLOBUS_SCAN_S = 8, 60
+# At most this many of our Globus tasks run at once (each moves its files over several
+# parallel streams). Without a cap, every file became its own task as soon as it was
+# fetched: up to 101 tasks at once on 2026-11-17, and Research Computing asked us to
+# pause and resume with fewer parallel streams.
+GLOBUS_MAX_ACTIVE = 2
+GLOBUS_DONE = ('SUCCEEDED', 'FAILED')
 
 
 def globus(*args):
@@ -178,24 +189,71 @@ def globus_copy(job, job_path, raw, tmp):
         time.sleep(GLOBUS_POLL_S)
 
 
-def archive_job(job_path):
-    """Copy/hash once, verify the temporary file once, then atomically replace."""
-    job = json.loads(job_path.read_text())
-    raw, target = Path(job['raw']), Path(job['archive'])
+def archive_paths(job):
+    """The archive target and its temporary file. Another user's archive file cannot
+    be replaced (the rename fails with EIO): the new fetch then goes beside it in
+    REDIRECT_DIR, and ``job`` records that."""
+    target = Path(job['archive'])
     if (job.get('status') != 'verified' and target.exists()
             and target.stat().st_uid != os.getuid()):
-        # Another user's archive file cannot be replaced (the rename fails with EIO):
-        # keep it and archive the new fetch beside it.
         target = target.parent / REDIRECT_DIR / target.name
         target.parent.mkdir(exist_ok=True)
         job.update(archive=str(target), redirected_from=job['archive'])
+    return target, target.with_name(f'.{target.name}.async-{job["key"]}.partial')
+
+
+def globus_submit(job_paths):
+    """Start one Globus task for up to GLOBUS_BATCH queued jobs and store its id in
+    each job (``archive_job`` then waits for that task instead of starting one)."""
+    lines, jobs = [], []
+    for path in job_paths:
+        job = json.loads(path.read_text())
+        raw = Path(job['raw'])
+        if job.get('globus_task') or job.get('status') == 'verified' or not raw.exists():
+            continue
+        _, tmp = archive_paths(job)
+        lines.append(f'/{raw.resolve().relative_to(GLOBUS_SRC[1])} '
+                     f'/{tmp.relative_to(GLOBUS_DST[1])}')
+        jobs.append((path, job))
+    if not jobs:
+        return None
+    out = subprocess.run(
+        [str(GLOBUS_CLI), 'transfer', GLOBUS_SRC[0], GLOBUS_DST[0], '--batch', '-',
+         '--notify', 'off', '--label', f'archive {jobs[0][1]["shot"]}+{len(jobs) - 1}',
+         '-F', 'json'],
+        input='\n'.join(lines) + '\n', capture_output=True, text=True, timeout=300)
+    if out.returncode:
+        raise RuntimeError(f'globus transfer: {out.stderr.strip()[-300:]}')
+    task = json.loads(out.stdout)['task_id']
+    for path, job in jobs:
+        job['globus_task'] = task
+        bulk.pilot.save_json(path, job)
+    return task, [job['shot'] for _, job in jobs]
+
+
+def globus_status(tasks):
+    """Status of each task id (missing from the answer: not known)."""
+    out = {}
+    tasks = sorted(tasks)
+    for i in range(0, len(tasks), 50):
+        args = ['task', 'list', '--limit', '1000']
+        for t in tasks[i:i + 50]:
+            args += ['--filter-task-id', t]
+        out.update({t['task_id']: t['status'] for t in globus(*args)['DATA']})
+    return out
+
+
+def archive_job(job_path):
+    """Copy/hash once, verify the temporary file once, then atomically replace."""
+    job = json.loads(job_path.read_text())
+    raw = Path(job['raw'])
+    target, tmp = archive_paths(job)
     if job.get('status') == 'verified':
         if raw.exists():
             if bulk.pilot.digest(raw) != job['sha256']:
                 raise ValueError('Raw file changed after successful archive')
             raw.unlink()
         return job
-    tmp = target.with_name(f'.{target.name}.async-{job["key"]}.partial')
     try:
         job.update(status='copying', started=time.time(),
                    attempts=job.get('attempts', 0) + 1)
@@ -536,12 +594,43 @@ def main():
         recent[direction] = recent_outcomes(campaign, known)
     compute, transfers, archive_seen, archive_errors = {}, {}, set(), {}
     busy = {d: 0 for d in roots}
+    task_status, next_scan = {}, 0.0
     with ThreadPoolExecutor(max_workers=2*args.per_direction) as workers, \
             ThreadPoolExecutor(max_workers=args.archive_workers) as archivers:
         while (any(pending.values()) or compute or transfers or archive_pending
                or not notifications.empty()):
             while not notifications.empty():
                 archive_pending.append(notifications.get_nowait())
+            if ARCHIVE_MODE == 'globus' and time.time() >= next_scan:
+                next_scan = time.time() + GLOBUS_SCAN_S
+                waiting, tasks = [], set()
+                for direction, shot, job in archive_pending:
+                    if (direction, shot) in archive_seen:
+                        continue
+                    data = json.loads(job.read_text())
+                    if data.get('globus_task'):
+                        tasks.add(data['globus_task'])
+                    elif (data.get('status') != 'verified'
+                          and data.get('retry_after', 0) <= time.time()):
+                        waiting.append(job)
+                try:
+                    task_status = globus_status(tasks) if tasks else {}
+                except Exception as exc:
+                    bulk.log(f'globus status failed: {exc}')
+                # A task whose status is unknown counts as running.
+                active = sum(task_status.get(t) not in GLOBUS_DONE for t in tasks)
+                for i in range(0, len(waiting), GLOBUS_BATCH):
+                    if active >= GLOBUS_MAX_ACTIVE:
+                        break
+                    try:
+                        started = globus_submit(waiting[i:i + GLOBUS_BATCH])
+                    except Exception as exc:  # retried at the next scan
+                        bulk.log(f'globus submit failed: {exc}')
+                        break
+                    if started:
+                        tasks.add(started[0])
+                        active += 1
+                        bulk.log(f'globus task {started[0]}: {", ".join(started[1])}')
             for _ in range(len(archive_pending)):
                 if len(transfers) >= args.archive_workers:
                     break
@@ -549,7 +638,14 @@ def main():
                 key = (direction, shot)
                 if key in archive_seen:
                     continue
-                if json.loads(job.read_text()).get('retry_after', 0) > time.time():
+                data = json.loads(job.read_text())
+                if data.get('retry_after', 0) > time.time():
+                    archive_pending.append((direction, shot, job))
+                    continue
+                if (ARCHIVE_MODE == 'globus' and data.get('status') != 'verified'
+                        and (not data.get('globus_task') or task_status.get(
+                            data['globus_task'], 'ACTIVE') not in GLOBUS_DONE)):
+                    # Not yet handed to Globus, or its copy is still running.
                     archive_pending.append((direction, shot, job))
                     continue
                 archive_seen.add(key)

@@ -8,8 +8,6 @@
 #SBATCH --time=04:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# sai-n01g4: GPU 2 reports "busy or unavailable" at set_device.
-#SBATCH --exclude=sai-n01g4
 # Rollout scorecard of one frozen checkpoint, which shows what the masked validation loss
 # misses. Runs on one node (~10 min per rollout and GPU), in one or two jobs (STAGE):
 #   1. held-out rollout: the last 32 shots of the validation split, real actuators, scored
