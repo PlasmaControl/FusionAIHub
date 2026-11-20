@@ -89,16 +89,108 @@ def gt_twice(src: Path) -> Path:
     return dst
 
 
+# PAPER_FIG_RAW_GT=<folder of <shot>_processed.h5>: the measured arrays of every data file
+# become the raw measurement (the codecs' input) instead of its encoded-and-decoded copy,
+# in the same layout; predictions stay. Copies go to WORK/raw_<name>.
+RAW_GT = os.environ.get("PAPER_FIG_RAW_GT")
+CODEC_TMPL = "/scratch/gpfs/EKOLEMEN/ps9551/ignite/models/ignite_codecs_v4/{m}/codec_best.pt"
+
+
+@functools.lru_cache(maxsize=None)
+def raw_codecs():
+    from tokamak_foundation_model.ignite import train_dynamics as td
+    from tokamak_foundation_model.ignite.dynamics_config import FROZEN_MODALITIES
+    return td.load_frozen_codecs([s.name for s in FROZEN_MODALITIES], repo=REPO,
+                                 tmpl=CODEC_TMPL)
+
+
+@functools.lru_cache(maxsize=None)
+def raw_windows(shot, name, n_frames):
+    """Measured windows of frames 0..n_frames-1 (codec input) and their mask (or None)."""
+    from tokamak_foundation_model.ignite import train_dynamics as td
+    _codec, cfg, fam = raw_codecs()[name]
+    ds = td._single_shot_dataset(name, fam, cfg, shot, RAW_GT, t0_start=T0)
+    items = [ds[k] for k in range(n_frames)]
+    x = np.stack([td._window(it).numpy() for it in items]).astype(np.float64)
+    mask = (np.stack([np.asarray(it[1]) for it in items]) if fam in ("slowts", "video")
+            else None)
+    return x, mask
+
+
+def raw_profile(shot, name, n_frames):
+    """(F, C) physical value of each channel, averaged over the frame's valid samples."""
+    from tokamak_foundation_model.ignite import eval_dynamics as ev
+    conv = ev.profile_converters(raw_codecs(), [name])[name]
+    x, mask = raw_windows(shot, name, n_frames)
+    phys = conv(x)
+    with np.errstate(invalid="ignore"):
+        return np.nanmean(np.where(mask[:, :phys.shape[1]] > 0, phys, np.nan), axis=-1)
+
+
+def raw_camera(shot, name, n_frames, k0):
+    """(F, H, W): the window z-scored as the codec sees it, the recorded view (structure
+    inside a 10 px margin), sub-frames averaged; as the extraction does."""
+    x, _m = raw_windows(shot, name, n_frames)
+    mu = x.mean(axis=(2, 3, 4), keepdims=True)
+    sd = np.clip(x.std(axis=(2, 3, 4), keepdims=True), 1.0, None)
+    z = (x - mu) / sd
+    mean = z[k0:].mean(axis=(0, 2))
+    view = int(np.argmax([np.nanstd(v[10:-10, 10:-10]) for v in mean]))
+    return z[:, view].mean(axis=1)
+
+
+def raw_twice(src: Path) -> Path:
+    """Copy of a data file with every measured array replaced by the raw measurement."""
+    from tokamak_foundation_model.ignite import eval_dynamics as ev
+    d = np.load(src, allow_pickle=True)
+    out = {k: d[k] for k in d.files}
+    shot = str(d["shot"]) if "shot" in d.files else "204011"
+    F = int(d["n_frames"]) if "n_frames" in d.files else int(d["F"]) if "F" in d.files else 100
+    k0 = int(d["k0"]) if "k0" in d.files else int(d["K0"]) if "K0" in d.files else 20
+    slow = [m for m in raw_codecs() if m.startswith(("ts_", "cer_")) or m == "mse"]
+    for k in d.files:
+        parts = k.split("__")
+        if parts[0] == "gt" and parts[-1] in slow:
+            raw = raw_profile(shot, parts[-1], F)
+            # gt__<run>__<signal> (F, C); the designer file's gt__<signal> is (1, F, C).
+            out[k] = (raw[None] if d[k].ndim == 3 else raw).astype(d[k].dtype)
+        elif parts[0] == "spectro_gt" and len(parts) == 2:
+            x, _m = raw_windows(shot, parts[1], F)
+            out[k] = ev._stitch(x, int(d[f"spectro_channel__{parts[1]}"])).astype(np.float32)
+        elif parts[0] == "camera_gt":
+            out[k] = raw_camera(shot, parts[1], F, k0).astype(d[k].dtype)
+        elif k == "filterscopes_gt":
+            cfg = raw_codecs()["filterscopes"][1]
+            x, _m = raw_windows(shot, "filterscopes", F)
+            std = np.asarray(cfg.channel_std, np.float64)[None, :, None]
+            out[k] = (float(cfg.env_eps) * np.expm1(x) * std).astype(np.float32)
+    if "spectro_gt" in d.files:
+        # The first spectrogram of the file: the one whose decoded image it duplicates.
+        first = next(k for k in d.files if k.startswith("spectro_gt__")
+                     and np.array_equal(d[k], d["spectro_gt"]))
+        out["spectro_gt"] = out[first]
+    dst = WORK / f"raw_{src.name}"
+    np.savez_compressed(dst, **out)
+    return dst
+
+
+def measured(path):
+    """The data file to read: its raw-measurement copy under PAPER_FIG_RAW_GT."""
+    return raw_twice(Path(path)) if RAW_GT else Path(path)
+
+
 def context(path, smooth=3, n_core=3, channels=""):
     """The figure script's context of a data file (chords, times, switch). ``channels``
     picks single chords, e.g. ``"cer_rot=1;ts_core_temp=42"`` (see ``CHORDS``)."""
     if isinstance(channels, dict):
         channels = ";".join(f"{n}={c}" for n, c in channels.items())
+    src_name = Path(path).name
+    path = measured(path)
     a = argparse.Namespace(data=str(gt_twice(path) if GT_TWICE else path), smooth=smooth, n_core=n_core,
                            channels=channels,
                            camera="tangtv_lower", style="paper", font=FONT)
     ctx = dc._setup(a)
-    ctx["src_name"] = Path(path).name  # the sidecar of sampled rollouts is keyed by it
+    ctx["src_name"] = src_name  # the sidecar of sampled rollouts is keyed by the original name
     style()  # _setup applies the script's own rcParams; ours go on top
     return ctx, a
 
@@ -107,6 +199,41 @@ def context(path, smooth=3, n_core=3, channels=""):
 # measurement; scenarios: largest change against the
 # measured-actuator prediction). Channel indices of the codec (TS core: row of TS_RZ,
 # CER T<index + 1>).
+# Tangential TS n_e: the radial midplane chords (Z = -0.06 m), a separate codec from the core
+# system. Used for the detachment figures, where the edge density follows the gas.
+EXTRA_SLOW = ("ts_tangential_density",)
+NE_DETACH = "ts_tangential_density"   # n_e shown in figures 3 and 4
+dc.LABELS.setdefault("ts_tangential_density", dc.LABELS["ts_core_density"])
+
+
+def add_signals(path, names=EXTRA_SLOW):
+    """Add measured (gt__<run>__<n>) and predicted (pred__<run>__<n>, mean of the run's
+    rollouts) profiles of ``names`` to a figure data file, decoded from its archives."""
+    import torch
+    from tokamak_foundation_model.ignite import eval_dynamics as ev
+    d = np.load(path, allow_pickle=True)
+    out = {k: d[k] for k in d.files}
+    shot = int(d["shot"])
+    codecs = raw_codecs()
+    conv = ev.profile_converters(codecs, list(names))
+    dev = torch.device("cpu")
+    for k in d.files:
+        if not k.startswith("dir__"):
+            continue
+        key = k[len("dir__"):]
+        arcs = [np.load(next(Path(x).glob(f"codes_{shot}_step*.npz")), allow_pickle=True)
+                for x in str(d[k]).split("+")]
+        F = int(arcs[0]["F"])
+        for n in names:
+            def phys(z, which):
+                x = ev.decode_flat_chunked(codecs[n][0], ev.archived(z, f"{which}__{n}")[:F], dev)
+                with np.errstate(invalid="ignore"):
+                    return np.nanmean(conv[n](x), axis=-1)
+            out[f"gt__{key}__{n}"] = phys(arcs[0], "gt")
+            out[f"pred__{key}__{n}"] = np.mean([phys(z, "pred") for z in arcs], axis=0)
+    np.savez_compressed(path, **out)
+
+
 CHORDS = {
     "204011": {"ts_core_temp": 41, "ts_core_density": 19, "cer_ti": 24, "cer_rot": 1},
     # n_e on the core chord (Z 0.03 m, as T_e): edge chords (Z > 0.6 m) respond to the beam
@@ -118,8 +245,10 @@ CHORDS = {
     "204011_ech": {"ts_core_temp": 41, "ts_core_density": 41, "cer_ti": 24, "cer_rot": 1},
     "201240_torque": {"cer_rot": 1, "cer_ti": 0, "ts_core_temp": 43, "ts_core_density": 21},
     "201240_ech": {"ts_core_temp": 43, "ts_core_density": 21, "cer_ti": 24, "cer_rot": 1},
-    "201081": {"ts_core_temp": 41, "ts_core_density": 22, "cer_ti": 18, "cer_rot": 16},
-    "201085": {"ts_core_temp": 42, "ts_core_density": 34, "cer_ti": 18, "cer_rot": 16},
+    "201081": {"ts_core_temp": 41, "ts_core_density": 29, "cer_ti": 18, "cer_rot": 16,
+               "ts_tangential_density": 6},
+    "201085": {"ts_core_temp": 42, "ts_core_density": 29, "cer_ti": 18, "cer_rot": 16,
+               "ts_tangential_density": 6},
     "200729": {"ts_core_temp": 42, "ts_core_density": 34, "cer_ti": 16, "cer_rot": 16},
 }
 # Thomson scattering chord positions per shot (system, index, R_m, Z_m, phi_deg), in the
@@ -253,9 +382,11 @@ def cer_recorded(shot, n):
 def chord_label(ctx, n):
     """Channel label of a trace: the channel and where it measures, R and Z (m)."""
     chans = ctx["channels"][n]
-    if n.startswith("ts_core"):
-        ts_z(ctx, chans)  # refuses padded slots
-        rz = ts_positions(ctx["shot"])[list(chans)]
+    if n.startswith("ts_"):
+        system = "tangential" if n.startswith("ts_tangential") else "core"
+        if system == "core":
+            ts_z(ctx, chans)  # refuses padded slots
+        rz = ts_positions(ctx["shot"], system)[list(chans)]
         nums = ", ".join(str(c) for c in chans)
         rs = ", ".join(f"{r:.2f}" for r in rz[:, 0])
         zs = ", ".join(f"{z:.2f}".replace("-", "\u2212") for z in rz[:, 1])
@@ -602,10 +733,10 @@ def extract_members(path):
     shot = int(d["shot"])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     tmpl = "/scratch/gpfs/EKOLEMEN/ps9551/ignite/models/ignite_codecs_v4/{m}/codec_best.pt"
-    codecs = td.load_frozen_codecs(list(dc.SLOW), repo=REPO, tmpl=tmpl)
+    codecs = td.load_frozen_codecs(list(dc.SLOW) + list(EXTRA_SLOW), repo=REPO, tmpl=tmpl)
     for codec, _cfg, _fam in codecs.values():
         codec.to(device)
-    conv = ev.profile_converters(codecs, list(dc.SLOW))
+    conv = ev.profile_converters(codecs, list(dc.SLOW) + list(EXTRA_SLOW))
     out = {}
     for k in d.files:
         if not k.startswith("dir__"):
@@ -613,7 +744,7 @@ def extract_members(path):
         key = k[len("dir__"):]
         arcs = [np.load(next(Path(x).glob(f"codes_{shot}_step*.npz")), allow_pickle=True)
                 for x in str(d[k]).split("+")]
-        for n in dc.SLOW:
+        for n in list(dc.SLOW) + [x for x in EXTRA_SLOW if f"gt__real__{x}" in d.files]:
             vals = []
             for z in arcs:
                 F = int(z["F"])
@@ -1346,7 +1477,7 @@ def short_label(ax, n):
 GAS = "gas (Torr L/s)"
 
 
-# Emission-front height Z_E (m) in the lower divertor camera, from the detachment
+# Emission-front height Z_front (m) in the lower divertor camera, from the detachment
 # analysis of the exported camera files (export_camera_sav.py, EFIT01 geometry). Those files
 # come from the maskfree soup, so other models' figures keep the peaking measure.
 ZE_FILE = HERE / "ze_dz_paper.pk"
@@ -1355,7 +1486,7 @@ ZE_ENS = "ens8_soup_maskfree"
 
 @functools.lru_cache(maxsize=None)
 def front_height(fig, shot):
-    """{run key or 'truth': (t, Z_E)} of one figure's shot, or None without Z_E data."""
+    """{run key or 'truth': (t, Z_front)} of one figure's shot, or None without Z_front data."""
     if DATA.name != ZE_ENS or not ZE_FILE.exists():
         return None
     import pickle
@@ -1373,7 +1504,7 @@ def front_height(fig, shot):
 
 
 def camera_series(ctx, crop, fig, key):
-    """(t, y, k0) of the camera trace of run ``key`` ('truth' = measured): Z_E where the
+    """(t, y, k0) of the camera trace of run ``key`` ('truth' = measured): Z_front where the
     detachment analysis has it, else the emission peaking."""
     ze = front_height(fig, ctx["shot"])
     if ze:
@@ -1385,7 +1516,7 @@ def camera_series(ctx, crop, fig, key):
 
 def camera_label(ax, ctx, fig):
     if front_height(fig, ctx["shot"]):
-        ax.set_ylabel(r"$Z_E$"); box(ax, "lower divertor emission front height (m)")
+        ax.set_ylabel(r"$Z_\mathrm{front}$"); box(ax, "lower divertor emission front height (m)")
     else:
         ax.set_ylabel("peaking"); box(ax, "lower divertor camera emission peaking (σ)")
 
@@ -1413,15 +1544,18 @@ def figure3():
         axes = [fig.add_subplot(left[r]) for r in range(4)]
         simple_trace(axes[0], t, d[f"act__real__{GAS}"], "truth")
         axes[0].set_ylabel("gas"); headroom(axes[0], zero=True); box(axes[0], "GASA (Torr L/s)")
-        for ax, n in zip(axes[1:3], ("ts_core_density", "ts_core_temp")):
+        for ax, n in zip(axes[1:3], (NE_DETACH, "ts_core_temp")):
             trace_panel(ax, ctx, a, n)
             unit = short_label(ax, n)
             ax.texts[-1].set_text(ax.texts[-1].get_text() + f" {unit}")
+            headroom(ax, 0.45, zero=n in dc.ZERO_BASED)   # room for the chord label
         brightness_panel(axes[3], ctx, crop, "fig3_detachment"); headroom(axes[3], 0.45)
         for r, ax in enumerate(axes):
             ax.set_xlim(1, 6)
             ax.yaxis.set_major_locator(plt.MaxNLocator(3))
-            ax.yaxis.set_major_formatter(plt.FormatStrFormatter("%g"))
+            # %g with a typographic minus, as on the other figures' axes
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(
+                lambda v, _p: f"{v:g}".replace("-", "\u2212")))
             ax.axvline(T0 + FRAME * ctx["k0"], color="0.55", lw=0.7, ls=":", zorder=1)
             if r < 3:
                 ax.set_xticklabels([])
@@ -1465,9 +1599,9 @@ def figure4():
     cam_gt, _ = cams(ctx)
     crop = crop_of(cam_gt, k0)
     simple_trace(ax_gas, t, d[f"act__real__{GAS}"], "truth")
-    trace_panel(ax_ne, ctx, a, "ts_core_density", runs=())
+    trace_panel(ax_ne, ctx, a, NE_DETACH, runs=())
     brightness_panel(ax_br, ctx, crop, "fig4_gas_paths", runs=())
-    n = "ts_core_density"
+    n = NE_DETACH
     for key, letter, ls, _src, col, _what in CANDIDATES:
         simple_trace(ax_gas, t, d[f"act__{key}__{GAS}"], "scenario", k0=k0, ls=ls, color=col)
         ne = pred_trace(ctx, a, key, n)
@@ -1730,7 +1864,7 @@ def figure6():
     deviation), profile times in grey. Bottom: the rotation profile against R at the
     profile times of Fig. 2, one panel per time, as in Figs. 1 and 2."""
     from tokamak_foundation_model.ignite.designer import machine as mc
-    d = np.load(DESIGNER_DATA)
+    d = np.load(measured(DESIGNER_DATA))
     K0, F = int(d["K0"]), int(d["F"])
     t = T0 + FRAME * np.arange(F)
     end = min(F, int((5.778 - T0) / FRAME))  # plasma end of 204011 (Ip)
@@ -1805,7 +1939,7 @@ def figure6():
     # deviation of the sampled rollouts (3-frame smoothing, as the traces).
     # The chords of Fig. 1's profiles (same shot and measurement).
     rec = list(profile_chords({"shot": "204011",
-                               "d": np.load(DATA / "demo_204011_val_data.npz",
+                               "d": np.load(measured(DATA / "demo_204011_val_data.npz"),
                                             allow_pickle=True)}, "cer_rot")[0])
 
     def profile(which):

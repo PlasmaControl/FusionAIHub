@@ -301,7 +301,7 @@ def load_data():
     ctx, args = mf.context(DATA_RAMPS, channels=PROFILE_CHORDS, smooth=1)
     if abs(ctx["t_switch"] - T_CHANGE) > 1e-9:
         raise ValueError(f"plan change at {ctx['t_switch']} s in the data")
-    fs = np.load(DATA_FS, allow_pickle=True)
+    fs = np.load(mf.measured(DATA_FS), allow_pickle=True)
     best = mf.best_spectro(str(SHOT), key="replay", names=(SPECTRO,), n=1)
     if not best:
         raise FileNotFoundError(f"rank_{SHOT} has no {SPECTRO} ranking")
@@ -313,7 +313,7 @@ def load_data():
     # The single-rollout file must hold that same rollout.
     # Same chords and smoothing as the ramp file's context, other data.
     one_ctx, one_args = dict(ctx), args
-    one_ctx["d"] = np.load(DATA_ONE, allow_pickle=True)
+    one_ctx["d"] = np.load(mf.measured(DATA_ONE), allow_pickle=True)
     for run in (REPLAY_RUN, CHANGED_RUN):
         a = np.asarray(one_ctx["d"][f"filterscopes_members__{run}"])[0]
         b = np.asarray(fs[f"filterscopes_members__{run}"])[member]
