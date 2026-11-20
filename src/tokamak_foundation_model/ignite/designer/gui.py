@@ -251,3 +251,232 @@ def app(shot: int = 204011):
     for i, title in enumerate(["1 shot", "2 precedents", "3 beam options", "4 plan", "5 simulate"]):
         tabs.set_title(i, title)
     display(w.VBox([shot_w, tabs, out]))
+
+
+# ---------------------------------------------------------------------------- agent
+# Claude gets the user's prompt and the fixed instructions in PROMPT_ONLY.md, nothing
+# else: no tools, no MCP server, no files, run from an empty directory outside the repo.
+# Every DIII-D lookup (database limits, precedents, logbook) runs here, on the plan
+# Claude returns, and its results are never sent back.
+AGENT_LOGS = sim.RUNS_DIR / "_agent_logs"
+PROMPT_SPEC = Path(__file__).with_name("PROMPT_ONLY.md")
+# Empty working directory: keeps the repository, its CLAUDE.md and memory out of the call.
+_CLAUDE_CWD = Path.home() / ".cache" / "ignite_designer_claude"
+DEFAULT_PROMPT = ("Reproduce shot 204011 but with reactor-like rotation after 3.5 s and "
+                  "keeping CER.")
+ANSWER_SCHEMA = {
+    "type": "object",
+    "required": ["plan", "expected", "precedent_conditions", "logbook_query"],
+    "properties": {
+        "plan": {"type": "object", "required": ["shot", "goal", "rationale", "ops"],
+                 "properties": {"shot": {"type": "integer"}, "goal": {"type": "string"},
+                                "rationale": {"type": "string"},
+                                "ops": {"type": "array", "items": {"type": "object"}}}},
+        "expected": {"type": "string"},
+        "precedent_conditions": {"type": "array", "items": {"type": "string"}},
+        "logbook_query": {"type": "string"},
+    },
+}
+
+
+def system_prompt() -> str:
+    """The instructions sent with every prompt: PROMPT_ONLY.md below its ``---`` line."""
+    return PROMPT_SPEC.read_text().split("\n---\n", 1)[1].strip()
+
+
+def claude_command(prompt: str, model: str = "") -> list:
+    """The ``claude`` call: prompt and instructions only, every tool and data source off."""
+    import shutil
+
+    claude = shutil.which("claude")
+    if not claude:
+        raise FileNotFoundError("claude (Claude Code) not found on this machine")
+    cmd = [claude, "-p", prompt, "--system-prompt", system_prompt(),
+           "--tools", "", "--strict-mcp-config", "--setting-sources", "",
+           "--disable-slash-commands", "--no-session-persistence",
+           "--output-format", "stream-json", "--verbose",
+           "--json-schema", json.dumps(ANSWER_SCHEMA)]
+    return cmd + (["--model", model] if model else [])
+
+
+def cross_check(answer: dict) -> dict:
+    """The local checks of Claude's answer (nothing leaves the cluster): the plan against
+    the database, precedents for its targets, and the logbook search it proposed."""
+    plan = answer["plan"]
+    out = {"check": tools.check_plan(plan)}
+    conds = list(answer.get("precedent_conditions") or [])
+    try:
+        out["precedents"] = tools.search_precedents(conds, near=int(plan["shot"]), limit=10)
+    except Exception as e:  # noqa: BLE001 - a bad condition is a finding, not a crash
+        out["precedents"] = {"error": f"{type(e).__name__}: {e}"}
+    q = answer.get("logbook_query") or ""
+    if q:
+        try:
+            out["logbook"] = tools.search_logbook(q, conditions=conds, limit=10)
+        except Exception as e:  # noqa: BLE001
+            out["logbook"] = {"error": f"{type(e).__name__}: {e}"}
+    return out
+
+
+def _short(x, n=3000):
+    s = x if isinstance(x, str) else json.dumps(x, indent=1, default=str)
+    return s if len(s) <= n else s[:n] + f"\n... ({len(s) - n} more characters)"
+
+
+def agent(prompt: str = DEFAULT_PROMPT, model: str = ""):
+    """Design in the notebook with Claude, sending only your prompt.
+
+    1. "Send to Claude": the prompt (and, if ticked, Claude's own previous plan) goes to
+       Claude with the fixed instructions in PROMPT_ONLY.md. Claude has no tools and no
+       data; it answers with its reasoning, a plan, its expectation, and the checks it
+       proposes. The card "Sent to Claude" shows everything that left the cluster.
+    2. Local cross-check, on the cluster only: the plan is built on the measured
+       actuators and tested against the database, precedents are searched with Claude's
+       conditions and the logbook with its query. These results are never sent to Claude.
+    3. "Export plan" writes the IGNITE input; "Simulate plan (GPU)" submits the rollout.
+
+    Needs the ``claude`` command (Claude Code, logged in) on the kernel's machine.
+    """
+    import html
+    import subprocess
+    import time
+
+    import ipywidgets as w
+    from IPython.display import HTML, Markdown, display
+
+    box = w.Textarea(value=prompt, layout=w.Layout(width="100%", height="80px"))
+    prev_w = w.Checkbox(value=False, description="include Claude's previous plan (its own "
+                        "output, no data) to revise it", indent=False,
+                        layout=w.Layout(width="auto"))
+    send_b = w.Button(description="Send to Claude", button_style="primary", icon="paper-plane")
+    exp_b = w.Button(description="Export plan", icon="save", disabled=True)
+    sim_b = w.Button(description="Simulate plan (GPU)", button_style="warning",
+                     icon="rocket", disabled=True)
+    status = w.HTML()
+    steps = w.Output()
+    state = {"answer": None, "run_dir": None}
+
+    def card(title, body, color, note=""):
+        display(HTML(
+            f'<div style="border-left:4px solid {color};padding:4px 10px;margin:6px 0;'
+            f'background:#fafafa"><b style="color:{color}">{html.escape(title)}</b>'
+            f'<span style="color:#777;font-size:11px"> {html.escape(note)}</span>'
+            f'<pre style="white-space:pre-wrap;font-size:12px;margin:4px 0 0 0">'
+            f'{html.escape(body)}</pre></div>'))
+
+    def message():
+        text = box.value.strip()
+        if prev_w.value and state["answer"]:
+            text += ("\n\nYour previous plan, to revise:\n"
+                     + json.dumps(state["answer"]["plan"], indent=1))
+        return text
+
+    def on_send(_):
+        steps.clear_output()
+        send_b.disabled = exp_b.disabled = sim_b.disabled = True
+        msg = message()
+        try:
+            cmd = claude_command(msg, model)
+        except FileNotFoundError as e:
+            status.value = f"<b style='color:#b00'>{html.escape(str(e))}</b>"
+            send_b.disabled = False
+            return
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        AGENT_LOGS.mkdir(parents=True, exist_ok=True)
+        _CLAUDE_CWD.mkdir(parents=True, exist_ok=True)
+        log = AGENT_LOGS / f"agent_{stamp}.jsonl"
+        t0 = time.time()
+        answer, cost = None, None
+        with steps, open(log, "w") as f:
+            display(Markdown("### 1. Claude (sees only what is in the first card)"))
+            card("Sent to Claude", msg, "#333",
+                 f"+ the fixed instructions {PROMPT_SPEC.name}; no tools, no data")
+            p = subprocess.Popen(cmd, cwd=_CLAUDE_CWD, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True, bufsize=1)
+            for line in p.stdout:
+                f.write(line)
+                status.value = f"Claude is working ... {time.time() - t0:.0f} s"
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if e.get("type") == "system" and e.get("subtype") == "init":
+                    # Proof of isolation, from Claude Code itself. StructuredOutput is
+                    # the answer format of --json-schema, not a data source.
+                    if set(e.get("tools") or []) - {"StructuredOutput"} or e.get("mcp_servers"):
+                        p.kill()
+                        card("Stopped", "Claude was given tools or MCP servers", "#b00")
+                        break
+                elif e.get("type") == "assistant":
+                    for c in e["message"].get("content", []):
+                        if c.get("type") == "thinking" and (c.get("thinking") or "").strip():
+                            card("Claude's reasoning", c["thinking"], "#888")
+                        elif c.get("type") == "text" and c["text"].strip():
+                            display(Markdown(c["text"]))
+                elif e.get("type") == "result":
+                    answer, cost = e.get("structured_output"), e.get("total_cost_usd")
+                    if e.get("is_error"):
+                        card("Claude returned an error", str(e.get("result")), "#b00")
+            p.wait()
+            took = f"{time.time() - t0:.0f} s" + (f", ${cost:.2f}" if cost else "")
+            if not answer:
+                status.value = f"no plan returned ({took}); transcript {log}"
+                send_b.disabled = False
+                return
+            state["answer"] = answer
+            card("Claude's plan", json.dumps(answer["plan"], indent=1), PLAN)
+            card("Claude expects", answer.get("expected", ""), PLAN)
+
+            display(Markdown("### 2. Local cross-check (on the cluster; not sent to Claude)"))
+            status.value = f"Claude answered in {took}; checking locally ..."
+            try:
+                res = cross_check(answer)
+            except Exception as e:  # noqa: BLE001 - e.g. an op the builder rejects
+                card("The plan does not build", f"{type(e).__name__}: {e}", "#b00",
+                     "edit your prompt and send again")
+                status.value = f"Claude answered in {took}; the plan does not build"
+                send_b.disabled = False
+                return
+            chk = res["check"]
+            verdict = ("within the database" if chk["ok"] else "violates the database")
+            card(f"Database check: {verdict}",
+                 _short({"findings": chk["findings"], "beam_margins": chk["beam_margins"]}),
+                 "#2a7" if chk["ok"] else "#b00")
+            card("Measured vs plan", _short(chk["summary"]), MEASURED)
+            plot_actuators(pl.build(answer["plan"]))
+            plt.show()
+            card("Precedents for Claude's conditions",
+                 _short(res["precedents"], 2500), MEASURED,
+                 ", ".join(answer.get("precedent_conditions") or []))
+            if "logbook" in res:
+                card("Logbook search", _short(res["logbook"], 2500), MEASURED,
+                     answer.get("logbook_query", ""))
+            status.value = (f"Claude answered in {took}; checked locally. Export, or edit the "
+                            "prompt and send again.")
+        send_b.disabled = exp_b.disabled = False
+
+    def on_export(_):
+        exp_b.disabled = True
+        with steps:
+            r = tools.export_plan(state["answer"]["plan"])
+            state["run_dir"] = r.get("run_dir")
+            (Path(state["run_dir"]) / "claude_answer.json").write_text(
+                json.dumps(state["answer"], indent=1))
+            card("Plan exported", _short(r, 1500), "#2a7")
+        sim_b.disabled = not state["run_dir"]
+
+    def on_sim(_):
+        sim_b.disabled = True
+        with steps:
+            r = tools.simulate(state["run_dir"], seeds=[1, 2, 3, 4], confirm=True)
+            card("Simulation submitted", _short(r), "#2a7")
+            display(Markdown("When the job is done: `gui.plot_results(run_dir)` with "
+                             f"`run_dir = '{state['run_dir']}'`."))
+
+    send_b.on_click(on_send)
+    exp_b.on_click(on_export)
+    sim_b.on_click(on_sim)
+    display(w.VBox([
+        w.HTML("<b>Your prompt</b> <span style='color:#777'>(only this text, plus the fixed "
+               f"instructions in {PROMPT_SPEC.name}, is sent to Claude)</span>"),
+        box, prev_w, w.HBox([send_b, exp_b, sim_b, status]), steps]))
