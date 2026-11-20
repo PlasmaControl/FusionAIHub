@@ -1,7 +1,8 @@
 """The shot designer as a Model Context Protocol server over stdio.
 
-Any MCP client (Claude Code, Claude Desktop, other agents) can connect; the repository's
-``.mcp.json`` registers it for Claude Code. Messages are JSON-RPC 2.0, one per line.
+Any MCP client can connect. Not registered for Claude Code: its tool results are
+measured DIII-D data, which must not be sent to an external model (the notebook's
+``gui.agent()`` sends only the user's prompt). Messages are JSON-RPC 2.0, one per line.
 Implemented without the ``mcp`` package (not in the pixi environments): ``initialize``,
 ``ping``, ``tools/list`` and ``tools/call``.
 
