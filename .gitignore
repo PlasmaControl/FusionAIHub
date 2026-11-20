@@ -252,3 +252,8 @@ core
 # eval_runs (~53 GB of renders/exports): exclude bulk, keep only paper_facts docs
 eval_runs/*
 !eval_runs/paper_facts/
+# DIII-D data and data-derived notes stay out of this public repository
+CLAUDE.md
+*.pk
+*.pkl
+*.sav
