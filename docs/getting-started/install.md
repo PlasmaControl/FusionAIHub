@@ -20,6 +20,7 @@ tree is still `src/tokamak_foundation_model/` (see
 | `shot-design-frontier` | AMD/ROCm (Frontier) | `shot_design` and `labeler` on Frontier — the only environment installed there for that workstream |
 | `frontier` | AMD/ROCm (Frontier) | foundation-model / IGNITE training on Frontier MI250X |
 | `rocm` | AMD/ROCm (della-milan) | MI210 variant |
+| `nvidia` | NVIDIA Vera Rubin, aarch64 (node13) | IGNITE on MAST; `pixi install --frozen -e nvidia`, see [nvidia](../clusters/nvidia.md) |
 
 Environment names use the dash form (`shot-design`, not `shot_design`) —
 pixi rejects underscores in an environment name — while the Python package

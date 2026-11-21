@@ -56,7 +56,8 @@ packages = ["src/faith", "src/tokamak_foundation_model", "src/labeler", "src/sho
 # Why each pixi block below is the way it is: docs/reference/pixi-environments.md.
 [tool.pixi.workspace]
 channels = ["conda-forge", "ga-fdp"]
-platforms = ["linux-64", "win-64", "osx-arm64"]
+# linux-aarch64: only feature.nvidia (node13) lists it, so no other environment solves for it.
+platforms = ["linux-64", "win-64", "osx-arm64", "linux-aarch64"]
 
 [tool.pixi.pypi-dependencies]
 faith = { path = ".", editable = true }
@@ -244,6 +245,29 @@ torchvision = { version = ">=0.26,<0.27", index = "https://download.pytorch.org/
 x-transformers = "==2.23.5"
 vector-quantize-pytorch = "==1.31.0"
 
+# node13: aarch64, Vera Rubin GPUs (compute capability 10.7), system CUDA 13.5. See
+# docs/clusters/nvidia.md and docs/reference/pixi-environments.md#featurenvidia.
+[tool.pixi.feature.nvidia]
+platforms = ["linux-aarch64"]
+
+[tool.pixi.feature.nvidia.pypi-dependencies]
+# PyPI's aarch64 torch is the CUDA 13.2 build (sm_80-sm_120 kernels); it runs on 10.7.
+torch = { version = ">=2.15,<2.16" }
+torchvision = { version = ">=0.29" }
+# Same versions as the stellarai and frontier envs, so frozen codec checkpoints load.
+x-transformers = "==2.23.5"
+vector-quantize-pytorch = "==1.31.0"
+# FlashAttention-4 (CuTe DSL, JIT): runs on 10.7 with no source build; ignite/attention.py.
+flash-attn-4 = { version = "==4.0.0b40", extras = ["cu13"] }
+
+# The wheel's NVRTC 13.2 rejects sm_107, so kernels torch compiles at run time fail
+# ("invalid value for --gpu-architecture"); the system NVRTC 13.5 has it.
+[tool.pixi.feature.nvidia.target.linux-aarch64.activation.env]
+LD_PRELOAD = "/usr/local/cuda-13.5/lib64/libnvrtc.so.13:/usr/local/cuda-13.5/lib64/libnvrtc-builtins.so.13.5${LD_PRELOAD:+:$LD_PRELOAD}"
+
+[tool.pixi.feature.nvidia.tasks]
+ignite-test = { cmd = "python -m pytest tests/ignite -q", description = "The IGNITE suite (FA4 tests run on the GPU here)" }
+
 # Dashes: pixi rejects underscores in an environment name.
 [tool.pixi.environments]
 default = ["cuda"]
@@ -255,6 +279,7 @@ shot-design-cpu = ["shot-design", "shot-design-cpu"]
 # First: the first feature listed wins the activation env.
 shot-design-frontier = ["shot-design-frontier", "shot-design"]
 stellarai = ["stellarai"]
+nvidia = ["nvidia"]
 
 [tool.pytest.ini_options]
 markers = ["real_data: requires the read-only EKOLEMEN stores and/or local model weights"]

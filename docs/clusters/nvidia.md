@@ -45,11 +45,19 @@ export LD_PRELOAD=/usr/local/cuda-13.5/lib64/libnvrtc.so.13:/usr/local/cuda-13.5
 
 ## Environments
 
-The pixi workspace lists `linux-64`, `win-64` and `osx-arm64`, so none of the
-repository's pixi environments installs here yet. Adding `linux-aarch64` means
-re-solving the lock, which [Pixi environments](../reference/pixi-environments.md)
-explains is deferred for every other cluster; it is the open item for this
-branch. Until then:
+The repository's environment here is the pixi `nvidia` environment (linux-aarch64 only;
+[Pixi environments](../reference/pixi-environments.md#featurenvidia)): Python 3.11, PyPI
+torch 2.15+cu132, `flash-attn-4[cu13]`, the stellarai pins of x-transformers and
+vector-quantize-pytorch, and the NVRTC preload in its activation, so `pixi run` needs nothing
+exported:
+
+```bash
+pixi install --frozen -e nvidia
+pixi run --frozen -e nvidia ignite-test        # tests/ignite
+pixi run --frozen -e nvidia python ...
+```
+
+Other tools on the machine:
 
 | Tool | Where | For |
 |---|---|---|
@@ -57,10 +65,7 @@ branch. Until then:
 | `hf` (huggingface_hub 2.4, hf_xet) | uv tool, `~/.local/bin` | Hugging Face downloads; `hf auth login` once |
 | `mineru` 4.2.3 (`mineru[torch]`) | uv tool, `~/.local/bin` | PDF to markdown for the paper library |
 | TokaMind + TokaMark | uv venv `/models/tokamind/.venv` (Python 3.12, torch 2.15+cu132) | reproducing TokaMind's TokaMark scores |
-| FusionAIHub (`faith`) | uv venv `/models/envs/faith` (Python 3.11, torch 2.15+cu132, `pip install -e .` of this checkout, `flash-attn-4[cu13]==4.0.0b40`, `x-transformers==2.23.5`, `vector-quantize-pytorch==1.31.0` as in the stellarai feature) | IGNITE code and `tests/ignite` |
-
-Run the IGNITE suite here with
-`LD_PRELOAD=<the NVRTC pair above> /models/envs/faith/bin/python -m pytest tests/ignite -q`.
+| FusionAIHub (`faith`) | uv venv `/models/envs/faith`, the same packages as the pixi env | superseded by the pixi `nvidia` environment; kept until that has run a training job |
 
 ## Attention: FlashAttention-4
 

@@ -4,7 +4,7 @@ title: Pixi environments
 
 # Pixi environments
 
-`pyproject.toml` defines seven environments. Each block there has a one-line
+`pyproject.toml` defines nine environments. Each block there has a one-line
 comment. This page keeps the measurements behind those lines.
 
 | Environment | Features | For |
@@ -16,6 +16,8 @@ comment. This page keeps the measurements behind those lines.
 | `shot-design` | `shot-design`, `cuda` | `shot_design` with a GPU (IGNITE rollouts) |
 | `shot-design-cpu` | `shot-design`, `shot-design-cpu` | `shot_design` on a CPU |
 | `shot-design-frontier` | `shot-design-frontier`, `shot-design` | `shot_design` and `labeler` on Frontier |
+| `stellarai` | `stellarai` | StellarAI B200 training, cu128 torch |
+| `nvidia` | `nvidia` | node13 (aarch64, Vera Rubin, compute capability 10.7): IGNITE, PyPI cu132 torch, FlashAttention-4 |
 
 | Task | Environment | Runs |
 |---|---|---|
@@ -27,6 +29,7 @@ comment. This page keeps the measurements behind those lines.
 | `shot_design-mcp` | the `shot-design` three | the MCP server, stdio |
 | `shot_design-test` | the `shot-design` three | `python -m pytest tests/shot_design -q -W error` |
 | `setup-flash-attn`, `verify-flash-attn` | `frontier` | build flash-attn 2 on a compute node, then smoke-test it |
+| `ignite-test` | `nvidia` | `python -m pytest tests/ignite -q` |
 
 A task runs in the checkout that holds the manifest. To test a worktree, run the
 suite in the worktree itself:
@@ -309,6 +312,33 @@ loads in the other.
 pins it; on Frontier there is one environment for both packages, so the pin is
 repeated here rather than the suite being split (`tests/labeler` imports plotly
 at collection).
+
+## feature.nvidia
+
+node13 is aarch64, so the workspace lists `linux-aarch64`; only this feature declares it, and
+every other feature keeps its own `platforms`, so no other environment solves for it.
+
+Measured 2026-11-21 with pixi 0.84.2: `pixi lock --dry-run` on the manifest without this
+feature reported no change for any of the eight existing environments (the torchvision-index
+staleness under "Always `--frozen`" no longer shows with this pixi). Adding the feature with
+`pixi install -e nvidia` changed the lock only by adding: the eight existing environments are
+identical, no package entry was removed or altered, 113 were added. A dry run cannot solve it
+(`--no-install` refuses to build the editable `faith` metadata), so lock it with
+`pixi install -e nvidia` and check the diff with `git diff --text pixi.lock` (the lock is
+`-diff` in `.gitattributes`).
+
+`torch`: PyPI's aarch64 wheel is the CUDA 13.2 build (kernels `sm_80` to `sm_120`). Its
+precompiled kernels run on 10.7; kernels it compiles at run time through NVRTC fail with
+"invalid value for --gpu-architecture" because the bundled NVRTC 13.2 lacks sm_107. The
+activation block preloads the system's NVRTC 13.5 (`/usr/local/cuda-13.5`), which has it;
+`LD_LIBRARY_PATH` alone does not work, because torch loads its own NVRTC by path.
+
+`x-transformers`, `vector-quantize-pytorch`: the same pins as `feature.stellarai`, so the frozen
+codec checkpoints load.
+
+`flash-attn-4[cu13]`: the CuTe DSL FlashAttention-4, a pure-Python wheel that compiles its
+kernels on first use; it treats 10.x as Blackwell and runs on 10.7 without a source build. The
+dynamics backbone uses it through `ignite/attention.py` (see [nvidia](../clusters/nvidia.md)).
 
 ## Environment names
 
