@@ -16,6 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 
+from . import attention as _attn
 from .dynamics_config import DynamicsConfig
 from .frame_layout import FrameTokenizer
 
@@ -25,9 +26,10 @@ def _attend_earlier_and_self(q, history_k, history_v, self_k, self_v):
 
     One fused ``scaled_dot_product_attention`` over the keys ``[history | self]``
     with the mask ``[earlier | diagonal]``, so the ``(L, 2L)`` scores are never
-    stored for backward. On ROCm the masked kernel's backward fails with "HIP
-    error: invalid argument" (Frontier), so there it falls back to
-    :func:`_attend_earlier_and_self_explicit`.
+    stored for backward. Where FlashAttention-4 runs it is used instead
+    (:func:`attention.attend_earlier_and_self_fa4`, exact and maskless). On ROCm the
+    masked kernel's backward fails with "HIP error: invalid argument" (Frontier), so
+    there it falls back to :func:`_attend_earlier_and_self_explicit`.
 
     Parameters
     ----------
@@ -40,6 +42,8 @@ def _attend_earlier_and_self(q, history_k, history_v, self_k, self_v):
     -------
     attended : torch.Tensor of shape (B, heads, L, head_dim)
     """
+    if _attn.use_fa4(q):
+        return _attn.attend_earlier_and_self_fa4(q, history_k, history_v, self_k, self_v)
     if torch.version.hip:
         return _attend_earlier_and_self_explicit(q, history_k, history_v, self_k, self_v)
     length = q.shape[-2]
@@ -116,7 +120,7 @@ class _MHA(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         q, k, v = self._project(x)
-        attended = F.scaled_dot_product_attention(q, k, v, is_causal=self.causal)
+        attended = _attn.attention(q, k, v, causal=self.causal)
         return self._output(attended, x.shape)
 
     def forward_with_history(self, history: torch.Tensor, query: torch.Tensor):
@@ -139,9 +143,7 @@ class _MHA(nn.Module):
         history_q, history_k, history_v = self._project(history)
         query_q, query_k, query_v = self._project(query)
         history_out = self._output(
-            F.scaled_dot_product_attention(
-                history_q, history_k, history_v, is_causal=self.causal
-            ),
+            _attn.attention(history_q, history_k, history_v, causal=self.causal),
             history.shape,
         )
         query_out = self._output(
@@ -216,7 +218,7 @@ class FactorizedSTBlock(nn.Module):
         x = per_frame.reshape(B, Fr, N, d)
         per_token = x.permute(0, 2, 1, 3).reshape(B * N, Fr, d)
         q, k, v = self.temporal._project(self.tn(per_token))
-        attended = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        attended = _attn.attention(q, k, v, causal=True)
         per_token = per_token + self.temporal._output(attended, per_token.shape)
         x = per_token.reshape(B, N, Fr, d).permute(0, 2, 1, 3)
         flat = x.reshape(B * Fr * N, d)
@@ -247,7 +249,7 @@ class FactorizedSTBlock(nn.Module):
         per_frame = per_frame + self.spatial(self.sn(per_frame))
         per_token = per_frame.reshape(B * N, 1, d)
         q, k, v = self.temporal._project(self.tn(per_token))
-        attended = F.scaled_dot_product_attention(
+        attended = _attn.attention(
             q, torch.cat([past_k, k], dim=-2), torch.cat([past_v, v], dim=-2)
         )
         per_token = per_token + self.temporal._output(attended, per_token.shape)
@@ -324,7 +326,7 @@ class ActuatorCrossAttention(nn.Module):
         q = q.reshape(B * Fr, N, n_heads, d // n_heads).transpose(1, 2)
         k = k.reshape(B * Fr, self.n_act, n_heads, d // n_heads).transpose(1, 2)
         v = v.reshape(B * Fr, self.n_act, n_heads, d // n_heads).transpose(1, 2)
-        attended = F.scaled_dot_product_attention(q, k, v)
+        attended = _attn.attention(q, k, v)
         return self.o(attended.transpose(1, 2).reshape(B, Fr, N, d))
 
 

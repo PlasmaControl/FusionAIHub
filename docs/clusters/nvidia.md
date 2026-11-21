@@ -57,6 +57,34 @@ branch. Until then:
 | `hf` (huggingface_hub 2.4, hf_xet) | uv tool, `~/.local/bin` | Hugging Face downloads; `hf auth login` once |
 | `mineru` 4.2.3 (`mineru[torch]`) | uv tool, `~/.local/bin` | PDF to markdown for the paper library |
 | TokaMind + TokaMark | uv venv `/models/tokamind/.venv` (Python 3.12, torch 2.15+cu132) | reproducing TokaMind's TokaMark scores |
+| FusionAIHub (`faith`) | uv venv `/models/envs/faith` (Python 3.11, torch 2.15+cu132, `pip install -e .` of this checkout, `flash-attn-4[cu13]==4.0.0b40`, `x-transformers==2.23.5`, `vector-quantize-pytorch==1.31.0` as in the stellarai feature) | IGNITE code and `tests/ignite` |
+
+Run the IGNITE suite here with
+`LD_PRELOAD=<the NVRTC pair above> /models/envs/faith/bin/python -m pytest tests/ignite -q`.
+
+## Attention: FlashAttention-4
+
+`flash-attn-4` (the CuTe DSL kernels, `pip install "flash-attn-4[cu13]"`, a pure-Python
+wheel that compiles each kernel configuration on first use, about 4.5 s) treats every
+10.x/11.x device as Blackwell, so it runs on 10.7 with no source build. FlashAttention-2
+(`flash-attn`) ships only as source and is slower here. The IGNITE dynamics backbone
+dispatches through `tokamak_foundation_model/ignite/attention.py`: FA4 where it can run
+(CUDA 9.x/10.x/11.x, fp16/bf16, head_dim 8-128), SDPA elsewhere; `IGNITE_ATTENTION`
+(`auto`, `sdpa`, `fa4`) overrides it. `tests/ignite/test_fa4_attention.py` checks it
+against an fp32 reference, outputs and gradients.
+
+Measured 2026-11-21 (torch 2.15+cu132, flash-attn-4 4.0.0b40, bf16, forward + backward):
+
+| Case | SDPA default | SDPA cuDNN | FA4 |
+|---|---|---|---|
+| B=8 H=16 L=4096 D=128 causal | 2.52 ms | 1.07 ms | 1.04 ms |
+| spatial: 64 x H=16 L=512 D=64 | 1.22 ms | 0.36 ms | 0.44 ms |
+| temporal: 2048 x H=16 L=16 D=64 causal | 1.20 ms | 1.20 ms | 1.49 ms |
+| temporal: 2048 x H=16 L=80 D=64 causal | 2.63 ms | 2.63 ms | 2.03 ms |
+| backbone d1024 h16 depth 4, B=4, 16 frames x 512 tokens | 36.3 ms | | 38.5 ms |
+
+FA4 wins on long sequences and loses on IGNITE's shortest (16-frame temporal
+windows), where attention is also a small share of the step.
 
 ## Storage layout
 
