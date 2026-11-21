@@ -62,23 +62,20 @@ def test_item_and_collate_shapes(tmp_path):
     cfg = _tiny()
     _write_cache(tmp_path, "s1", cfg.max_frames + 1, cfg)
     ds = FrameCodeDataset(tmp_path, ["s1"], cfg)
-    codes, act, present, live, text = ds[0]
+    codes, act, present, live = ds[0]
     for m in cfg.modalities:
         assert codes[m.name].shape == (cfg.max_frames, m.n_tok)
         assert codes[m.name].dtype == torch.long  # decompressed from int16 cache
     assert act.shape == (cfg.max_frames, cfg.actuator_dim)
     assert present.shape == (len(cfg.modalities),)
-    assert text.shape == (0,)  # no text_embeds -> zero-width
     # with no live_end table every frame is live, so the loss is bit-identical to the
     # old path
     assert live.shape == (cfg.max_frames,) and bool((live == 1.0).all())
-    cb, ab, pb, lb, tb = _collate_frames([ds[0], ds[1]])
+    cb, ab, pb, lb = _collate_frames([ds[0], ds[1]])
     for m in cfg.modalities:
         assert cb[m.name].shape == (2, cfg.max_frames, m.n_tok)
     assert ab.shape == (2, cfg.max_frames, cfg.actuator_dim)
-    assert pb.shape == (2, len(cfg.modalities))
     assert lb.shape == (2, cfg.max_frames)
-    assert tb.shape == (2, 0)  # collated zero-width text
 
 
 def test_live_end_masks_post_shot_frames(tmp_path):
@@ -165,7 +162,7 @@ def test_sliding_windows_are_offset(tmp_path):
     cfg = _tiny()
     _write_cache(tmp_path, "s1", cfg.max_frames + 2, cfg)
     ds = FrameCodeDataset(tmp_path, ["s1"], cfg)
-    c0 = ds[0][0]  # items are (codes, act, presence, live, text)
+    c0 = ds[0][0]  # items are (codes, act, presence, live)
     c1 = ds[1][0]
     # window 1 is window 0 shifted by one frame -> frame1 of w0 == frame0 of w1
     assert torch.equal(c0["a"][1], c1["a"][0])
