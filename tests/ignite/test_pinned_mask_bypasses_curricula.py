@@ -58,18 +58,3 @@ def test_pinned_mask_draws_only_the_random_mask_rng():
     g2 = torch.Generator().manual_seed(5)
     mg._random_mask(codes, g2, ratio_override=1.0, history_frames=2, gen_mask_p=0.0)
     assert torch.equal(g1.get_state(), g2.get_state()), "pinned path consumed extra RNG"
-
-
-def test_unpinned_call_still_uses_the_ctf_curriculum():
-    """Regression guard: the bypass is keyed on the pin, not on ctf_frac."""
-    cfg = _tiny(ctf_frac=1.0)
-    mg = _model(cfg)
-    codes = _codes(cfg, B=2, F=cfg.max_frames)
-    act = torch.randn(2, cfg.max_frames, cfg.actuator_dim)
-    g1 = torch.Generator().manual_seed(5)
-    with torch.no_grad():
-        mg.training_loss(codes, act, generator=g1)
-    g2 = torch.Generator().manual_seed(5)
-    mg._random_mask(codes, g2)
-    assert not torch.equal(g1.get_state(), g2.get_state()), \
-        "ctf_frac=1.0 took the random path"

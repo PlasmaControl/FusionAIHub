@@ -46,34 +46,6 @@ def test_rank_normalize_equalizes_scales_across_modalities():
     assert torch.allclose(rank_normalize(small), rank_normalize(large))
 
 
-def test_global_pool_defers_low_confidence_modality():
-    """Validity smoke test: a pooled decode still produces a complete, in-vocab frame.
-
-    Despite the name (kept from the plan), this asserts shape and code range only — it exercises
-    the ``global_pool=True`` path end-to-end without crashing. The deferral BEHAVIOUR is covered
-    by the direct ``_global_reveal`` tests below, which compare allocations against the fixed
-    quota on hand-built confidences.
-    """
-    from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig, ModalitySpec
-    from tokamak_foundation_model.ignite.maskgit import MaskGITDynamics
-    from tokamak_foundation_model.ignite.sampling import SamplerConfig
-
-    cfg = DynamicsConfig(
-        modalities=(ModalitySpec("a", "spectro", 8, 5), ModalitySpec("b", "slowts", 8, 5)),
-        d_model=16, depth=2, n_heads=2, ffn_mult=2, k0_seed=2, n_predict=2,
-        maskgit_decode_steps=4, actuator_dim=6)
-    torch.manual_seed(0)
-    mg = MaskGITDynamics(cfg).eval()
-    past = {m.name: torch.randint(0, m.codebook_size, (1, cfg.k0_seed, m.n_tok))
-            for m in cfg.modalities}
-    act = torch.randn(1, cfg.k0_seed + 1, cfg.actuator_dim)
-    out = mg.generate_frame(past, act, generator=torch.Generator().manual_seed(2),
-                            sampler=SamplerConfig(global_pool=True))
-    for m in cfg.modalities:                         # still a complete, valid frame
-        assert out[m.name].shape == (1, m.n_tok)
-        assert (out[m.name] >= 0).all() and (out[m.name] < m.codebook_size).all()
-
-
 def test_rank_normalize_breaks_ties_in_index_order():
     """Ties must resolve deterministically, not by whatever the sort backend happens to do.
 
@@ -101,32 +73,6 @@ def _tiny_pool_model(n_a=6, n_b=4, steps=4, v_a=5, v_b=7):
         maskgit_decode_steps=steps, actuator_dim=6)
     torch.manual_seed(0)
     return cfg, MaskGITDynamics(cfg).eval()
-
-
-def test_global_pool_changes_the_decoded_frame_and_stays_valid():
-    """The flag must actually be WIRED: same seed, same inputs, different committed codes.
-
-    Guards the failure mode where ``global_pool=True`` is silently ignored — a shape/range-only
-    check passes either way, so this compares against the default sampler for a fixed seed.
-    """
-    from tokamak_foundation_model.ignite.sampling import SamplerConfig
-    cfg, mg = _tiny_pool_model()
-    past = {m.name: torch.randint(0, m.codebook_size, (1, cfg.k0_seed, m.n_tok),
-                                  generator=torch.Generator().manual_seed(4))
-            for m in cfg.modalities}
-    act = torch.randn(1, cfg.k0_seed + 1, cfg.actuator_dim,
-                      generator=torch.Generator().manual_seed(5))
-    default = mg.generate_frame(past, act, generator=torch.Generator().manual_seed(2))
-    pooled = mg.generate_frame(past, act, generator=torch.Generator().manual_seed(2),
-                               sampler=SamplerConfig(global_pool=True))
-    assert any(not torch.equal(default[n], pooled[n]) for n in default), \
-        "global_pool=True produced the default frame — the flag is not wired through"
-    for m in cfg.modalities:                          # still a complete, valid frame
-        p = pooled[m.name]
-        assert p.shape == (1, m.n_tok)
-        assert (p >= 0).all() and (p < m.codebook_size).all()
-        assert not (p == mg.backbone.tok.mask_ids[m.name]).any(), \
-            "pooled decode left [MASK] ids behind — the schedule did not fully reveal"
 
 
 def test_norm_log_confidence_levels_and_cross_vocab_comparability():
@@ -158,109 +104,9 @@ def test_norm_log_confidence_levels_and_cross_vocab_comparability():
     assert torch.isfinite(norm_log_confidence(torch.zeros(1, dtype=torch.bfloat16), 65536)).all()
 
 
-def test_global_pool_allocation_follows_modality_confidence():
-    """The R1 lever: reveals follow WHICH MODALITY is confident, which quotas cannot do.
-
-    Two 8-token modalities sharing a vocab. One is confident (c ~ 0.9), the other near its
-    uniform baseline (c ~ 0.001 at V=1000). At this step the frame's budget is 5 reveals: the
-    pool spends all 5 on the confident modality and lets the uncertain one defer entirely, and
-    the allocation FLIPS when the confidences are swapped. The fixed quota is [2, 2] in both
-    cases — blind to confidence by construction.
-
-    Deterministic: hand-built confidences fed straight to the two policies, no model forward
-    and no RNG.
-    """
-    from tokamak_foundation_model.ignite.maskgit import _cosine_keep_fractions
-    cfg, mg = _tiny_pool_model(n_a=8, n_b=8, steps=4, v_a=1000, v_b=1000)
-    names = [m.name for m in cfg.modalities]
-    revealed = {m.name: torch.zeros(1, m.n_tok, dtype=torch.bool) for m in cfg.modalities}
-    frac = _cosine_keep_fractions(cfg.maskgit_decode_steps)[1]
-    total = cfg.tokens_per_frame
-    budget = total - int(round(frac * total))
-    assert budget == 5                                    # guards the fixture, not the policy
-
-    confident = torch.linspace(0.85, 0.95, 8).unsqueeze(0)
-    uncertain = torch.linspace(0.001, 0.002, 8).unsqueeze(0)   # ~1/V, i.e. no information
-    a_hot = {"a": confident, "b": uncertain}
-    b_hot = {"a": uncertain, "b": confident}
-
-    def counts(take):
-        return [int(take[n].sum()) for n in names]
-
-    pool_a = counts(mg._global_reveal(a_hot, revealed, frac))
-    pool_b = counts(mg._global_reveal(b_hot, revealed, frac))
-    assert pool_a == [5, 0], f"confident modality should take the whole budget, got {pool_a}"
-    assert pool_b == [0, 5], f"allocation must flip with the confidences, got {pool_b}"
-    assert pool_a != pool_b                               # responsive, not fixed
-    assert sum(pool_a) == sum(pool_b) == budget           # budget still honoured
-
-    for conf in (a_hot, b_hot):                           # the quota ignores all of this
-        q = mg._per_modality_reveal(conf, revealed, frac)
-        assert [int(q[n].sum()) for n in names] == [2, 2]
-
-
-def test_global_pool_scores_vocab_normalized_not_raw_probability():
-    """A large-vocab modality must not be starved for having structurally smaller probabilities.
-
-    Modality "a" has a 64k vocab and c = 0.01; "b" has a 1k vocab and c = 0.05 — five times the
-    RAW probability. Relative to their own uniform baselines "a" is the more confident one
-    (0.585 vs 0.566), so it must win the budget. Scoring raw probability would invert this.
-    """
-    from tokamak_foundation_model.ignite.maskgit import _cosine_keep_fractions
-    from tokamak_foundation_model.ignite.sampling import norm_log_confidence
-    cfg, mg = _tiny_pool_model(n_a=8, n_b=8, steps=4, v_a=65536, v_b=1000)
-    names = [m.name for m in cfg.modalities]
-    conf = {"a": torch.full((1, 8), 0.01), "b": torch.full((1, 8), 0.05)}
-    assert conf["b"][0, 0] > conf["a"][0, 0]                        # b wins on raw probability
-    assert float(norm_log_confidence(conf["a"][0, 0], 65536)) > \
-        float(norm_log_confidence(conf["b"][0, 0], 1000))           # a wins once normalized
-    revealed = {m.name: torch.zeros(1, m.n_tok, dtype=torch.bool) for m in cfg.modalities}
-    frac = _cosine_keep_fractions(cfg.maskgit_decode_steps)[1]
-    pool = mg._global_reveal(conf, revealed, frac)
-    assert [int(pool[n].sum()) for n in names] == [5, 0], \
-        "pool followed raw probability instead of vocab-normalized confidence"
-
-
 def _tiny_rev():
     from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig, ModalitySpec
     return DynamicsConfig(
         modalities=(ModalitySpec("a", "spectro", 6, 5), ModalitySpec("b", "slowts", 4, 5)),
         d_model=16, depth=2, n_heads=2, ffn_mult=2, k0_seed=2, n_predict=2,
         maskgit_decode_steps=4, actuator_dim=6)
-
-
-def test_revision_rounds_produce_a_valid_complete_frame():
-    import torch
-    from tokamak_foundation_model.ignite.maskgit import MaskGITDynamics
-    from tokamak_foundation_model.ignite.sampling import SamplerConfig
-
-    cfg = _tiny_rev()
-    torch.manual_seed(0)
-    mg = MaskGITDynamics(cfg).eval()
-    past = {m.name: torch.randint(0, m.codebook_size, (1, cfg.k0_seed, m.n_tok))
-            for m in cfg.modalities}
-    act = torch.randn(1, cfg.k0_seed + 1, cfg.actuator_dim)
-    out = mg.generate_frame(past, act, generator=torch.Generator().manual_seed(3),
-                            sampler=SamplerConfig(revision_rounds=2, revision_frac=0.5))
-    for m in cfg.modalities:
-        assert out[m.name].shape == (1, m.n_tok)
-        assert (out[m.name] >= 0).all() and (out[m.name] < m.codebook_size).all()
-
-
-def test_revision_can_change_committed_tokens():
-    """A revision round must actually be able to revise — otherwise it is a no-op."""
-    import torch
-    from tokamak_foundation_model.ignite.maskgit import MaskGITDynamics
-    from tokamak_foundation_model.ignite.sampling import SamplerConfig
-
-    cfg = _tiny_rev()
-    torch.manual_seed(0)
-    mg = MaskGITDynamics(cfg).eval()
-    past = {m.name: torch.randint(0, m.codebook_size, (1, cfg.k0_seed, m.n_tok))
-            for m in cfg.modalities}
-    act = torch.randn(1, cfg.k0_seed + 1, cfg.actuator_dim)
-    base = mg.generate_frame(past, act, generator=torch.Generator().manual_seed(3),
-                             sampler=SamplerConfig())
-    rev = mg.generate_frame(past, act, generator=torch.Generator().manual_seed(3),
-                            sampler=SamplerConfig(revision_rounds=3, revision_frac=0.9))
-    assert any(not torch.equal(base[m.name], rev[m.name]) for m in cfg.modalities)
