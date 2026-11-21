@@ -8,8 +8,8 @@ that cache, with scheduled sampling, optional loss masks and periodic validation
 Environment
 -----------
 IGNITE_ACT_GLOBAL
-    Directory of dataset-wide normalised actuators (built by
-    ``models/ignite_bandpower/build_actglobal.py``). When set, they replace the
+    Directory of dataset-wide normalised actuators, one ``<shot>.pt`` per shot
+    (entries are rebuilt with ``_raw_actuators``). When set, they replace the
     per-shot z-scored actuators of the cache, whose whole-shot statistics leak the
     future. A shot missing from it is an error. Read once at import.
 IGNITE_DETECT_ANOMALY
@@ -40,7 +40,6 @@ from . import spike
 from . import train_codec as tc
 from .dynamics_config import FROZEN_MODALITIES, DynamicsConfig, ModalitySpec
 from .maskgit import MaskGITDynamics
-from .text_embed import load_text_embeddings, lookup
 
 # Fallback checkpoints of the frozen codec set: name -> (family, repo-relative path).
 FROZEN_CODEC_CKPTS: Dict[str, Tuple[str, str]] = {
@@ -48,10 +47,6 @@ FROZEN_CODEC_CKPTS: Dict[str, Tuple[str, str]] = {
     "bes": ("spectro", "eval_runs/ignite_d5_bes/codec_best.pt"),
     "mhr": ("spectro", "eval_runs/ignite_d5_mhr/codec_best.pt"),
     "co2": ("spectro", "eval_runs/ignite_co2_rawstd192/codec_best.pt"),
-    # New in generation v4. resolve_codec_path tries the template first and falls
-    # back here, but load_frozen_codecs reads the family from this table for every
-    # name, so a mirnov resolved from a pinned v4 bundle needs the row.
-    "mirnov": ("spectro", "eval_runs/ignite_d5_mirnov/codec_best.pt"),
     "tangtv_lower": ("video", "eval_runs/ignite_d4_tangtv_lower/codec_best.pt"),
     "tangtv_upper": ("video", "eval_runs/ignite_d4_tangtv_upper/codec_best.pt"),
     "ts_core_density": ("slowts", "eval_runs/ignite_d5_ts_core_density/codec_best.pt"),
@@ -94,11 +89,13 @@ _FRAME_S = 0.05
 _DEFAULT_SAMPLE_RATE = 10_000.0
 _MIN_CACHED_FRAMES = 8
 _LOG_EVERY = 50
-_GRAD_BUCKET_BYTES = 128 * 1024 * 1024
 _PROFILED_FIRST_STEPS = 5
 # Seeds of the per-epoch window draw and of the fixed validation masks.
 _WINDOW_SEED_BASE = 0x16117E * 1000003
 _VALIDATION_SEED = 1234
+# --skill_every: ranks without a shot wait at the gather while the others roll out
+# (about 35 min per shot at 48 layers), far past NCCL's default 10 min timeout.
+_SKILL_TIMEOUT_MIN = 180
 
 
 class FrozenCodec(NamedTuple):
@@ -306,9 +303,9 @@ def _raw_actuators(
     Missing signals are zero-filled, so the width is always the one of
     :data:`_ACT_SPEC`. Windows are located in shot time like the diagnostics:
     sample ``round((t - x[0]) * fs)`` with ``fs`` from the record span, clamped
-    into the record. ``legacy=True`` reproduces the pre-2026-08-11 misaligned
-    indexing ``int(t * fs)`` with ``fs = 1 / median(diff(x))``, which is only
-    used to verify old caches before patching them.
+    into the record. ``legacy=True`` reproduces the old misaligned indexing
+    ``int(t * fs)`` with ``fs = 1 / median(diff(x))``, used only to verify old
+    caches before patching them.
     """
     import h5py
 
@@ -381,7 +378,7 @@ def actuator_frames(
 
 
 def _legacy_actuator_frames(shot: str, n_frames: int, data_dir, t0_start: float = 1.0):
-    """Return the pre-2026-08-11 misaligned actuators, to verify an old cache entry.
+    """Return the old misaligned actuators, to verify an old cache entry.
 
     Wrong on purpose; used only by :func:`patch_cache_actuators`.
     """
@@ -1110,6 +1107,54 @@ def _global_actuators(shot, cached: torch.Tensor) -> torch.Tensor:
     return loaded["actuators_global"][:, :width].to(cached.dtype)
 
 
+# Columns of the raw actuator side cache (_ACT_SPEC order), in W.
+_ECH_COLUMNS, _PINJ_COLUMNS = slice(0, 12), slice(12, 20)
+
+
+def actuator_events(raw, n_live: int, nbi_mw: float = 1.0, ech_mw: float = 0.5, gap: int = 5):
+    """Frames where the total NBI or ECH power steps, from the raw actuators (W).
+
+    The change at frame ``e`` is the mean total power over frames ``e..e+2`` minus
+    that over ``e-3..e-1``; frames where it reaches ``nbi_mw`` (NBI) or ``ech_mw``
+    (ECH) form a step, and each run of such frames (split at gaps of ``gap`` frames)
+    is reported at its largest change. Only frames before ``n_live`` count.
+
+    Returns
+    -------
+    events : list of int
+    """
+    raw = np.asarray(raw, dtype=np.float64)
+    power = {
+        "nbi": np.nan_to_num(raw[:, _PINJ_COLUMNS].sum(1)) / 1e6,
+        "ech": np.nan_to_num(raw[:, _ECH_COLUMNS].sum(1)) / 1e6,
+    }
+    threshold = {"nbi": nbi_mw, "ech": ech_mw}
+    change = {}
+    stop = min(int(n_live), raw.shape[0] - 2)
+    for name, p in power.items():
+        for e in range(3, stop):
+            size = abs(p[e:e + 3].mean() - p[e - 3:e].mean()) / threshold[name]
+            if size >= 1.0:
+                change[e] = max(change.get(e, 0.0), size)
+    events, run = [], []
+    for e in sorted(change):
+        if run and e - run[-1] >= gap:
+            events.append(max(run, key=change.get))
+            run = []
+        run.append(e)
+    if run:
+        events.append(max(run, key=change.get))
+    return events
+
+
+def _side_cache_raw_actuators(shot):
+    """Physical actuators (W, V, N m, ...) of a shot from the side cache, or None."""
+    side_entry = Path(_ACT_GLOBAL_DIR) / f"{shot}.pt"
+    loaded = torch.load(side_entry, map_location="cpu", weights_only=False)
+    raw = loaded.get("actuators_raw")
+    return None if raw is None else np.asarray(raw, dtype=np.float32)
+
+
 class FrameCodeDataset(torch.utils.data.Dataset):
     """Windows of ``cfg.max_frames`` frames from the frame-code cache.
 
@@ -1148,9 +1193,17 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         Shot time of frame 0 of the cache.
     frame_s : float, default=0.05
         Frame duration in seconds.
-    text_embeds : dict of str to torch.Tensor, default=None
-        Per-shot text embeddings (:func:`.text_embed.load_text_embeddings`); a shot
-        without one gets zeros. None gives every item a zero-width text.
+    event_windows_per_shot : int, default=0
+        Extra windows each shot contributes per epoch, drawn from the starts whose
+        predicted frames contain an actuator step (:func:`actuator_events`), so the
+        model sees more examples of the plasma responding to its actuators.
+    event_weight : float, default=1.0
+        Loss weight of the ``event_frames`` frames from each actuator step on
+        (relative to 1 elsewhere); applied through the ``live`` weights.
+    event_frames : int, default=15
+        Frames after a step that get ``event_weight``.
+    event_nbi_mw, event_ech_mw : float, default=1.0, 0.5
+        Step sizes that count as an actuator event.
 
     Notes
     -----
@@ -1171,9 +1224,18 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         window_jitter: int = 0,
         t0_start: float = 1.0,
         frame_s: float = 0.05,
-        text_embeds=None,
+        event_windows_per_shot: int = 0,
+        event_weight: float = 1.0,
+        event_frames: int = 15,
+        event_nbi_mw: float = 1.0,
+        event_ech_mw: float = 0.5,
     ):
         self.cfg = cfg
+        self.event_windows_per_shot = max(int(event_windows_per_shot), 0)
+        self.event_weight = float(event_weight)
+        self.event_frames = max(int(event_frames), 1)
+        use_events = self.event_windows_per_shot > 0 or self.event_weight != 1.0
+        self.events, self._event_starts = [], []
         self.window_jitter = max(int(window_jitter), 0)
         self.win = cfg.max_frames
         self.stride = max(int(stride), 1)
@@ -1188,16 +1250,7 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         self._starts = []
         self._live_starts = []
         self.presence = []
-        self.text = []
         presence = presence or {}
-        text_dim = None
-        if text_embeds is not None:
-            if not text_embeds:
-                raise SystemExit(
-                    "text embeddings H5 covered zero shots (path/key correct?)"
-                )
-            text_dim = next(iter(text_embeds.values())).shape[0]
-        n_covered = 0
         for shot in shots:
             entry = self._load_entry(Path(cache_dir) / f"{shot}.pt")
             if entry is None:
@@ -1216,12 +1269,6 @@ class FrameCodeDataset(torch.utils.data.Dataset):
                     [1.0 if recorded.get(m.name, True) else 0.0 for m in cfg.modalities]
                 )
             )
-            if text_embeds is None:
-                self.text.append(torch.zeros(0))
-            else:
-                vector, found = lookup(text_embeds, shot, text_dim)
-                self.text.append(vector)
-                n_covered += int(found)
             starts = list(range(0, entry["n_frames"] - self.win + 1, self.stride))
             self._starts.append(starts)
             deployment_starts = starts[: max(self.windows_per_shot, 1)]
@@ -1231,13 +1278,21 @@ class FrameCodeDataset(torch.utils.data.Dataset):
                 else []
             )
             self._live_starts.append(sorted(set(live_starts) | set(deployment_starts)))
+            events = (
+                actuator_events(entry["actuators_raw"], n_live, event_nbi_mw, event_ech_mw)
+                if use_events and entry.get("actuators_raw") is not None
+                else []
+            )
+            self.events.append(torch.tensor(events, dtype=torch.long))
+            k0 = int(getattr(cfg, "k0_seed", 0))
+            # Starts whose predicted frames hold a step with frames left to respond
+            # (10, or what a short window allows).
+            margin = max(1, min(10, self.win - k0 - 1))
+            self._event_starts.append(
+                [s for s in starts if any(s + k0 < e <= s + self.win - margin for e in events)]
+            )
             if not self.windows_per_shot:
                 self.index.extend((shot_index, start) for start in starts)
-        if text_embeds is not None:
-            print(
-                f"text embeddings: {n_covered}/{len(self.shots)} shots covered, "
-                f"misses get zeros"
-            )
         if self.windows_per_shot:
             self.set_epoch(0)
 
@@ -1255,6 +1310,7 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         }
         if _ACT_GLOBAL_DIR:
             entry["actuators"] = _global_actuators(path.stem, entry["actuators"])
+            entry["actuators_raw"] = _side_cache_raw_actuators(path.stem)
         return entry
 
     def set_epoch(self, epoch: int) -> None:
@@ -1267,6 +1323,14 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         if not self.windows_per_shot:
             return
         rng = random.Random(_WINDOW_SEED_BASE + int(epoch))
+        self._draw_windows(rng)
+        if self.event_windows_per_shot:
+            for shot_index, starts in enumerate(self._event_starts):
+                n_drawn = min(self.event_windows_per_shot, len(starts))
+                self.index.extend((shot_index, s) for s in sorted(rng.sample(starts, n_drawn)))
+
+    def _draw_windows(self, rng) -> None:
+        """The ``windows_per_shot`` windows of every shot for one epoch."""
         if self.window_sample is WindowSample.FIRST:
             n, pool = self.windows_per_shot, self.windows_per_shot + self.window_jitter
             self.index = [
@@ -1294,7 +1358,7 @@ class FrameCodeDataset(torch.utils.data.Dataset):
         return len(self.index)
 
     def __getitem__(self, i):
-        """Return ``(codes, actuators, presence, live, text)`` of window ``i``."""
+        """Return ``(codes, actuators, presence, live)`` of window ``i``."""
         shot_index, start = self.index[i]
         entry = self.shots[shot_index]
         stop = start + self.win
@@ -1303,8 +1367,14 @@ class FrameCodeDataset(torch.utils.data.Dataset):
             for m in self.cfg.modalities
         }
         actuators = entry["actuators"][start:stop].float()
-        live = (torch.arange(start, stop) < self.n_live[shot_index]).float()
-        return codes, actuators, self.presence[shot_index], live, self.text[shot_index]
+        frames = torch.arange(start, stop)
+        live = (frames < self.n_live[shot_index]).float()
+        events = self.events[shot_index] if self.events else None
+        if self.event_weight != 1.0 and events is not None and events.numel():
+            after = frames[:, None] - events[None, :]
+            responding = ((after >= 0) & (after < self.event_frames)).any(1)
+            live = torch.where(responding, live * self.event_weight, live)
+        return codes, actuators, self.presence[shot_index], live
 
 
 def _collate_frames(batch):
@@ -1312,8 +1382,7 @@ def _collate_frames(batch):
     actuators = torch.stack([b[1] for b in batch], 0)
     present = torch.stack([b[2] for b in batch], 0)
     live = torch.stack([b[3] for b in batch], 0)
-    text = torch.stack([b[4] for b in batch], 0)  # (B, text_embed_dim) or (B, 0)
-    return codes, actuators, present, live, text
+    return codes, actuators, present, live
 
 
 def smoke(
@@ -1641,12 +1710,6 @@ class TrainConfig:
         "chained job, or a resume restarts from step 0",
         cli_default=200,
     )
-    snapshot_every: int = _option(
-        0,
-        "also keep a non-rolling dynamics_step{N}.pt every N steps (0 = off), for "
-        "skill-vs-step curves. It fires on checkpoint steps only, so use a multiple "
-        "of --ckpt_every",
-    )
     patience: int = _option(
         0, "stop after this many evaluations without improvement; 0 = never"
     )
@@ -1678,14 +1741,11 @@ class TrainConfig:
     )
     # Objective.
     ss_final_frac: Optional[float] = _option(
-        None,
-        "final scheduled-sampling fraction (default 0.75); 0 disables it",
-        cli_type=float,
+        None, "final scheduled-sampling fraction; 0 disables it", cli_type=float
     )
     ss_ramp_steps: Optional[int] = _option(
         None,
-        "steps of the scheduled-sampling ramp (default 2000); a ramp longer than the "
-        "run reaches only part of --ss_final_frac",
+        "steps of the scheduled-sampling ramp; set it to the run length",
         cli_type=int,
     )
     gen_mask_p: Optional[float] = _option(
@@ -1704,36 +1764,6 @@ class TrainConfig:
     label_smoothing: float = _option(
         0.0, "cross-entropy label smoothing, training only"
     )
-    ctf_frac: float = _option(
-        0.0,
-        "fraction of batches trained with complete-context (CTF) masking: a clean "
-        "prefix and a heavily masked suffix, the rollout condition",
-    )
-    ctf_min_target_ratio: float = _option(
-        0.8, "minimum mask ratio at and after the CTF boundary"
-    )
-    sf_frames: int = _option(
-        0,
-        "self-forcing: frames rolled out from the model's own output before the "
-        "supervised frames (0 = off)",
-    )
-    sf_decode_steps: int = _option(
-        4, "MaskGIT steps of the self-forcing rollout"
-    )
-    sf_prob: float = _option(
-        1.0, "probability that a batch uses the self-forcing context"
-    )
-    modality_loss_weight: str = _option(
-        "uniform",
-        "per-modality loss weight: 'uniform', 'tokens' (n_tok) or 'sqrt_tokens'; "
-        "multiplies the other loss weights",
-        choices=("uniform", "tokens", "sqrt_tokens"),
-    )
-    actuator_dropout_p: float = _option(
-        0.0,
-        "per-sample actuator dropout; trains the unconditional branch that "
-        "classifier-free guidance needs at eval",
-    )
     block_forcing: bool = _option(
         False,
         "1 = block teacher forcing: every frame is predicted from a fully visible "
@@ -1743,6 +1773,24 @@ class TrainConfig:
         cli_type=int,
         from_cli=bool,
     )
+    act_drop_p: float = _option(
+        0.0,
+        "probability of training a sample without any actuator term, the "
+        "unconditional branch classifier-free guidance needs (eval --guidance)",
+    )
+    forecast_depth: int = _option(
+        1,
+        "with --block_forcing 1: levels of the model's own forecasts in the history "
+        "(pushforward multi-step training); each extra level costs one no-grad "
+        "two-stream pass",
+    )
+    hist_gap_p: float = _option(
+        0.0,
+        "with --block_forcing 1: probability per sample of hiding a stretch of up to "
+        "--hist_gap_max history frames, so forecasts across it must follow the "
+        "actuators rather than persistence",
+    )
+    hist_gap_max: int = _option(10, "longest hidden history stretch, in frames")
     seed_drop_p: float = _option(
         0.0,
         "augmentation: probability of hiding a whole modality from the input in the "
@@ -1758,6 +1806,24 @@ class TrainConfig:
         0.0,
         "augmentation: std of Gaussian noise added to the normalised actuators, on "
         "channels that vary within the window; training only",
+    )
+    rollout_horizon: int = _option(
+        0,
+        "frames of an autoregressive rollout trained end to end after the masked "
+        "loss: each frame predicted in one pass from the real seed and the frames "
+        "already generated, fed back as straight-through Gumbel samples, scored "
+        "against the truth. 0 = off. Also adds val rollout_ce",
+    )
+    rollout_weight: float = _option(
+        1.0, "weight of the rollout loss relative to the masked loss"
+    )
+    rollout_start_jitter: int = _option(
+        0,
+        "first rollout frame drawn uniformly in k0..k0+J per micro-batch (J=0: k0, "
+        "where the deployment rollout starts); later starts cost longer prefixes",
+    )
+    rollout_temperature: float = _option(
+        1.0, "temperature of the rollout loss's samples and their softmax"
     )
     mask_absent: bool = _option(
         False,
@@ -1834,37 +1900,56 @@ class TrainConfig:
         choices=["", "random", "first"],
     )
     val_windows: int = _option(32, "fixed validation windows")
+    snapshot_every: int = _option(
+        0,
+        "also keep dynamics_step<N>.pt every N optimizer steps (a multiple of "
+        "--ckpt_every), for rollout scoring; 0 = off",
+    )
+    event_windows_per_shot: int = _option(
+        0,
+        "extra training windows per shot and epoch whose predicted frames hold an "
+        "NBI/ECH power step (actuator-response oversampling); 0 = off",
+    )
+    event_weight: float = _option(
+        1.0, "training loss weight of the --event_frames frames after an NBI/ECH step"
+    )
+    event_frames: int = _option(15, "frames after an actuator step weighted by --event_weight")
+    event_nbi_mw: float = _option(1.0, "NBI power step (MW) that counts as an actuator event")
+    event_ech_mw: float = _option(0.5, "ECH power step (MW) that counts as an actuator event")
     val_windows_per_shot: int = _option(
         0, "windows per validation shot; 0 = all starts. Redefines val CE"
     )
     best_metric: str = _option(
         "masked",
-        "metric ranking dynamics_best.pt: 'masked' (cosine-prior infilling) or "
-        "'gen' (whole frame unknown, real history: the rollout condition)",
-        choices=("masked", "gen"),
+        "metric ranking dynamics_best.pt: 'masked' (cosine-prior infilling), "
+        "'gen' (whole frame unknown, real history), 'skill' (rollout profile skill "
+        "of --skill_every) or 'task' (rollout skill of every recorded modality of "
+        "--skill_every, over the live frames)",
+        choices=("masked", "gen", "skill", "task"),
     )
-    # Text conditioning.
-    text_embed_path: Optional[str] = _option(
-        None,
-        "per-shot text-embedding H5 (see ignite/text_embed.py); give it together "
-        "with --text_embed_dim or not at all",
-        cli_type=str,
-    )
-    text_embed_dim: int = _option(
+    val_rollout_horizon: int = _option(
         0,
-        "Matryoshka prefix width read from --text_embed_path (0 = off); give it "
-        "together with --text_embed_path",
+        "frames of the validation rollout cross-entropy (rollout_ce: each frame "
+        "predicted from the real seed and the model's own samples); 0 = "
+        "--rollout_horizon, off when that is 0",
     )
-    text_dropout_p: float = _option(
+    skill_every: int = _option(
+        0,
+        "every N optimizer steps (a multiple of --ckpt_every), roll out the last "
+        "--skill_shots validation shots as the scorecard's val stage does (real "
+        "actuators, T=1, seed 0, fp32, whole window) and log the median profile "
+        "skill against persistence; 0 = off",
+    )
+    skill_shots: int = _option(32, "validation shots of --skill_every (the last N)")
+    skill_gumbel: float = _option(
         0.0,
-        "per-sample text dropout (trains a null embedding for missing text and "
-        "guidance); no effect without text conditioning",
+        "reveal-order Gumbel noise of the --skill_every rollouts (the demo rollouts "
+        "use 3); 0 = the scorecard's val-stage protocol",
     )
-    text_key: str = _option(
-        "input",
-        "'input' = strictly pre-experiment text (causally clean); 'total' = the "
-        "whole bundle including post-shot documentation, for probes only",
-        choices=("input", "total"),
+    skill_codec_tmpl: str = _option(
+        "",
+        "codec checkpoint template ({m} = modality) of the profile decoders of "
+        "--skill_every; '' = the cache's frozen manifest",
     )
 
     @classmethod
@@ -1885,6 +1970,8 @@ class BestMetric(enum.StrEnum):
 
     MASKED = "masked"
     GEN = "gen"
+    SKILL = "skill"
+    TASK = "task"
 
 
 class ValScore(NamedTuple):
@@ -1894,10 +1981,23 @@ class ValScore(NamedTuple):
     per_modality: Dict[str, float]
 
 
+class SkillScore(NamedTuple):
+    """Rollout profile skill of the skill shots (``--skill_every``)."""
+
+    median: float
+    median_mean: float  # on the expected frames; NaN without them
+    per_shot: Dict[str, float]
+    # Task skill: mean over modalities of the median over shots, its per-modality
+    # medians and each shot's per-modality scores.
+    task: float
+    task_per_modality: Dict[str, float]
+    task_shots: Dict[str, Dict[str, float]]
+
+
 class _PhaseTimer:
     """Wall time per training phase, accumulated on profiled steps only."""
 
-    PHASES = ("data", "h2d", "fb", "sync", "gn", "opt")
+    PHASES = ("data", "h2d", "fb", "rollout", "sync", "gn", "opt")
 
     def __init__(self, device):
         self.cuda = device.type == "cuda"
@@ -1926,7 +2026,9 @@ class _PhaseTimer:
         s = self.seconds
         return (
             f" t={self.total():.1f}s(data {s['data']:.1f} h2d {s['h2d']:.2f} "
-            f"fb {s['fb']:.1f} sync {s['sync']:.2f} gn {s['gn']:.2f} "
+            f"fb {s['fb']:.1f}"
+            + (f" rollout {s['rollout']:.1f}" if s["rollout"] else "")
+            + f" sync {s['sync']:.2f} gn {s['gn']:.2f} "
             f"opt {s['opt']:.2f})"
         )
 
@@ -1986,28 +2088,6 @@ def _build_model_config(cache_dir, config: TrainConfig, is_main, log) -> Dynamic
             )
     if config.lag_embed_k is not None:
         model_cfg.lag_embed_k = int(config.lag_embed_k)
-    model_cfg.ctf_frac = float(config.ctf_frac)
-    model_cfg.ctf_min_target_ratio = float(config.ctf_min_target_ratio)
-    model_cfg.sf_frames = int(config.sf_frames)
-    model_cfg.sf_decode_steps = int(config.sf_decode_steps)
-    model_cfg.sf_prob = float(config.sf_prob)
-    model_cfg.modality_loss_weight = str(config.modality_loss_weight)
-    model_cfg.actuator_dropout_p = float(config.actuator_dropout_p)
-    if config.block_forcing and (model_cfg.ctf_frac > 0 or model_cfg.sf_frames > 0):
-        raise SystemExit(
-            "--block_forcing already trains the rollout condition; it does not "
-            "combine with --ctf_frac or --sf_frames"
-        )
-    # Both or neither, so a half-given pair fails instead of training without text.
-    if (config.text_embed_path is not None) != (config.text_embed_dim > 0):
-        raise SystemExit(
-            "--text_embed_path and --text_embed_dim must be given TOGETHER or not at "
-            f"all (got text_embed_path={config.text_embed_path!r}, "
-            f"text_embed_dim={config.text_embed_dim})"
-        )
-    if config.text_embed_dim > 0:
-        model_cfg.text_embed_dim = int(config.text_embed_dim)
-        model_cfg.text_dropout_p = float(config.text_dropout_p)
     return model_cfg
 
 
@@ -2101,14 +2181,15 @@ class Trainer:
         self.out_dir = out_dir
         self.config = config
         self.log = log
-        self.ddp = tc._DDPState()
+        self.ddp = tc._DDPState(
+            timeout_minutes=_SKILL_TIMEOUT_MIN if config.skill_every else None
+        )
         self.device = self.ddp.device
         self.is_main = self.ddp.is_main
 
     def fit(self) -> int:
         """Run (or resume) training; return the last optimizer step."""
         self._setup_model_config()
-        self._setup_text()
         self._setup_split()
         self._setup_loss_masks()
         self._setup_train_data()
@@ -2124,30 +2205,6 @@ class Trainer:
     def _setup_model_config(self):
         self.model_cfg = _build_model_config(
             self.cache_dir, self.config, self.is_main, self.log
-        )
-
-    def _setup_text(self):
-        config = self.config
-        self.use_text = self.model_cfg.text_embed_dim > 0
-        self.text_embeds = None
-        if not self.use_text:
-            return
-        if self.is_main:
-            self.log(
-                f"[dynamics] text embedding conditioning: path={config.text_embed_path} "
-                f"dim={self.model_cfg.text_embed_dim} "
-                f"dropout_p={self.model_cfg.text_dropout_p} key={config.text_key}"
-            )
-            if config.text_key == "total":
-                self.log(
-                    "[dynamics] WARNING: text_key='total' includes post-shot "
-                    "documentation (session summaries, shot results) written after "
-                    "the shot ran. The model can see the outcome before predicting "
-                    "it: probes only. Use 'input' for any run reported as "
-                    "forecasting skill."
-                )
-        self.text_embeds = load_text_embeddings(
-            config.text_embed_path, self.model_cfg.text_embed_dim, key=config.text_key
         )
 
     def _setup_split(self):
@@ -2221,7 +2278,6 @@ class Trainer:
             presence=self.presence,
             live_end=self.live_end,
             t0_start=self.t0_start,
-            text_embeds=self.text_embeds,
             **window_options,
         )
 
@@ -2233,7 +2289,23 @@ class Trainer:
             windows_per_shot=config.windows_per_shot,
             window_sample=config.window_sample,
             window_jitter=config.window_jitter,
+            event_windows_per_shot=config.event_windows_per_shot,
+            event_weight=config.event_weight,
+            event_frames=config.event_frames,
+            event_nbi_mw=config.event_nbi_mw,
+            event_ech_mw=config.event_ech_mw,
         )
+        if self.is_main and (config.event_windows_per_shot or config.event_weight != 1.0):
+            dataset = self.train_ds
+            n_events = sum(len(e) for e in dataset.events)
+            n_shots = sum(1 for e in dataset.events if len(e))
+            self.log(
+                f"[dynamics] ACTUATOR EVENTS: {n_events} NBI/ECH steps in {n_shots}/"
+                f"{len(dataset.shot_ids)} train shots (>= {config.event_nbi_mw} MW NBI, "
+                f">= {config.event_ech_mw} MW ECH); +{config.event_windows_per_shot} "
+                f"event windows per shot, weight {config.event_weight} on "
+                f"{config.event_frames} frames after a step (train only; val unchanged)"
+            )
         if self.use_live and self.is_main:
             dataset = self.train_ds
             n_measured = sum(1 for shot in dataset.shot_ids if shot in self.live_end)
@@ -2321,12 +2393,9 @@ class Trainer:
             f"ss_ramp_steps={model_cfg.ss_ramp_steps} "
             f"dropout={model_cfg.dropout} mask_absent={int(self.use_presence)} "
             f"block_forcing={int(config.block_forcing)} "
+            f"forecast_depth={config.forecast_depth} act_drop_p={config.act_drop_p} "
+            f"hist_gap_p={config.hist_gap_p} hist_gap_max={config.hist_gap_max} "
             f"(val is ALWAYS scored at gen_mask_p=0 so arms stay comparable)"
-        )
-        log(
-            f"[dynamics] rollout-quality flags: ctf={model_cfg.ctf_frac} "
-            f"loss_w={model_cfg.modality_loss_weight} "
-            f"act_drop={model_cfg.actuator_dropout_p} sf_frames={model_cfg.sf_frames}"
         )
         jitter_note = (
             ""
@@ -2339,6 +2408,14 @@ class Trainer:
             f"actuator_noise={config.actuator_noise} "
             f"window_jitter={config.window_jitter}{jitter_note}"
         )
+        if config.rollout_horizon:
+            log(
+                f"[dynamics] ROLLOUT LOSS ON: horizon={config.rollout_horizon} "
+                f"weight={config.rollout_weight} start=k0..k0+"
+                f"{config.rollout_start_jitter} temperature="
+                f"{config.rollout_temperature} (straight-through Gumbel, gradients "
+                f"through the chain); val adds rollout_ce from k0"
+            )
         world_size, accum = self.ddp.world_size, config.accum_steps
         log(
             f"[dynamics] batch: micro={config.batch_size} x ranks={world_size} "
@@ -2460,6 +2537,18 @@ class Trainer:
                 f"{restored_lr:.3e}, requested base lr={lr:.3e} -> {current_lr:.3e} "
                 f"at step {start_step}"
             )
+        # The requested weight decay wins too, on the decayed groups only (norms and
+        # biases stay at 0): a fine-tune that raises it must not inherit the old value.
+        restored_wd = [float(g.get("weight_decay", 0.0)) for g in self.optimizer.param_groups]
+        for group in self.optimizer.param_groups:
+            if float(group.get("weight_decay", 0.0)) > 0.0:
+                group["weight_decay"] = float(self.config.weight_decay)
+        current_wd = [float(g.get("weight_decay", 0.0)) for g in self.optimizer.param_groups]
+        if self.is_main and checkpoint is not None and restored_wd != current_wd:
+            self.log(
+                f"[dynamics] WEIGHT DECAY OVERRIDE on resume: {restored_wd} -> "
+                f"{current_wd} at step {start_step}"
+            )
 
     def _setup_history(self):
         Path(self.out_dir).mkdir(parents=True, exist_ok=True)
@@ -2515,6 +2604,54 @@ class Trainer:
                 f"[dynamics] loss history -> {self.history_path} (+ loss_curve.png "
                 f"each ckpt); val: {n_fixed} fixed windows"
             )
+        self.val_rollout_horizon = int(
+            config.val_rollout_horizon or config.rollout_horizon
+        )
+        self._setup_skill()
+
+    def _setup_skill(self):
+        """Shots and decoders of ``--skill_every``."""
+        config = self.config
+        if config.best_metric in (BestMetric.SKILL, BestMetric.TASK) and not (
+            config.skill_every
+        ):
+            raise ValueError(f"--best_metric {config.best_metric} needs --skill_every")
+        self.skill_shots, self.my_skill_shots, self.skill_codecs = [], [], {}
+        if not config.skill_every:
+            return
+        if config.skill_every % config.ckpt_every:
+            raise ValueError(
+                f"--skill_every {config.skill_every} is not a multiple of "
+                f"--ckpt_every {config.ckpt_every}"
+            )
+        from . import eval_dynamics as ev
+
+        # The scorecard's held-out rollout: the last N validation shots, in split order.
+        self.skill_shots = list(self.val_shots)[-int(config.skill_shots) :]
+        self.my_skill_shots = self.skill_shots[self.ddp.rank :: self.ddp.world_size]
+        if self.my_skill_shots:
+            names = [m.name for m in self.model_cfg.modalities]
+            codecs = load_frozen_codecs(names, tmpl=config.skill_codec_tmpl or None)
+            missing = set(names) - set(codecs)
+            if missing:
+                raise FileNotFoundError(
+                    f"--skill_every: no codec for {sorted(missing)} "
+                    f"(--skill_codec_tmpl {config.skill_codec_tmpl!r})"
+                )
+            for codec, _cfg, _family in codecs.values():
+                codec.to(self.device).eval()
+            self.skill_codecs = codecs
+            self.skill_convert = ev.profile_converters(
+                codecs,
+                [name for name, (_c, _cfg, family) in codecs.items() if family == "slowts"],
+            )
+        if self.is_main:
+            self.log(
+                f"[dynamics] rollout skill every {config.skill_every} steps on the "
+                f"last {len(self.skill_shots)} val shots (Gumbel "
+                f"{float(config.skill_gumbel):g}), "
+                f"{len(self.my_skill_shots)} per rank on rank 0"
+            )
 
     def _restore_best(self):
         self.best_metric = BestMetric(str(self.config.best_metric).lower())
@@ -2537,8 +2674,8 @@ class Trainer:
                 self.best_step = int(best.get("step", -1))
                 if self.is_main:
                     self.log(
-                        f"[dynamics] resumed BEST {self.best_metric}_ce="
-                        f"{self.best_loss:.4f} @ step {self.best_step}"
+                        f"[dynamics] resumed BEST {self._describe_score(self.best_loss)}"
+                        f" @ step {self.best_step}"
                     )
         except Exception as e:
             self.log(
@@ -2554,7 +2691,9 @@ class Trainer:
         # accum_steps.
         self.micro_step = 0
         self.accumulated_loss = 0.0
+        self.accumulated_rollout = 0.0
         self.equal_weight_losses = []
+        self.val_rollout = None
         # Profiling only on logged steps, which already synchronise for the norm.
         self.timer = _PhaseTimer(self.device)
         self.model.train()
@@ -2570,7 +2709,7 @@ class Trainer:
                     break
         if self.is_main:
             best = (
-                f" | best val {self.best_metric}_ce {self.best_loss:.4f} @ step "
+                f" | best val {self._describe_score(self.best_loss)} @ step "
                 f"{self.best_step} -> dynamics_best.pt"
                 if math.isfinite(self.best_loss)
                 else ""
@@ -2581,7 +2720,7 @@ class Trainer:
     def _is_logged_step(self) -> bool:
         return (self.step + 1) % _LOG_EVERY == 0
 
-    def _train_on_batch(self, codes, actuators, present, live, text) -> bool:
+    def _train_on_batch(self, codes, actuators, present, live) -> bool:
         """Accumulate one micro-batch; step when the group is full. True = stop."""
         config, timer = self.config, self.timer
         profile = self._is_logged_step() or self.step < _PROFILED_FIRST_STEPS
@@ -2590,8 +2729,8 @@ class Trainer:
         codes = {name: c.to(self.device) for name, c in codes.items()}
         actuators = self._noisy(actuators.to(self.device))
         present = present.to(self.device) if self.use_presence else None
-        live = live.to(self.device) if self.use_live else None
-        text = text.to(self.device) if self.use_text else None
+        weighted = self.use_live or self.config.event_weight != 1.0
+        live = live.to(self.device) if weighted else None
         if profile:
             timer.lap("h2d", sync=True)
         if self.micro_step == 0:
@@ -2609,12 +2748,15 @@ class Trainer:
                 label_smoothing=config.label_smoothing,
                 present=present,
                 live=live,
-                text=text,
                 mod_weights=self.mod_weights,
                 per_modality=per_modality,
                 block_forcing=config.block_forcing,
                 seed_drop_p=config.seed_drop_p,
                 seed_column_drop_p=config.seed_column_drop_p,
+                act_drop_p=config.act_drop_p,
+                forecast_depth=config.forecast_depth,
+                hist_gap_p=config.hist_gap_p,
+                hist_gap_max=config.hist_gap_max,
             )
         if per_modality:
             self.equal_weight_losses.append(
@@ -2624,6 +2766,23 @@ class Trainer:
         self.accumulated_loss += float(loss.item())
         if profile:
             timer.lap("fb")
+        if config.rollout_horizon:
+            # A separate backward, so the two graphs never coexist in memory.
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                rollout = self.model.rollout_loss(
+                    codes,
+                    actuators,
+                    config.rollout_horizon,
+                    start=self._rollout_start(codes),
+                    temperature=config.rollout_temperature,
+                    present=present,
+                    live=live,
+                    mod_weights=self.mod_weights,
+                )
+            (config.rollout_weight * rollout / config.accum_steps).backward()
+            self.accumulated_rollout += float(rollout.item())
+            if profile:
+                timer.lap("rollout")
         self.micro_step += 1
         if self.micro_step < config.accum_steps:
             timer.mark()
@@ -2632,6 +2791,16 @@ class Trainer:
         grad_norm = self._optimizer_step(profile)
         self.step += 1
         return self._after_step(grad_norm)
+
+    def _rollout_start(self, codes) -> int:
+        """First generated frame of this micro-batch's rollout loss."""
+        k0 = self.model_cfg.k0_seed
+        n_frames = codes[self.model_cfg.modalities[0].name].shape[1]
+        config = self.config
+        latest = min(
+            k0 + config.rollout_start_jitter, n_frames - config.rollout_horizon
+        )
+        return random.randint(k0, max(k0, latest))
 
     def _noisy(self, actuators: torch.Tensor) -> torch.Tensor:
         """Add the actuator-noise augmentation to channels varying in the window.
@@ -2666,46 +2835,13 @@ class Trainer:
         return grad_norm
 
     def _all_reduce_gradients(self):
-        """Average the gradients across ranks, in flat buckets of up to 128 MiB.
-
-        One all-reduce per bucket (grouped by dtype) instead of one per parameter:
-        hundreds of serialised, latency-bound collectives per step dominated the
-        step time at 64 ranks over TCP sockets. The bucket cap bounds the transient
-        flat buffer, since production runs near the VRAM ceiling; each buffer is
-        freed before the next is flattened. The sum is divided by the world size.
-        """
         world_size = self.ddp.world_size
         if world_size <= 1:
             return
-        buckets: Dict[torch.dtype, list] = {}
-        sizes: Dict[torch.dtype, int] = {}
-
-        def flush(dtype):
-            grads = buckets.pop(dtype, [])
-            sizes.pop(dtype, None)
-            if not grads:
-                return
-            flat = torch._utils._flatten_dense_tensors(grads)
-            dist.all_reduce(flat, op=dist.ReduceOp.SUM)
-            flat /= world_size
-            for grad, synced in zip(
-                grads, torch._utils._unflatten_dense_tensors(flat, grads)
-            ):
-                grad.copy_(synced)
-
         for parameter in self.model.parameters():
-            if parameter.grad is None:
-                continue
-            dtype = parameter.grad.dtype
-            buckets.setdefault(dtype, []).append(parameter.grad)
-            sizes[dtype] = (
-                sizes.get(dtype, 0)
-                + parameter.grad.numel() * parameter.grad.element_size()
-            )
-            if sizes[dtype] >= _GRAD_BUCKET_BYTES:
-                flush(dtype)
-        for dtype in list(buckets):
-            flush(dtype)
+            if parameter.grad is not None:
+                dist.all_reduce(parameter.grad, op=dist.ReduceOp.SUM)
+                parameter.grad /= world_size
 
     @torch.no_grad()
     def _gradient_norm(self) -> float:
@@ -2718,14 +2854,24 @@ class Trainer:
     def _after_step(self, grad_norm) -> bool:
         """Validate, log and checkpoint after an optimizer step. True = stop."""
         config, step = self.config, self.step
-        masked = generation = None
+        masked = generation = skill = None
         if step % config.ckpt_every == 0:
             # Validation runs on every rank to keep them in lockstep.
             masked = self._validate()
             generation = self._validate(
                 mask_ratio=1.0, history_frames=self.model_cfg.k0_seed
             )
+            if self.val_rollout_horizon:
+                self.val_rollout = self._validate_rollout()
+            if config.skill_every and step % config.skill_every == 0:
+                skill = self._validate_skill()
         train_loss = self.accumulated_loss / max(1, config.accum_steps)
+        self.train_rollout = (
+            self.accumulated_rollout / max(1, config.accum_steps)
+            if config.rollout_horizon
+            else None
+        )
+        self.accumulated_rollout = 0.0
         equal_weight = (
             sum(self.equal_weight_losses) / len(self.equal_weight_losses)
             if self.equal_weight_losses
@@ -2736,11 +2882,11 @@ class Trainer:
         if self.is_main and step % _LOG_EVERY == 0:
             self._log_train_step(train_loss, equal_weight, grad_norm)
         if self.is_main and masked is not None:
-            self._log_validation(masked, generation)
+            self._log_validation(masked, generation, skill)
         self.timer.reset()
         stop = False
         if self.is_main and step % config.ckpt_every == 0:
-            stop = self._save_checkpoints(masked, generation)
+            stop = self._save_checkpoints(masked, generation, skill)
         # Re-arm after validation and checkpointing, so they are not charged to
         # the next step's data time.
         self.timer.mark()
@@ -2771,7 +2917,7 @@ class Trainer:
                 cache_enabled=False,
             ),
         ):
-            for codes, actuators, present, live, text in self.val_batches:
+            for codes, actuators, present, live in self.val_batches:
                 per_modality: Dict[str, float] = {}
                 total += float(
                     self.model.training_loss(
@@ -2781,7 +2927,6 @@ class Trainer:
                         ss_frac=0.0,
                         present=present.to(self.device) if self.use_presence else None,
                         live=live.to(self.device) if self.use_live else None,
-                        text=text.to(self.device) if self.use_text else None,
                         mod_weights=None,
                         per_modality=per_modality,
                         gen_mask_p=0.0,
@@ -2797,6 +2942,139 @@ class Trainer:
             {name: sums[name] / counts[name] for name in sorted(sums)},
         )
 
+    def _validate_rollout(self) -> ValScore:
+        """Equal-weight rollout cross-entropy from ``k0`` over the fixed windows.
+
+        Same windows and fixed noise at every evaluation; unlike gen_ce, every
+        frame after the first is conditioned on the model's own samples.
+        """
+        if not self.val_batches:
+            return ValScore(float("nan"), {})
+        self.model.eval()
+        generator = torch.Generator(device=self.device)
+        generator.manual_seed(_VALIDATION_SEED)
+        total, sums = 0.0, {}
+        with (
+            torch.no_grad(),
+            torch.autocast(
+                device_type="cuda",
+                dtype=torch.bfloat16,
+                enabled=self.device.type == "cuda",
+                cache_enabled=False,
+            ),
+        ):
+            for codes, actuators, present, live in self.val_batches:
+                per_modality: Dict[str, float] = {}
+                total += float(
+                    self.model.rollout_loss(
+                        {name: c.to(self.device) for name, c in codes.items()},
+                        actuators.to(self.device),
+                        self.val_rollout_horizon,
+                        generator=generator,
+                        temperature=self.config.rollout_temperature,
+                        present=present.to(self.device) if self.use_presence else None,
+                        live=live.to(self.device) if self.use_live else None,
+                        per_modality=per_modality,
+                    )
+                )
+                for name, value in per_modality.items():
+                    sums.setdefault(name, []).append(value)
+        self.model.train()
+        return ValScore(
+            total / len(self.val_batches),
+            {name: sum(v) / len(v) for name, v in sorted(sums.items())},
+        )
+
+    def _validate_skill(self) -> SkillScore:
+        """Profile and task skill of free-running rollouts of the skill shots.
+
+        The protocol of the scorecard's val stage (``eval_dynamics.rollout_shot``:
+        whole window from ``k0``, real actuators, T=1, seed 0, fp32), plus the
+        reveal noise of ``--skill_gumbel``. The profile skill is
+        ``eval_dynamics.profile_skill``, the scorecard's ``skill`` column when the
+        noise is off. The task skill is ``eval_dynamics.task_skill`` over the live
+        frames of every recorded modality. Each rank rolls out its share of the
+        shots; every rank gets the merged result.
+        """
+        from . import eval_dynamics as ev
+
+        self.model.eval()
+        results, task = {}, {}
+        gumbel = float(self.config.skill_gumbel)
+        for shot in self.my_skill_shots:
+            cache = ev.load_shot_cache(self.cache_dir, shot)
+            generator = torch.Generator(device=self.device).manual_seed(0)
+            rollout = ev.rollout_shot(
+                self.model,
+                self.model_cfg,
+                cache,
+                int(self.model_cfg.k0_seed),
+                1.0,
+                generator,
+                self.device,
+                shot=shot,
+                decode={"gumbel": gumbel} if gumbel > 0 else None,
+            )
+            t_end = (self.live_end or {}).get(str(shot))
+            n_live = _n_live_frames(
+                rollout.n_frames, t_end, self.t0_start, _FRAME_S
+            )
+            task[shot] = ev.task_skill(
+                rollout.gt_codes,
+                rollout.pred_codes,
+                rollout.k0,
+                min(rollout.n_frames, n_live),
+                self.skill_codecs,
+                self.skill_convert,
+                self.device,
+            )
+            score = {
+                kind: ev.profile_skill(
+                    rollout.gt_codes,
+                    predicted,
+                    rollout.k0,
+                    rollout.n_frames,
+                    {n: self.skill_codecs[n] for n in ev.PROFILE_SIGNALS},
+                    self.skill_convert,
+                    self.device,
+                )
+                for kind, predicted in (
+                    ("sampled", rollout.pred_codes),
+                    ("mean", rollout.pred_mean),
+                )
+                if predicted is not None
+            }
+            results[shot] = (score["sampled"], score.get("mean", float("nan")))
+        self.model.train()
+        if self.ddp.distributed:
+            gathered = [None] * self.ddp.world_size
+            dist.all_gather_object(gathered, (results, task))
+            results = {shot: v for part, _ in gathered for shot, v in part.items()}
+            task = {shot: v for _, part in gathered for shot, v in part.items()}
+
+        def median(index):
+            values = [v[index] for v in results.values() if math.isfinite(v[index])]
+            return float(np.median(values)) if values else float("nan")
+
+        # Median over shots per modality, then the mean over modalities, so every
+        # modality counts once whatever its token count; at least 3 shots each.
+        per_modality = {}
+        for name in sorted({name for scores in task.values() for name in scores}):
+            values = [s[name] for s in task.values() if name in s]
+            if len(values) >= 3:
+                per_modality[name] = float(np.median(values))
+        task_score = (
+            float(np.mean(list(per_modality.values()))) if per_modality else float("nan")
+        )
+        return SkillScore(
+            median(0),
+            median(1),
+            {shot: v[0] for shot, v in sorted(results.items())},
+            task_score,
+            per_modality,
+            dict(sorted(task.items())),
+        )
+
     def _log_train_step(self, train_loss, equal_weight, grad_norm):
         memory = ""
         if self.device.type == "cuda":
@@ -2810,13 +3088,20 @@ class Trainer:
         lr = self.scheduler.get_last_lr()[0]
         self.log(
             f"[dynamics] step {self.step}/{self.config.steps}{norm} "
-            f"loss={train_loss:.4f} ss={self.ss_fraction:.3f} lr={lr:.2e}{memory}"
+            f"loss={train_loss:.4f}"
+            + (
+                f" rollout={self.train_rollout:.4f}"
+                if self.train_rollout is not None
+                else ""
+            )
+            + f" ss={self.ss_fraction:.3f} lr={lr:.2e}{memory}"
             f"{self.timer.summary()}"
         )
         record = {
             "step": self.step,
             "loss": train_loss,
             "loss_eqw": equal_weight,
+            "rollout_loss": self.train_rollout,
             "ss": self.ss_fraction,
             "grad_norm": grad_norm,
             "t_total": round(self.timer.total(), 3),
@@ -2827,12 +3112,36 @@ class Trainer:
         record["lr"] = lr
         _append_jsonl(self.history_path, record)
 
-    def _log_validation(self, masked: ValScore, generation: ValScore):
+    def _log_validation(
+        self, masked: ValScore, generation: ValScore, skill: Optional[SkillScore]
+    ):
         self.log(
             f"[dynamics] step {self.step} VAL masked_ce={masked.loss:.4f} "
             f"gen_ce={generation.loss:.4f} (gap {generation.loss - masked.loss:+.4f}; "
             f"selecting on {self.best_metric}; EQUAL-WEIGHT metric)"
         )
+        if self.val_rollout is not None:
+            self.log(
+                f"[dynamics] step {self.step} VAL "
+                f"rollout_ce={self.val_rollout.loss:.4f} (horizon "
+                f"{self.val_rollout_horizon} from k0, own samples)"
+            )
+        if skill is not None:
+            scored = sum(math.isfinite(v) for v in skill.per_shot.values())
+            self.log(
+                f"[dynamics] step {self.step} VAL skill={skill.median:+.4f} "
+                f"(expected frames {skill.median_mean:+.4f}; median of {scored} "
+                f"shots, rollout from k0 vs persistence)"
+            )
+            self.log(
+                f"[dynamics] step {self.step} VAL task={skill.task:+.4f} (mean over "
+                f"{len(skill.task_per_modality)} modalities of the median over shots; "
+                "live frames, recorded modalities): "
+                + "  ".join(
+                    f"{name} {value:+.3f}"
+                    for name, value in skill.task_per_modality.items()
+                )
+            )
         per_modality = generation.per_modality
         if per_modality:
             worst_first = sorted(per_modality, key=lambda name: -per_modality[name])
@@ -2848,6 +3157,26 @@ class Trainer:
                 "gen_loss": generation.loss,
                 "val_permod": masked.per_modality,
                 "gen_permod": generation.per_modality,
+                **(
+                    {
+                        "rollout_val_loss": self.val_rollout.loss,
+                        "rollout_val_permod": self.val_rollout.per_modality,
+                    }
+                    if self.val_rollout is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "val_skill": skill.median,
+                        "val_skill_mean": skill.median_mean,
+                        "val_skill_shots": skill.per_shot,
+                        "val_task": skill.task,
+                        "val_task_permod": skill.task_per_modality,
+                        "val_task_shots": skill.task_shots,
+                    }
+                    if skill is not None
+                    else {}
+                ),
             },
         )
         _render_loss_curve(self.history_path, Path(self.out_dir) / "loss_curve.png")
@@ -2874,21 +3203,18 @@ class Trainer:
             "cfg_grad_checkpointing": bool(model_cfg.grad_checkpointing),
             "cfg_dropout": float(model_cfg.dropout),
             "cfg_block_forcing": bool(config.block_forcing),
+            "cfg_forecast_depth": int(config.forecast_depth),
+            # > 0: the unconditional branch is trained, so eval may use --guidance.
+            "cfg_act_drop_p": float(config.act_drop_p),
             # Training-only augmentation, kept for the record.
             "cfg_seed_drop_p": float(config.seed_drop_p),
             "cfg_seed_column_drop_p": float(config.seed_column_drop_p),
             "cfg_actuator_noise": float(config.actuator_noise),
             "cfg_window_jitter": int(config.window_jitter),
-            # How the arm was trained: an eval of a bare state dict cannot otherwise
-            # tell a CTF or self-forcing run from the baseline.
-            "cfg_ctf_frac": float(model_cfg.ctf_frac),
-            "cfg_modality_loss_weight": model_cfg.modality_loss_weight,
-            "cfg_actuator_dropout_p": float(model_cfg.actuator_dropout_p),
-            "cfg_sf_frames": int(model_cfg.sf_frames),
-            "cfg_text_embed_dim": int(model_cfg.text_embed_dim),
-            "cfg_text_dropout_p": float(model_cfg.text_dropout_p),
-            "text_embed_path": str(config.text_embed_path or ""),
-            "text_key": config.text_key,
+            "cfg_rollout_horizon": int(config.rollout_horizon),
+            "cfg_rollout_weight": float(config.rollout_weight),
+            "cfg_rollout_start_jitter": int(config.rollout_start_jitter),
+            "cfg_rollout_temperature": float(config.rollout_temperature),
             "cfg_depth": config.depth,
             "cfg_d_model": config.d_model,
             "cfg_n_heads": model_cfg.n_heads,
@@ -2900,17 +3226,36 @@ class Trainer:
             ],
         }
 
-    def _save_checkpoints(self, masked: ValScore, generation: ValScore) -> bool:
+    def _selection_score(self, masked, generation, skill) -> Optional[float]:
+        """The ``--best_metric`` score of this evaluation, lower is better.
+
+        Skill and task are negated; they are None on evaluations without a skill
+        rollout.
+        """
+        if self.best_metric is BestMetric.SKILL:
+            return None if skill is None else -skill.median
+        if self.best_metric is BestMetric.TASK:
+            return None if skill is None else -skill.task
+        return (generation if self.best_metric is BestMetric.GEN else masked).loss
+
+    def _describe_score(self, score: float) -> str:
+        if self.best_metric in (BestMetric.SKILL, BestMetric.TASK):
+            return f"{self.best_metric}={-score:+.4f}"
+        return f"{self.best_metric}_ce={score:.4f}"
+
+    def _save_checkpoints(
+        self, masked: ValScore, generation: ValScore, skill: Optional[SkillScore]
+    ) -> bool:
         """Save the rolling and best checkpoints; True when early stopping fires."""
         payload = self._checkpoint_payload()
         _save_atomically(payload, self.latest_path)
-        snapshot_every = self.config.snapshot_every
-        if snapshot_every and self.step % snapshot_every == 0:
-            _save_atomically(
-                payload, Path(self.out_dir) / f"dynamics_step{self.step:06d}.pt"
-            )
-        selected = (generation if self.best_metric is BestMetric.GEN else masked).loss
-        if not math.isfinite(selected):
+        snapshot_every = int(self.config.snapshot_every)
+        if snapshot_every > 0 and self.step % snapshot_every == 0:
+            # A frozen copy the rolling latest never overwrites, for offline scoring
+            # (scripts/slurm_stellarai/scorecard_watch.sh).
+            _save_atomically(payload, Path(self.out_dir) / f"dynamics_step{self.step}.pt")
+        selected = self._selection_score(masked, generation, skill)
+        if selected is None or not math.isfinite(selected):
             return False
         if selected < self.best_loss - 1e-6:
             self.best_loss, self.best_step = selected, self.step
@@ -2920,6 +3265,11 @@ class Trainer:
                 "val_loss": selected,
                 "masked_ce": masked.loss,
                 "gen_ce": generation.loss,
+                **(
+                    {"skill": skill.median, "task": skill.task}
+                    if skill is not None
+                    else {}
+                ),
                 "best_metric": str(self.best_metric),
             }
             _save_atomically(best, self.best_path)
@@ -2932,7 +3282,7 @@ class Trainer:
                 },
             )
             self.log(
-                f"[dynamics] new BEST {self.best_metric}_ce={selected:.4f} @ step "
+                f"[dynamics] new BEST {self._describe_score(selected)} @ step "
                 f"{self.step} (masked {masked.loss:.4f} / gen {generation.loss:.4f})"
             )
             return False
@@ -2941,7 +3291,8 @@ class Trainer:
         if patience and self.evals_since_best >= patience:
             self.log(
                 f"[dynamics] EARLY STOP: {self.evals_since_best} evals without "
-                f"improvement (best {self.best_loss:.4f} @ step {self.best_step}); "
+                f"improvement (best {self._describe_score(self.best_loss)} @ step "
+                f"{self.best_step}); "
                 f"stopping at step {self.step}"
             )
             return True

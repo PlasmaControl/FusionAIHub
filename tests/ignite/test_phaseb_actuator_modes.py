@@ -132,7 +132,7 @@ def _tiny_setup():
 
 def _roll(cfg, model, cache, mode, seed=0, cache_dir=None):
     gen = torch.Generator().manual_seed(seed)
-    _gt, pred, _k, _f = ed.rollout_shot(
+    pred = ed.rollout_shot(
         model,
         cfg,
         cache,
@@ -142,7 +142,7 @@ def _roll(cfg, model, cache, mode, seed=0, cache_dir=None):
         torch.device("cpu"),
         actuator_mode=mode,
         cache_dir=cache_dir,
-    )
+    ).pred_codes
     return pred
 
 
@@ -199,28 +199,23 @@ def test_every_mode_produces_a_full_trajectory(mode):
 
 # ------------------------------------------------- dataset-wide normalised actuators
 # ---
-def test_rollout_reads_global_actuators_by_shot_and_leaves_the_cache_alone(
-    tmp_path, monkeypatch
-):
+def test_rollout_reads_global_actuators_by_shot(tmp_path, monkeypatch):
     """With IGNITE_ACT_GLOBAL set, the rollout is driven by the side-cache actuators of
-    THAT shot (regression: rollout_shot referenced an undefined ``shot`` and crashed),
-    and the caller's cache keeps its own actuators.
+    THAT shot (regression: rollout_shot referenced an undefined ``shot`` and crashed).
     """
     cfg, model, cache = _tiny_setup()
     n = cfg.max_frames
     glob = torch.randn(n, 70, generator=torch.Generator().manual_seed(7))
     torch.save({"actuators_global": glob.half()}, tmp_path / "123.pt")
-    before = cache["actuators"].clone()
     per_shot = _roll(cfg, model, dict(cache), "real")
-    side = _roll(cfg, model, dict(cache, actuators=glob.half()[:, :70]), "real")
     monkeypatch.setenv("IGNITE_ACT_GLOBAL", str(tmp_path))
     gen = torch.Generator().manual_seed(0)
-    _gt, pred, _k, _f = ed.rollout_shot(
-        model, cfg, cache, cfg.k0_seed, 0.9, gen, torch.device("cpu"), shot="123"
-    )
-    assert torch.equal(cache["actuators"], before)  # the caller's cache is untouched
-    assert _same(pred, side)  # the side cache drives the rollout
-    assert not _same(pred, per_shot)
+    c = dict(cache)
+    pred = ed.rollout_shot(
+        model, cfg, c, cfg.k0_seed, 0.9, gen, torch.device("cpu"), shot="123"
+    ).pred_codes
+    assert torch.equal(c["actuators"], glob.half()[:, :70])  # side cache was used
+    assert not _same(pred, per_shot)  # and it drives the rollout
     with pytest.raises(ValueError, match="shot id"):
         ed.rollout_shot(
             model,
@@ -231,3 +226,56 @@ def test_rollout_reads_global_actuators_by_shot_and_leaves_the_cache_alone(
             torch.Generator().manual_seed(0),
             torch.device("cpu"),
         )
+
+
+def test_seed_from_takes_one_modality_seed_from_another_shot(monkeypatch):
+    """--seed_from: the named modality's seed frames come from the donor shot, every
+    other modality and the scored measurement stay this shot's."""
+    cfg, model, cache = _tiny_setup()
+    _, _, donor = _tiny_setup()
+    g = torch.Generator().manual_seed(5)
+    donor["codes"]["b"] = torch.randint(0, 16, donor["codes"]["b"].shape, generator=g)
+    monkeypatch.setattr(ed, "load_shot_cache", lambda d, s: donor if s == "999" else None)
+    gen = torch.Generator().manual_seed(0)
+    out = ed.rollout_shot(model, cfg, cache, cfg.k0_seed, 0.9, gen, torch.device("cpu"),
+                          cache_dir="x", decode={"seed_from": {"b": "999"}})
+    k0 = cfg.k0_seed
+    assert torch.equal(out.pred_codes["b"][:k0], donor["codes"]["b"][:k0])
+    assert torch.equal(out.pred_codes["a"][:k0], cache["codes"]["a"][:k0])
+    assert torch.equal(out.gt_codes["b"], cache["codes"]["b"])
+    assert not _same(out.pred_codes, _roll(cfg, model, cache, "real"))
+    with pytest.raises(ValueError, match="unknown modality"):
+        ed.rollout_shot(model, cfg, cache, k0, 0.9, gen, torch.device("cpu"),
+                        cache_dir="x", decode={"seed_from": {"zz": "999"}})
+
+
+def test_mask_absent_masks_a_diagnostic_that_did_not_record(monkeypatch):
+    """A modality whose seed frames are all the same codes (not recorded) is [MASK] in
+    the seed and predicted with the others, never as its 'not recorded' codes; a
+    recorded modality's seed is untouched, and mask_absent off is the plain rollout."""
+    cfg, model, cache = _tiny_setup()
+    k0 = cfg.k0_seed
+    absent = torch.randint(0, 16, (cfg.modalities[1].n_tok,), generator=torch.Generator().manual_seed(3))
+    cache["codes"]["b"] = absent.expand(cache["n_frames"], -1).clone()
+
+    def roll(decode):
+        return ed.rollout_shot(model, cfg, cache, k0, 0.9, torch.Generator().manual_seed(0),
+                               torch.device("cpu"), decode=decode)
+
+    off = roll({"mask_absent": False})
+    assert _same(off.pred_codes, _roll(cfg, model, cache, "real"))
+    free = roll({"mask_absent": True})  # masked, predicted freely (default)
+    assert torch.equal(free.pred_codes["a"][:k0], cache["codes"]["a"][:k0])
+    assert not _same(free.pred_codes, off.pred_codes)
+    on = roll({"mask_absent": True, "mask_forbid": True})
+    pred_b = on.pred_codes["b"][k0:]
+    assert not bool((pred_b == absent).any())  # forbidden code at every token position
+    assert torch.equal(on.pred_codes["a"][:k0], cache["codes"]["a"][:k0])
+    assert torch.equal(on.gt_codes["b"], cache["codes"]["b"])
+    # The library default is off; the CLI sets IGNITE_MASK_ABSENT=1.
+    monkeypatch.delenv("IGNITE_MASK_ABSENT", raising=False)
+    assert _same(roll({}).pred_codes, off.pred_codes)
+    monkeypatch.setenv("IGNITE_MASK_ABSENT", "1")
+    assert _same(roll({}).pred_codes, free.pred_codes)
+    monkeypatch.setenv("IGNITE_MASK_FORBID", "1")
+    assert _same(roll({}).pred_codes, on.pred_codes)

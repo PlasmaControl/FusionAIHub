@@ -2,8 +2,8 @@
 # Data, runs and large outputs live outside git. The label tables are published
 # on Hugging Face (scripts/labeler/hf_publish.py pull restores data/events);
 # everything else is on /scratch ($LABELER_ROOT, /scratch/gpfs/EKOLEMEN/...).
-# Rules are anchored with a leading `/` where they mean one place, and none is
-# re-included with `!`.
+# Rules are anchored with a leading `/` where they mean one place. The two `!`
+# re-includes (.pixi/config.toml, eval_runs/paper_facts/) come from dev-peter.
 
 # Python
 __pycache__/
@@ -23,12 +23,17 @@ htmlcov/
 
 # Environments and secrets
 .venv/
-/.pixi/
+/.pixi/*
+!/.pixi/config.toml
 /envs/
 .env
 .envrc
 .pypirc
 **/.streamlit/secrets.toml
+# Marimo
+marimo/_static/
+marimo/_lsp/
+__marimo__/
 *.log
 
 # Local agent and tool state: not part of the source
@@ -49,7 +54,9 @@ CLAUDE.local.md
 /runs/
 /logs/
 /checkpoints/
-/eval_runs/
+# eval_runs (~53 GB of renders/exports): exclude bulk, keep only paper_facts docs
+/eval_runs/*
+!/eval_runs/paper_facts/
 /scratch/
 /profile/
 /.smoke_*/
@@ -63,3 +70,7 @@ CLAUDE.local.md
 *.mp4
 *.npy
 *.npz
+# DIII-D data and data-derived notes stay out of this public repository
+*.pk
+*.pkl
+*.sav

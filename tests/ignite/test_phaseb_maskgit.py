@@ -1,6 +1,7 @@
 """Phase-B MaskGIT: masked-token training loss, valid iterative decode, commit-code
 rollout."""
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -111,6 +112,20 @@ def test_rollout_is_deterministic_with_generator():
     t2 = mg.rollout(seed, act, generator=torch.Generator().manual_seed(7))
     for m in cfg.modalities:
         assert torch.equal(t1[m.name], t2[m.name])
+
+
+def test_rollout_gumbel_argument_changes_the_reveal_order():
+    cfg = _tiny()
+    mg = MaskGITDynamics(cfg).eval()
+    seed = _codes(cfg, B=1, F=cfg.k0_seed)
+    act = torch.randn(1, cfg.k0_seed + cfg.n_predict, cfg.actuator_dim)
+    runs = [
+        mg.rollout(seed, act, generator=torch.Generator().manual_seed(7), gumbel=g)
+        for g in (0.0, 3.0, 3.0)
+    ]
+    for m in cfg.modalities:
+        assert torch.equal(runs[1][m.name], runs[2][m.name])
+    assert any(not torch.equal(runs[0][m.name], runs[1][m.name]) for m in cfg.modalities)
 
 
 def test_ss_fraction_ramps_from_zero_to_final():
@@ -652,7 +667,9 @@ def test_forecast_context_never_sees_the_frame_it_replaces():
 def test_explicit_earlier_and_self_attention_matches_masked_sdpa():
     import torch.nn.functional as F
 
-    from tokamak_foundation_model.ignite.dynamics import _attend_earlier_and_self
+    from tokamak_foundation_model.ignite.dynamics import (
+        _attend_earlier_and_self_explicit,
+    )
 
     torch.manual_seed(0)
     q, hk, hv, sk, sv = (torch.randn(3, 2, 7, 4) for _ in range(5))
@@ -664,7 +681,7 @@ def test_explicit_earlier_and_self_attention_matches_masked_sdpa():
         q, torch.cat([hk, sk], 2), torch.cat([hv, sv], 2), attn_mask=mask
     )
     assert torch.allclose(
-        _attend_earlier_and_self(q, hk, hv, sk, sv), reference, atol=1e-6
+        _attend_earlier_and_self_explicit(q, hk, hv, sk, sv), reference, atol=1e-6
     )
 
 
@@ -721,15 +738,15 @@ def test_dropped_seed_tokens_are_invisible_and_scored(monkeypatch, block_forcing
     encode, encode_bf = backbone.encode, backbone.encode_block_forcing
     masked_logits = tok.masked_logits
 
-    def spy_encode(inputs, actuators):
+    def spy_encode(inputs, actuators, act_null=None):
         if torch.is_grad_enabled():
             seen["inputs"] = [inputs]
-        return encode(inputs, actuators)
+        return encode(inputs, actuators, act_null)
 
-    def spy_encode_bf(history, query, actuators):
+    def spy_encode_bf(history, query, actuators, act_null=None):
         if torch.is_grad_enabled():
             seen["inputs"] = [history, query]
-        return encode_bf(history, query, actuators)
+        return encode_bf(history, query, actuators, act_null)
 
     def spy_logits(hidden, mask):
         if torch.is_grad_enabled():
@@ -753,3 +770,670 @@ def test_dropped_seed_tokens_are_invisible_and_scored(monkeypatch, block_forcing
         for stream in seen["inputs"]:
             assert (stream[m.name][:, :k0] == m.codebook_size).all()
         assert seen["mask"][m.name][:, :k0].all()
+
+
+def test_fused_earlier_and_self_attention_matches_explicit_with_gradients():
+    from tokamak_foundation_model.ignite.dynamics import (
+        _attend_earlier_and_self,
+        _attend_earlier_and_self_explicit,
+    )
+
+    torch.manual_seed(0)
+    inputs = [torch.randn(3, 2, 7, 4) for _ in range(5)]
+    outputs, grads = [], []
+    for attend in (_attend_earlier_and_self, _attend_earlier_and_self_explicit):
+        leaves = [x.clone().requires_grad_() for x in inputs]
+        out = attend(*leaves)
+        (out * torch.linspace(-1, 1, out.numel()).view_as(out)).sum().backward()
+        outputs.append(out.detach())
+        grads.append([leaf.grad for leaf in leaves])
+    assert torch.allclose(outputs[0], outputs[1], atol=1e-6)
+    for fused, explicit in zip(*grads):
+        assert torch.allclose(fused, explicit, atol=1e-6)
+
+
+# ------------------------------------------- classifier-free guidance, multi-step BTF
+
+
+def test_act_null_removes_every_actuator_effect_and_false_changes_nothing():
+    torch.manual_seed(0)
+    for cross in (False, True):
+        cfg = _btf_cfg(act_cross_attn=cross)
+        model = MaskGITDynamics(cfg).eval()
+        if cross:  # the cross-attention output is zero-initialised: make it bite
+            torch.nn.init.normal_(model.backbone.act_cross.o.weight, std=0.1)
+        codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(1))
+        act = torch.randn(2, cfg.max_frames, 6)
+        other = torch.randn(2, cfg.max_frames, 6)
+        null = torch.tensor([True, False])
+        with torch.no_grad():
+            plain = model.backbone.encode(codes, act)
+            off = model.backbone.encode(codes, act, torch.tensor([False, False]))
+            a = model.backbone.encode(codes, act, null)
+            b = model.backbone.encode(codes, other, null)
+        assert torch.equal(plain, off)
+        assert torch.allclose(a[0], b[0])  # null sample ignores its actuators
+        assert torch.allclose(a[1], plain[1])  # the other sample is untouched
+        assert not torch.allclose(a[0], plain[0])  # and null really differs
+
+
+def test_cfg_and_depth_defaults_leave_the_loss_bit_identical():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(3))
+    act = torch.randn(2, cfg.max_frames, 6)
+    losses = []
+    for options in ({}, {"act_drop_p": 0.0, "forecast_depth": 1, "hist_gap_p": 0.0}):
+        torch.manual_seed(5)
+        losses.append(
+            model.training_loss(
+                codes, act, generator=torch.Generator().manual_seed(4),
+                ss_frac=0.5, block_forcing=True, **options,
+            )
+        )
+    assert torch.equal(losses[0], losses[1])
+
+
+def test_actuator_dropout_and_deep_forecasts_train_every_parameter():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    gen = torch.Generator().manual_seed(2)
+    codes = _codes(cfg, 4, cfg.max_frames, gen)
+    act = torch.randn(4, cfg.max_frames, 6, generator=gen)
+    loss = model.training_loss(
+        codes, act, generator=gen, ss_frac=0.75, block_forcing=True,
+        act_drop_p=0.5, forecast_depth=3,
+    )
+    assert torch.isfinite(loss)
+
+
+def test_straight_through_sample_is_one_hot_with_a_softmax_gradient():
+    from tokamak_foundation_model.ignite.maskgit import _straight_through_sample
+
+    logits = torch.randn(4, 7, requires_grad=True)
+    weights = _straight_through_sample(logits, 1.0, torch.Generator().manual_seed(0))
+    assert torch.allclose(weights.sum(-1), torch.ones(4))
+    assert torch.equal(weights.detach(), (weights.detach() > 0.5).float())
+    (weights * torch.randn(4, 7)).sum().backward()
+    assert logits.grad.abs().sum() > 0
+
+
+def test_embedded_codes_match_the_code_lookup():
+    cfg = _btf_cfg()
+    tok = MaskGITDynamics(cfg).backbone.tok
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(0))
+    vectors = {
+        m.name: tok.soft_code_vectors(
+            m.name, torch.nn.functional.one_hot(codes[m.name], m.codebook_size).float()
+        )
+        for m in cfg.modalities
+    }
+    assert torch.allclose(tok.embed(vectors), tok.embed(codes), atol=1e-6)
+
+
+def _spy_rollout(monkeypatch, model):
+    """Record the per-step logits and the sampled codes of a rollout loss."""
+    import tokamak_foundation_model.ignite.maskgit as maskgit_module
+
+    tok, seen = model.backbone.tok, {"logits": [], "samples": []}
+    logits, sample = tok.logits, maskgit_module._straight_through_sample
+
+    def spy_logits(hidden):
+        out = logits(hidden)
+        seen["logits"].append(out)
+        return out
+
+    def spy_sample(frame_logits, temperature, generator):
+        weights = sample(frame_logits, temperature, generator)
+        seen["samples"].append(weights.argmax(-1))
+        return weights
+
+    monkeypatch.setattr(tok, "logits", spy_logits)
+    monkeypatch.setattr(maskgit_module, "_straight_through_sample", spy_sample)
+    return seen
+
+
+def test_rollout_loss_forward_is_an_exact_rollout(monkeypatch):
+    """Step j must see the real seed, the hard codes sampled at steps < j and an
+    all-[MASK] frame: the condition of generate_frame's first decoding step."""
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(1))
+    act = torch.randn(2, cfg.max_frames, 6)
+    seen = _spy_rollout(monkeypatch, model)
+    k0, horizon = cfg.k0_seed, 3
+    with torch.no_grad():
+        model.rollout_loss(
+            codes, act, horizon, generator=torch.Generator().manual_seed(2)
+        )
+    order = [m.name for m in cfg.modalities]
+    sampled = [
+        dict(zip(order, seen["samples"][j * len(order) : (j + 1) * len(order)]))
+        for j in range(horizon - 1)
+    ]
+    for j in range(horizon):
+        prefix = {
+            m.name: torch.cat(
+                [codes[m.name][:, :k0]]
+                + [sampled[i][m.name] for i in range(j)]
+                + [torch.full((2, 1, m.n_tok), m.codebook_size)],
+                dim=1,
+            )
+            for m in cfg.modalities
+        }
+        with torch.no_grad():
+            heads = model.backbone.tok.heads
+            hidden = model.backbone.encode(prefix, act[:, : k0 + j + 1])[:, -1:]
+            for m, (s, e) in zip(cfg.modalities, cfg.modality_token_slices()):
+                expected = heads[m.name](hidden[:, :, s:e])
+                assert torch.allclose(
+                    seen["logits"][j][m.name], expected, atol=1e-5
+                ), (j, m.name)
+
+
+def test_rollout_loss_trains_earlier_steps_through_the_chain(monkeypatch):
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(1))
+    act = torch.randn(2, cfg.max_frames, 6)
+    seen = _spy_rollout(monkeypatch, model)
+    loss = model.rollout_loss(codes, act, 2, generator=torch.Generator().manual_seed(2))
+    assert torch.isfinite(loss)
+    first, second = seen["logits"]
+    k0 = cfg.k0_seed
+    second_ce = sum(
+        torch.nn.functional.cross_entropy(
+            second[m.name].reshape(-1, m.codebook_size),
+            codes[m.name][:, k0 + 1].reshape(-1),
+        )
+        for m in cfg.modalities
+    )
+    grads = torch.autograd.grad(
+        second_ce, [first[m.name] for m in cfg.modalities], retain_graph=True
+    )
+    assert all(g.abs().sum() > 0 for g in grads)  # step 2's error reaches step 1
+    loss.backward()
+    without_grad = [n for n, p in model.named_parameters() if p.grad is None]
+    assert not without_grad, without_grad
+
+
+@pytest.mark.parametrize("depth", [1, 3])
+def test_deep_forecast_context_never_sees_the_frame_it_replaces(depth):
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    codes = _codes(cfg, 1, cfg.max_frames, torch.Generator().manual_seed(4))
+    act = torch.zeros(1, cfg.max_frames, 6)
+    altered = {n: c.clone() for n, c in codes.items()}
+    last = cfg.max_frames - 1
+    for n in altered:
+        altered[n][:, last] = (altered[n][:, last] + 1) % 4
+    first = model._forecast_context(
+        codes, act, 1.0, torch.Generator().manual_seed(5), depth=depth
+    )
+    second = model._forecast_context(
+        altered, act, 1.0, torch.Generator().manual_seed(5), depth=depth
+    )
+    for n in codes:
+        assert torch.equal(first[n][:, last], second[n][:, last])
+
+
+def test_deeper_forecasts_differ_from_one_step_forecasts():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    codes = _codes(cfg, 2, cfg.max_frames, torch.Generator().manual_seed(4))
+    act = torch.randn(2, cfg.max_frames, 6)
+    one = model._forecast_context(codes, act, 1.0, torch.Generator().manual_seed(5))
+    two = model._forecast_context(
+        codes, act, 1.0, torch.Generator().manual_seed(5), depth=2
+    )
+    assert any(not torch.equal(one[n], two[n]) for n in codes)
+
+
+def test_guidance_one_is_plain_conditioning_and_zero_ignores_actuators():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    past = _codes(cfg, 2, cfg.k0_seed, torch.Generator().manual_seed(1))
+    act = torch.randn(2, cfg.k0_seed + 1, 6)
+    other = torch.randn(2, cfg.k0_seed + 1, 6)
+    with torch.no_grad():
+        plain = model.generate_frame(past, act, generator=torch.Generator().manual_seed(3))
+        one = model.generate_frame(
+            past, act, generator=torch.Generator().manual_seed(3), guidance=1.0
+        )
+        zero_a = model.generate_frame(
+            past, act, generator=torch.Generator().manual_seed(3), guidance=0.0
+        )
+        zero_b = model.generate_frame(
+            past, other, generator=torch.Generator().manual_seed(3), guidance=0.0
+        )
+        guided = model.rollout(
+            past, torch.randn(2, cfg.max_frames, 6),
+            generator=torch.Generator().manual_seed(3), guidance=3.0,
+        )
+    for m in cfg.modalities:
+        assert torch.equal(plain[m.name], one[m.name])
+        assert torch.equal(zero_a[m.name], zero_b[m.name])
+        gen_part = guided[m.name][:, cfg.k0_seed :]
+        assert (gen_part >= 0).all() and (gen_part < m.codebook_size).all()
+
+
+# ---------------------------------------------- confidence gate, consensus rollout
+
+
+def _rollout_inputs(cfg, n_predict=3):
+    seed = _codes(cfg, 2, cfg.k0_seed, torch.Generator().manual_seed(1))
+    act = torch.randn(2, cfg.k0_seed + n_predict, 6, generator=torch.Generator().manual_seed(2))
+    return seed, act
+
+
+def test_gate_and_consensus_off_are_the_plain_rollout():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        plain = model.rollout(seed, act, generator=torch.Generator().manual_seed(3))
+        off = model.rollout(
+            seed, act, generator=torch.Generator().manual_seed(3),
+            gate=0.0, consensus_n=1, consensus_q=0.9,
+        )
+    for m in cfg.modalities:
+        assert torch.equal(plain[m.name], off[m.name])
+
+
+@pytest.mark.parametrize("option", [{"gate": 1.01}, {"consensus_n": 4, "consensus_q": 1.01}])
+def test_impossible_threshold_freezes_the_last_seed_frame(option):
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        out = model.rollout(seed, act, generator=torch.Generator().manual_seed(3), **option)
+    for m in cfg.modalities:
+        last = seed[m.name][:, -1:]
+        assert torch.equal(out[m.name][:, cfg.k0_seed :], last.expand_as(out[m.name][:, cfg.k0_seed :]))
+
+
+def test_consensus_commits_the_near_one_majority():
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg)
+    # One token, FSQ (8,5,5,5): codes 0 and 1 are one cell apart, 999 far from both.
+    candidates = torch.tensor([[0], [1], [0], [999]])  # B=1, N=4
+    previous = torch.tensor([[500]])
+    assert model._consensus(candidates, previous, 4, 0.75).item() in (0, 1)
+    assert model._consensus(candidates, previous, 4, 0.76).item() == 500
+    lonely = torch.tensor([[0], [999], [500], [250]])
+    assert model._consensus(lonely, previous, 4, 0.5).item() == 500
+
+
+def test_consensus_rollout_gives_valid_codes_and_is_deterministic():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        a = model.rollout(seed, act, generator=torch.Generator().manual_seed(3), consensus_n=4, gate=0.05)
+        b = model.rollout(seed, act, generator=torch.Generator().manual_seed(3), consensus_n=4, gate=0.05)
+    for m in cfg.modalities:
+        assert torch.equal(a[m.name], b[m.name])
+        part = a[m.name][:, cfg.k0_seed :]
+        assert a[m.name].shape == (2, cfg.k0_seed + 3, m.n_tok)
+        assert (part >= 0).all() and (part < m.codebook_size).all()
+
+
+def test_mean_consensus_rounds_the_mean_coordinates():
+    from tokamak_foundation_model.ignite.frame_layout import code_to_coords, coords_to_code
+
+    model = MaskGITDynamics(_btf_cfg())
+    levels = list(model.cfg.fsq_levels)
+    same = torch.tensor([[7], [7], [7], [7]])
+    assert model._consensus(same, torch.tensor([[0]]), 4, 0.5, "mean").item() == 7
+    mixed = torch.tensor([[0], [999], [123], [456]])
+    expected = coords_to_code(code_to_coords(mixed.view(1, 4, 1), levels).mean(1), levels)
+    assert torch.equal(model._consensus(mixed, torch.tensor([[0]]), 4, 0.5, "mean"), expected)
+
+
+def test_mean_consensus_rollout_gives_valid_codes():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        out = model.rollout(
+            seed, act, generator=torch.Generator().manual_seed(3),
+            consensus_n=4, consensus_mode="mean",
+        )
+    for m in cfg.modalities:
+        part = out[m.name][:, cfg.k0_seed :]
+        assert (part >= 0).all() and (part < m.codebook_size).all()
+
+
+@pytest.mark.parametrize("mode", ["majority", "mean"])
+def test_independent_ensemble_is_valid_deterministic_and_keeps_the_seed(mode):
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    runs = []
+    with torch.no_grad():
+        for _ in range(2):
+            runs.append(model.rollout(
+                seed, act, generator=torch.Generator().manual_seed(3),
+                consensus_n=4, consensus_mode=mode, consensus_shared=False,
+            ))
+    for m in cfg.modalities:
+        assert torch.equal(runs[0][m.name], runs[1][m.name])
+        assert torch.equal(runs[0][m.name][:, : cfg.k0_seed], seed[m.name])
+        part = runs[0][m.name][:, cfg.k0_seed :]
+        assert part.shape == (2, 3, m.n_tok)
+        assert (part >= 0).all() and (part < m.codebook_size).all()
+
+
+def test_independent_ensemble_of_one_equals_the_plain_rollout():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        plain = model.rollout(seed, act, generator=torch.Generator().manual_seed(3))
+        one = model.rollout(
+            seed, act, generator=torch.Generator().manual_seed(3),
+            consensus_n=1, consensus_shared=False,
+        )
+    for m in cfg.modalities:
+        assert torch.equal(plain[m.name], one[m.name])
+
+
+def test_history_gap_hides_a_stretch_and_trains_every_parameter():
+    torch.manual_seed(0)
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg).train()
+    gen = torch.Generator().manual_seed(6)
+    codes = _codes(cfg, 4, cfg.max_frames, gen)
+    gapped = model._history_gap(codes, 1.0, 3, torch.Generator().manual_seed(7))
+    name = cfg.modalities[0].name
+    hidden = (gapped[name] == model._mask_id(name)).all(-1)
+    assert not hidden[:, 0].any()  # the first frame always stays visible
+    lengths = hidden.sum(1)
+    assert ((lengths >= 1) & (lengths <= 3)).all()
+    for n in codes:  # one stretch, the same for every modality
+        assert torch.equal((gapped[n] == model._mask_id(n)).all(-1), hidden)
+    assert model._history_gap(codes, 0.0, 3, gen) is codes
+    act = torch.randn(4, cfg.max_frames, 6, generator=gen)
+    loss = model.training_loss(
+        codes, act, generator=gen, ss_frac=0.5, block_forcing=True, hist_gap_p=1.0,
+        hist_gap_max=3,
+    )
+    assert torch.isfinite(loss)
+    loss.backward()
+    without_grad = [n for n, p in model.named_parameters() if p.grad is None]
+    assert not without_grad, without_grad
+
+
+def test_rollout_loss_rejects_a_horizon_past_the_window():
+    cfg = _btf_cfg()
+    model = MaskGITDynamics(cfg)
+    codes = _codes(cfg, 1, cfg.max_frames)
+    with pytest.raises(ValueError, match="outside"):
+        model.rollout_loss(codes, torch.randn(1, cfg.max_frames, 6), cfg.n_predict + 1)
+
+
+def _fsq_cfg():
+    # Vocabularies equal to prod(fsq_levels), as in production, so codes map to coordinates.
+    return DynamicsConfig(
+        modalities=(ModalitySpec("a", "spectro", 3), ModalitySpec("b", "slowts", 2)),
+        d_model=16,
+        depth=2,
+        n_heads=2,
+        ffn_mult=2,
+        k0_seed=2,
+        n_predict=3,
+        actuator_dim=6,
+        grad_checkpointing=False,
+    )
+
+
+def test_rollout_mean_leaves_the_sampled_rollout_unchanged():
+    torch.manual_seed(0)
+    cfg = _fsq_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with torch.no_grad():
+        plain = model.rollout(seed, act, generator=torch.Generator().manual_seed(3))
+        codes, mean = model.rollout(
+            seed, act, generator=torch.Generator().manual_seed(3), return_mean=True
+        )
+    levels = list(cfg.fsq_levels)
+    for m in cfg.modalities:
+        assert torch.equal(plain[m.name], codes[m.name])
+        assert mean[m.name].shape == (*codes[m.name].shape, len(levels))
+        # Seed frames: the coordinates of the real codes; predictions: inside the grid.
+        assert torch.allclose(mean[m.name][:, : cfg.k0_seed], code_to_coords(seed[m.name], levels))
+        assert (mean[m.name] >= 0).all() and (mean[m.name] <= 1).all()
+
+
+def test_expected_coords_weigh_the_grid_by_probability():
+    cfg = _fsq_cfg()
+    model = MaskGITDynamics(cfg)
+    levels = list(cfg.fsq_levels)
+    logits = torch.full((1, 2, 1000), -1e4)
+    logits[0, 0, 7] = 0.0  # certain: code 7
+    logits[0, 1, 0] = logits[0, 1, 999] = 0.0  # half and half: grid corners
+    mean = model._expected_coords(logits)
+    assert torch.allclose(mean[0, 0], code_to_coords(torch.tensor(7), levels))
+    assert torch.allclose(mean[0, 1], torch.full((4,), 0.5))
+
+
+def test_rollout_mean_needs_a_single_candidate():
+    cfg = _fsq_cfg()
+    model = MaskGITDynamics(cfg).eval()
+    seed, act = _rollout_inputs(cfg)
+    with pytest.raises(ValueError, match="consensus_n"):
+        model.rollout(seed, act, consensus_n=2, return_mean=True)
+
+
+def test_decode_flat_reads_coordinates_as_the_expected_decoder_input():
+    from types import SimpleNamespace
+
+    from vector_quantize_pytorch import FSQ
+
+    from tokamak_foundation_model.ignite import eval_dynamics as ed
+
+    levels = [8, 5, 5, 5]
+    fsq = FSQ(levels=levels, dim=6)  # with a projection, as the codecs have
+    codec = SimpleNamespace(quantizer=SimpleNamespace(fsq=fsq), decode=lambda q: q)
+    codes = torch.randint(0, 1000, (4, 3), generator=torch.Generator().manual_seed(0))
+    with torch.no_grad():
+        exact = ed.decode_flat(codec, codes)
+        on_grid = ed.decode_flat(codec, code_to_coords(codes, levels))
+        halfway = ed.decode_flat(
+            codec, 0.5 * (code_to_coords(codes, levels) + code_to_coords(codes.flip(0), levels))
+        )
+    assert torch.allclose(on_grid, exact, atol=1e-5)
+    assert torch.allclose(halfway, 0.5 * (exact + exact.flip(0)), atol=1e-5)
+
+
+def test_rollout_known_codes_are_kept_and_condition_the_rest():
+    """Missing-diagnostic inference: known modalities keep their codes in every
+    predicted frame, and the generated modality depends on them."""
+    torch.manual_seed(0)
+    cfg = _tiny()
+    mg = MaskGITDynamics(cfg).eval()
+    F = cfg.k0_seed + cfg.n_predict
+    seed = _codes(cfg, B=2, F=cfg.k0_seed, gen=torch.Generator().manual_seed(1))
+    act = torch.randn(2, F, cfg.actuator_dim)
+    known = {"b": torch.randint(0, 4, (2, F, 2), generator=torch.Generator().manual_seed(3))}
+    traj = mg.rollout(seed, act, generator=torch.Generator().manual_seed(7),
+                      known_codes=known)
+    assert torch.equal(traj["b"][:, cfg.k0_seed:], known["b"][:, cfg.k0_seed:])
+    assert torch.equal(traj["a"][:, : cfg.k0_seed], seed["a"])
+    other = {"b": (known["b"] + 1) % 4}
+    traj2 = mg.rollout(seed, act, generator=torch.Generator().manual_seed(7),
+                       known_codes=other)
+    assert not torch.equal(traj["a"][:, cfg.k0_seed:], traj2["a"][:, cfg.k0_seed:])
+    with pytest.raises(ValueError):
+        mg.rollout(seed, act, consensus_n=2, known_codes=known)
+
+
+def test_rollout_blind_hides_the_modality_history():
+    """Blind inference: a blind modality's own history cannot reach the rollout (its
+    seed codes do not matter), but the other modalities still condition it."""
+    torch.manual_seed(0)
+    cfg = _tiny()
+    mg = MaskGITDynamics(cfg).eval()
+    F = cfg.k0_seed + cfg.n_predict
+    seed = _codes(cfg, B=2, F=cfg.k0_seed, gen=torch.Generator().manual_seed(1))
+    act = torch.randn(2, F, cfg.actuator_dim)
+    other_seed = dict(seed, a=(seed["a"] + 1) % 4)
+    roll = lambda s, **k: mg.rollout(s, act, generator=torch.Generator().manual_seed(7), **k)
+    t1, t2 = roll(seed, blind=["a"]), roll(other_seed, blind=["a"])
+    k0 = cfg.k0_seed
+    assert torch.equal(t1["a"][:, :k0], seed["a"])  # the seed is still returned
+    assert torch.equal(t1["a"][:, k0:], t2["a"][:, k0:])  # but never seen
+    assert torch.equal(t1["b"][:, k0:], t2["b"][:, k0:])
+    assert not torch.equal(roll(seed)["a"][:, k0:], roll(other_seed)["a"][:, k0:])
+    known = {"b": torch.randint(0, 4, (2, F, 2), generator=torch.Generator().manual_seed(3))}
+    t3 = roll(seed, blind=["a"], known_codes=known)
+    t4 = roll(seed, blind=["a"], known_codes={"b": (known["b"] + 1) % 4})
+    assert torch.equal(t3["b"][:, k0:], known["b"][:, k0:])
+    assert not torch.equal(t3["a"][:, k0:], t4["a"][:, k0:])
+    with pytest.raises(ValueError):
+        mg.rollout(seed, act, blind=["zz"])
+
+
+@pytest.mark.parametrize("cross", [False, True])
+def test_history_cache_matches_the_full_pass(cross):
+    """The inference history cache gives the logits of the full pass for the next
+    frame, and the same sampled rollout (float64, so no near-tie flips by rounding),
+    also with known codes, blind modalities, the gate and the expected frame."""
+    torch.manual_seed(0)
+    cfg = dataclasses.replace(_fsq_cfg(), act_cross_attn=cross, n_predict=5)
+    mg = MaskGITDynamics(cfg).eval().double()
+    if cross:  # the cross-attention output is zero-initialised; make it matter
+        torch.nn.init.normal_(mg.backbone.act_cross.o.weight, std=0.1)
+    B, k0 = 2, cfg.k0_seed
+    F = k0 + cfg.n_predict
+    codes = _codes(cfg, B=B, F=F, gen=torch.Generator().manual_seed(1))
+    act = torch.randn(B, F, cfg.actuator_dim, dtype=torch.float64)
+
+    # Logits of the last frame, full pass vs cache over the first F - 1 frames.
+    full = mg.backbone(codes, act)
+    cache = mg.backbone.start_history_cache(
+        {n: c[:, : F - 1] for n, c in codes.items()}, act[:, : F - 1]
+    )
+    step = mg.backbone.next_frame_logits(
+        cache, {n: c[:, F - 1 :] for n, c in codes.items()}, act[:, F - 1 :]
+    )
+    for n in full:
+        torch.testing.assert_close(step[n][:, 0], full[n][:, -1], rtol=0, atol=1e-10)
+    # Extending frame by frame equals building the cache in one pass.
+    grown = mg.backbone.start_history_cache({n: c[:, :k0] for n, c in codes.items()}, act[:, :k0])
+    for t in range(k0, F - 1):
+        mg.backbone.extend_history_cache(
+            grown, {n: c[:, t : t + 1] for n, c in codes.items()}, act[:, t : t + 1]
+        )
+    assert grown.length == cache.length == F - 1
+    for i in range(cfg.depth):
+        for a, b in zip(grown.past(i), cache.past(i)):
+            torch.testing.assert_close(a, b, rtol=0, atol=1e-10)
+
+    seed = {n: c[:, :k0] for n, c in codes.items()}
+    known = {"b": codes["b"]}
+    for kwargs in (
+        {},
+        {"blind": ["a"]},
+        {"known_codes": known, "blind": ["a"]},
+        {"gate": 0.3},
+        {"return_mean": True},
+    ):
+        out = [
+            mg.rollout(seed, act, generator=torch.Generator().manual_seed(7), gumbel=3.0,
+                       history_cache=use, **kwargs)
+            for use in (False, True)
+        ]
+        if kwargs.get("return_mean"):
+            (t0, m0), (t1, m1) = out
+            for n in m0:
+                torch.testing.assert_close(m1[n], m0[n], rtol=0, atol=1e-8)
+        else:
+            t0, t1 = out
+        for n in t0:
+            assert torch.equal(t0[n], t1[n]), (kwargs, n)
+
+
+def test_history_cache_refuses_what_it_cannot_do():
+    cfg = _fsq_cfg()
+    mg = MaskGITDynamics(cfg).eval()
+    seed = _codes(cfg, B=1, F=cfg.k0_seed)
+    act = torch.randn(1, cfg.k0_seed + cfg.n_predict, cfg.actuator_dim)
+    with pytest.raises(ValueError):
+        mg.rollout(seed, act, consensus_n=2, history_cache=True)
+    with pytest.raises(ValueError):
+        mg.rollout(seed, act, guidance=2.0, history_cache=True)
+
+
+def test_forbid_never_samples_the_forbidden_codes():
+    torch.manual_seed(0)
+    cfg = dataclasses.replace(_fsq_cfg(), n_predict=6)
+    mg = MaskGITDynamics(cfg).eval()
+    seed = _codes(cfg, B=3, F=cfg.k0_seed, gen=torch.Generator().manual_seed(1))
+    act = torch.randn(3, cfg.k0_seed + cfg.n_predict, cfg.actuator_dim)
+    plain = mg.rollout(seed, act, generator=torch.Generator().manual_seed(2), temperature=0.01)
+    # Forbid, per position, the code the near-greedy rollout picks in its first frame.
+    banned = plain["a"][0, cfg.k0_seed]
+    out = mg.rollout(seed, act, generator=torch.Generator().manual_seed(2), temperature=0.01,
+                     forbid={"a": banned})
+    k0 = cfg.k0_seed
+    assert not (out["a"][:, k0:] == banned.view(1, 1, -1)).any()
+    assert torch.equal(out["a"][:, :k0], seed["a"])
+    with pytest.raises(ValueError):
+        mg.rollout(seed, act, forbid={"zz": banned})
+
+
+def test_bootstrap_blind_shows_no_mask_after_the_first_frame():
+    """Bootstrap: the first frame is generated blind; after that the blind modality's
+    history is that frame (no [MASK]), and the real seed never reaches the model."""
+    torch.manual_seed(0)
+    cfg = dataclasses.replace(_fsq_cfg(), n_predict=4)
+    mg = MaskGITDynamics(cfg).eval().double()
+    k0 = cfg.k0_seed
+    seed = _codes(cfg, B=2, F=k0, gen=torch.Generator().manual_seed(1))
+    act = torch.randn(2, k0 + cfg.n_predict, cfg.actuator_dim, dtype=torch.float64)
+    mask_a = mg._mask_id("a")
+    seen = []
+    real_forward = mg.backbone.forward
+
+    def spy(codes, actuators, act_null=None):
+        seen.append(codes["a"][:, :-1].clone())  # the history, without the frame being made
+        return real_forward(codes, actuators, act_null)
+
+    mg.backbone.forward = spy
+    out = mg.rollout(seed, act, generator=torch.Generator().manual_seed(7), blind=["a"],
+                     bootstrap_blind=True, history_cache=False)
+    mg.backbone.forward = real_forward
+    steps = cfg.maskgit_decode_steps
+    assert all(bool((h == mask_a).all()) for h in seen[:steps])  # first frame: blind
+    first = out["a"][:, k0]
+    for h in seen[steps:]:
+        assert not bool((h == mask_a).any())
+        assert torch.equal(h[:, :k0], first.unsqueeze(1).expand(-1, k0, -1))
+    assert torch.equal(out["a"][:, :k0], seed["a"])  # the returned seed is the real one
+    other = dict(seed, a=(seed["a"] + 1) % 4)
+    again = mg.rollout(other, act, generator=torch.Generator().manual_seed(7), blind=["a"],
+                       bootstrap_blind=True, history_cache=False)
+    assert torch.equal(again["a"][:, k0:], out["a"][:, k0:])
+    cached = mg.rollout(seed, act, generator=torch.Generator().manual_seed(7), blind=["a"],
+                        bootstrap_blind=True, history_cache=True, forbid={"a": first[0]})
+    uncached = mg.rollout(seed, act, generator=torch.Generator().manual_seed(7), blind=["a"],
+                          bootstrap_blind=True, history_cache=False, forbid={"a": first[0]})
+    for n in cached:
+        assert torch.equal(cached[n], uncached[n])
+    with pytest.raises(ValueError):
+        mg.rollout(seed, act, bootstrap_blind=True)

@@ -107,6 +107,197 @@ config_fdp.yaml            # 1925 signals (same list as config_atlas.yaml)
 
 ## Usage
 
+### Current deployment: asynchronous archiving and a shared 35 TB budget
+
+Both directions now run under one controller, started with
+`bash scripts/data_fetching_fdp/run_async.sh`:
+
+- Ascending: 205000–207888; tokens in `ignite_fdp_205000_v4/frame_codes`.
+- Descending: 189999–100000; tokens in `ignite_fdp_below190000_v4/frame_codes`.
+
+Both token directories are under
+`/scratch/gpfs/EKOLEMEN/ps9551/ignite/models/`. The controller allows eight
+compute pipelines per direction and four shared archive transfers. It reuses
+the existing shot lists and completed receipts. CPU Slurm allocations perform
+preprocessing and frozen-codec encoding; no GPUs are requested.
+
+After preprocessing, raw archival is queued while token extraction proceeds.
+Validated tokens are published before the preprocessed H5 is deleted. The raw
+H5 remains on scratch until its asynchronous TigerData copy is checksum-verified
+and replaces the older archive file. Only then is the local raw H5 removed.
+Separate durable archive receipts let interrupted transfers resume without
+losing the raw source or overwriting token-processing state.
+
+Transfers hash the raw bytes while copying, verify the temporary destination,
+then rename it over the older file. They avoid reading the old archive and
+avoid a redundant full read after a rename that preserves the verified file's
+metadata. Publication is read back again if that metadata changes.
+
+Both directions share a **35,000,000,000,000-byte** admission budget for
+`/scratch/gpfs/EKOLEMEN`. The controller reads the fileset usage metric used by
+Princeton's `checkquota` and live filesystem allocation, reserves 160 GB per
+active shot, retains allowances for queued raw H5 files, and keeps 500 GB of
+headroom. Fetch and CPU workers have a 64 GiB per-file write limit. New work
+pauses when the budget is tight or quota accounting is unavailable; archival
+continues to drain scratch. This is application admission control; it does not
+change GPFS hard quotas or prevent unrelated jobs from writing to the fileset.
+
+Monitor the shared controller:
+
+```bash
+cat scratch/fdp_async_control/status.json
+tail -f scratch/fdp_async_control/driver.log
+cat scratch/fdp_bulk_205000_20261028/status.json
+cat scratch/fdp_bulk_below190000_20261028/status.json
+```
+
+`tokens_ready` counts published tokens even while raw archival is pending;
+`completed` requires both tokens and a verified raw archive. Failure preserves
+working evidence. Refreshing `~/.fdp/token` lets admissions resume after token
+expiry. To restart both directions, use `run_async.sh`; campaign locks prevent
+duplicate controllers.
+
+### Running bulk campaign (205000 onward)
+
+The original synchronous controller described here is retained for the pilot
+history and tests. Use the shared asynchronous deployment above to resume the
+current campaigns with the storage guard enabled.
+
+The 2026-10-28 campaign contains **2,889 available shots, 205000–207888**, with
+**eight shots in flight**. The controller runs on the login host; each fetch
+uses four reader processes. Preprocessing and token generation run in separate
+CPU-only Slurm allocations (8 cores, 96 GB each). No GPUs are requested.
+
+Each shot follows fetch → preprocess → overwrite and verify raw archive →
+extract and publish tokens → delete preprocessed H5. As explicitly requested,
+the older raw file at `/tigerdata/EKOLEMEN/d3d_fusion_data/<shot>.h5` is replaced.
+A temporary archive copy is checksum-verified before replacement, and the
+published file is verified again before the local raw copy is removed.
+The preprocessed H5 is deleted only after validated tokens are published and
+their checksum is verified. Failed checks retain working evidence.
+
+New tokens and their own `_codec_manifest.json` are stored in:
+
+```
+/scratch/gpfs/EKOLEMEN/ps9551/ignite/models/ignite_fdp_205000_v4/frame_codes/
+```
+
+This directory is separate from the current training cache. The campaign
+excludes shots in active splits/cache, but permits shots in legacy preprocessing
+candidate lists, so collection begins at 205000. Its plan fixes the available
+shot list, pipeline source hashes, and the accepted pilot's frozen-codec hashes.
+
+Monitor progress and per-shot stage logs:
+
+```bash
+cat scratch/fdp_bulk_205000_20261028/status.json
+tail -f scratch/fdp_bulk_205000_20261028/driver.log
+ls scratch/fdp_bulk_205000_20261028/work/205000/
+```
+
+The controller waits for a refreshed `~/.fdp/token` when less than one hour
+remains, then resumes automatically. It stops launching new shots after five
+failures for review; failed shots are not silently retried. A campaign lock
+prevents duplicate controllers. Resume from a login host with:
+
+```bash
+bash scripts/data_fetching_fdp/bulk_pipeline.sh run \
+    --campaign scratch/fdp_bulk_205000_20261028
+```
+
+Completed receipts and token hashes are verified on restart. For a new
+campaign, create a plan first with `bulk_pipeline.sh plan --campaign <new-dir>
+--start <shot> --concurrency 8 --token-dir <new-token-directory>`.
+The bulk command intentionally overwrites old raw files; the pilot below keeps
+its stricter no-overwrite policy.
+
+### Validate the complete processing path first (StellarAI)
+
+`validate_pipeline.py` is a **one-shot pilot**, not a bulk submitter. It excludes
+the union of every existing run's train/val/test and pinned shot lists, the
+production frame-code cache, and the legacy preprocessing shot lists. It uses
+the existing `prepare_data.py` and `train_dynamics.run_precompute` implementations
+with the frozen `ignite_codecs_v4` checkpoints and the production manifest's
+frame start time (currently 1 s).
+
+The raw archive is `/tigerdata/EKOLEMEN/d3d_fusion_data/<shot>.h5`.
+The pilot performs fetch → preprocess → checksum-verified archive copy → frozen
+codec encoding → structural validation against an existing production entry.
+Archive collisions with different contents fail without overwriting either
+file. Fetch pass failures also fail the pilot, even when a partial H5 exists.
+All pilot codes are isolated from the production cache and no splits change.
+The native PTDATA reader uses a local mirror of the selected JSON index snapshot,
+with staged-object paths substituted where available. This avoids native reads
+of remote JSON indexes that fail in the current FDP environment. The MDSplus
+pass keeps the index unset, as before. Remaining index-open errors and unrepaired
+PTDATA defects stop the pilot before preprocessing.
+
+TigerData publication uses exclusive file creation followed by a complete
+checksum readback; its filesystem rejects hard links. If a transfer is
+interrupted, the partial destination stays available for diagnosis and blocks
+automatic retry or cleanup rather than being mistaken for a complete archive.
+
+Preview a fresh-shot pilot without fetching or writing:
+
+```bash
+python3 scripts/data_fetching_fdp/validate_pipeline.py plan \
+    --shots 207800 --run-dir scratch/fdp_pilot_207800
+```
+
+Run one fresh-shot CPU pilot **from the login host** (requires a valid
+`~/.fdp/token` and write access to the raw archive):
+
+```bash
+bash scripts/data_fetching_fdp/validate_pipeline.sh \
+    --shots 207800 --run-dir scratch/fdp_pilot_207800
+```
+
+TigerData is not mounted on CPU compute nodes. The login-host orchestrator
+handles raw fetching and archival; preprocessing and encoding each run under
+`srun` with 8 CPU cores and 96 GB RAM, without requesting GPUs. For a long pilot,
+run this command in tmux so it survives a disconnected session.
+
+The command prints its validation report. Inspect `report.json`,
+`coverage.json`, stage logs, the processed H5, and `frame_codes/<shot>.pt`.
+The report checks code ranges, dtypes, frame alignment, modality set, total
+token count and actuator shape/finiteness against production. It also regenerates
+the first and last code frames and checks that the frozen decoders return finite
+reconstructions. `codec_samples.json` records reconstruction MAE and input
+standard deviation in codec input space; these are diagnostics, not acceptance
+thresholds. Coverage records finite raw-derived samples per processed signal group. A structural pass alone
+does not establish scientific signal quality: review coverage and reconstructions
+before scaling. **FDP has no TANGTV video**; its video codes will describe the
+existing loader's missing-video input. The coverage report makes this visible.
+
+If FDP authentication is unavailable, exercise the downstream stages on an
+existing compatible archive shot as an explicitly labelled regression:
+
+```bash
+bash scripts/data_fetching_fdp/validate_pipeline.sh \
+    --shots 192945 --run-dir scratch/fdp_reference_192945 \
+    --raw-source /tigerdata/EKOLEMEN/d3d_fusion_data/192945.h5 --reference-shot
+```
+
+This copies the archive to shared scratch for compute-node access, retains the
+archived H5, and
+reports `fresh_fdp: false` and `new_shot: false`. This mode permits an already-used
+shot only for a downstream regression; it cannot fetch or add that shot to the
+training cache. It does **not** validate a fresh FDP transfer. Some older archive
+files (for example 170001) have a table-based schema incompatible with this raw
+preprocessor; the pilot rejects those rather than producing empty outputs.
+An interrupted/failed pilot retains its H5 evidence; retry in a new directory.
+
+After reviewing a successful pilot, explicitly delete its local raw and
+processed H5 working files (the archived raw H5 stays in TigerData):
+
+```bash
+python3 scripts/data_fetching_fdp/validate_pipeline.py cleanup \
+    --run-dir scratch/fdp_reference_192945
+```
+
+Cleanup rechecks the archive, code and processed-file SHA-256 hashes before
+deletion. No big run is launched by this workflow.
+
 One shot:
 
 ```bash

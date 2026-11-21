@@ -8,18 +8,17 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
-# =====================================================================================
-# ss75g_live_aug on Princeton StellarAI (NVIDIA B200): the ss75g_live recipe (ss75full with
+# ss75g_live_aug on StellarAI (NVIDIA B200): the ss75g_live recipe (ss75full with
 # dataset-wide actuator normalisation and live training windows) plus input augmentation,
 # warm-started from an ss75g_live checkpoint. Effective batch 128 = micro-batch 2 x 64 GPUs
 # (Frontier: 1 x 64 x 2 accumulation steps).
 #
-# Augmentation (training only, validation is never augmented):
+# Augmentation (training only; validation is never augmented):
 #   SEED_DROP_P        hide a whole modality from the input in the 20 seed frames
 #   SEED_COLUMN_DROP_P otherwise hide a random share of its token positions in every seed frame
 #   ACTUATOR_NOISE     Gaussian noise (normalised units) on actuator channels that vary
 # Hidden seed tokens are scored, so the model learns to predict a modality missing from the
-# seed. Train CE is therefore NOT comparable to ss75g_live; val CE is.
+# seed. Train CE is therefore not comparable to ss75g_live; val CE is.
 #
 # Before the first leg, from the repository root on a login node:
 #   pixi install -e stellarai
@@ -28,21 +27,19 @@
 #   into WARM_FROM (below), then
 #   sbatch scripts/slurm_stellarai/launch_ss75g_live_aug.sh
 # The first leg copies both files into OUT_DIR and resumes from that step (optimizer and
-# scheduler included). Next legs resume from OUT_DIR/dynamics_latest.pt:
+# scheduler included). Later legs resume from OUT_DIR/dynamics_latest.pt:
 #   sbatch -d afterany:<previous job id> scripts/slurm_stellarai/launch_ss75g_live_aug.sh
 # On a different node or GPU count, keep NODES x GPUS x BATCH_SIZE x ACCUM_STEPS = 128.
-# =====================================================================================
 set -uo pipefail
 
-# --- EDIT THESE PATHS -------------------------------------------------------------------
-export REPO_DIR=${REPO_DIR:-$HOME/FusionAIHub}                 # the cloned repository
-DATA_ROOT=${DATA_ROOT:-/scratch/gpfs/$USER/ignite}             # where the archives were unpacked
+# Paths
+export REPO_DIR=${REPO_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/FusionAIHub}  # the cloned repository
+DATA_ROOT=${DATA_ROOT:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/models}             # where the archives were unpacked
 export CACHE_DIR=${CACHE_DIR:-$DATA_ROOT/ignite_prod_v4/frame_codes}
 export IGNITE_ACT_GLOBAL=${IGNITE_ACT_GLOBAL:-$DATA_ROOT/ignite_prod_v4/act_global}
-export LIVE_END_JSON=${LIVE_END_JSON:-$DATA_ROOT/tend_all.json}
-WARM_FROM=${WARM_FROM:-$DATA_ROOT/ignite_prod_v4/runs/ss75g_live}
-export OUT_DIR=${OUT_DIR:-$DATA_ROOT/ignite_prod_v4/runs/ss75g_live_aug}
-# ----------------------------------------------------------------------------------------
+export LIVE_END_JSON=${LIVE_END_JSON:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/tend_all.json}
+WARM_FROM=${WARM_FROM:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/models/ignite_prod_v4/runs/ss75g_live}
+export OUT_DIR=${OUT_DIR:-/scratch/gpfs/EKOLEMEN/ps9551/ignite/models/ignite_prod_v4/runs/ss75g_live_aug}
 
 # The ss75g_live recipe: live training windows, deployment windows for validation.
 export WINDOW_SAMPLE=live VAL_WINDOW_SAMPLE=first BLOCK_FORCING=0
@@ -71,7 +68,7 @@ if [ ! -f "$OUT_DIR/dynamics_latest.pt" ]; then
     && mv "$OUT_DIR/dynamics_latest.pt.tmp" "$OUT_DIR/dynamics_latest.pt"
   echo "[stellarai] warm start: $WARM_FROM -> $OUT_DIR"
 fi
-# The run must reuse the frozen split, so train/val/test match the Frontier arms exactly.
+# The run reuses the frozen split, so train/val/test match the Frontier runs.
 [ -f "$OUT_DIR/split_shots.json" ] || {
   echo "[stellarai] $OUT_DIR/split_shots.json missing -- copy it from the ss75g_live run" >&2; exit 1; }
 

@@ -1,22 +1,17 @@
-"""Phase-A slow-TS encoder / decoder (statistics-first, "lightest touch" codec).
+"""Slow-TS encoder and decoder.
 
-Mirrors ``nets.py`` (the spectrogram codec) but patchifies over the slow-TS window
-``(B, C, T)`` — ``C`` profile positions × ``T`` time samples — instead of the spectrogram
-``(B, C, F, T)``. Both are built on ``x_transformers.Encoder`` attention primitives (no
-causal mask — a codec frame is a bidirectional token set). The window is split into
-non-overlapping ``(patch_c × patch_t)`` position-time patches, linearly embedded to
-``d_model``, and given learned factorized position/time patch-position embeddings. The
-decoder mirrors the path: transformer over the quantized tokens, then a linear unpatchify
-back to ``(B, C, T)``.
+Mirrors ``nets.py`` (the spectrogram codec) but patchifies the slow-TS window
+``(B, C, T)``, ``C`` profile positions by ``T`` time samples, instead of a spectrogram
+``(B, C, F, T)``. Both sides are ``x_transformers.Encoder`` stacks without a causal
+mask, since a codec frame is a bidirectional token set. The window is cut into non-overlapping
+``(patch_c, patch_t)`` patches, embedded linearly to ``d_model`` and given learned
+factorized position embeddings. The decoder runs a transformer over the quantized tokens
+and unpatchifies linearly back to ``(B, C, T)``.
 
-Unlike the spectro / video decoders there is **no adversarial head** (docs/IGNITE_DESIGN.md
-§4.3 "lightest touch"; see ``config.SlowTSCodecConfig``), so the decoder's final linear is a
-plain reconstruction projection. ``last_layer`` is still exposed (the ``to_signal`` weight)
-for symmetry / diagnostics, but the slow-TS codec's ``generator_losses`` uses a masked
-reconstruction + entropy objective and never invokes the VQGAN adaptive-adversarial balance.
-
-Only external libs (torch, x_transformers, einops) + config.py are used; **no** FAITH model
-code is imported (docs/IGNITE_DESIGN.md §7).
+The slow-TS codec has no adversarial term (docs/IGNITE_DESIGN.md §4.3, see
+``config.SlowTSCodecConfig``), so the final linear is a plain reconstruction projection.
+``last_layer`` is still exposed for symmetry with the other decoders and for
+diagnostics. No FAITH model code is imported (docs/IGNITE_DESIGN.md §7).
 """
 from __future__ import annotations
 
@@ -29,10 +24,10 @@ from .config import SlowTSCodecConfig
 
 
 class _SlowTSPatchPosEmb(nn.Module):
-    """Additive learned position embedding factorized over position / time patches.
+    """Learned additive position embedding, factorized over position and time patches.
 
-    Token order is ``(pos_patch, time_patch)`` row-major (position outer, time inner),
-    matching the patchify rearrange below. Returns ``(1, n_tok, d_model)`` broadcastable.
+    Token order is ``(pos_patch, time_patch)``, position outer and time inner, matching
+    the patchify below. Returns ``(1, n_tok, d_model)``.
     """
 
     def __init__(self, cfg: SlowTSCodecConfig) -> None:
@@ -67,10 +62,10 @@ class SlowTSEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         cfg = self.cfg
-        # patchify: position outer, time inner -> n_tok = n_c * n_t. Each patch is a flat
-        # (patch_c * patch_t) vector of the smooth profile slice. `x` carries `padded_channels`
-        # positions (== n_pos_patch * patch_c) — the loader pads the real profile up to the
-        # zone-aligned count and masks the pad tail (see SlowTSCodecPairDataset._fit_window).
+        # Patchify, position outer and time inner, so n_tok = n_c * n_t. `x` has
+        # `padded_channels` positions (n_pos_patch * patch_c): the loader pads the
+        # profile up to that count and masks the padding
+        # (SlowTSCodecPairDataset._fit_window).
         patches = rearrange(
             x,
             "b (nc pc) (nt pt) -> b (nc nt) (pc pt)",
@@ -84,8 +79,8 @@ class SlowTSEncoder(nn.Module):
 class SlowTSDecoder(nn.Module):
     """(B, n_tok, d_model) -> (B, C, T).
 
-    Plain (non-adversarial) reconstruction decoder: a transformer over the quantized tokens
-    followed by a linear projection back to per-patch values and a parameter-free unpatchify.
+    A transformer over the quantized tokens, a linear projection to per-patch values and
+    a parameter-free unpatchify.
     """
 
     def __init__(self, cfg: SlowTSCodecConfig) -> None:
@@ -102,12 +97,10 @@ class SlowTSDecoder(nn.Module):
 
     @property
     def last_layer(self) -> nn.Parameter:
-        """The weight ``Parameter`` of the final layer producing the (B, C, T) output.
+        """Weight of the last layer before the unpatchify (``to_signal.weight``).
 
-        This is ``to_signal.weight`` — the last linear before the (parameter-free) unpatchify.
-        Exposed for symmetry with ``nets.SpectroDecoder.last_layer`` / diagnostics; the
-        slow-TS codec has no adversarial term, so (unlike spectro/video) it is NOT used by an
-        adaptive-adversarial weight.
+        Kept for symmetry with ``nets.SpectroDecoder.last_layer``. With no adversarial
+        term, no adaptive weight uses it.
         """
         return self.to_signal.weight
 
@@ -115,7 +108,7 @@ class SlowTSDecoder(nn.Module):
         cfg = self.cfg
         h = self.transformer(quant + self.pos_emb())
         patches = self.to_signal(h)
-        # unpatchify: inverse of the encoder rearrange.
+        # Inverse of the encoder patchify.
         return rearrange(
             patches,
             "b (nc nt) (pc pt) -> b (nc pc) (nt pt)",

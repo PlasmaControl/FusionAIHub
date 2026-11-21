@@ -38,6 +38,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from tokamak_foundation_model.data.multi_file_dataset import TokamakMultiFileDataset
+from tokamak_foundation_model.ignite import fastts_train
 from tokamak_foundation_model.ignite import train_codec as tc
 from tokamak_foundation_model.ignite.config import CHUNK_S, STFT_FS, SpectroCodecConfig
 
@@ -538,6 +539,10 @@ def test_modality_channels_filterscopes_is_8():
     assert tc.modality_channels("filterscopes") == 8
 
 
+@pytest.mark.skipif(
+    not Path(fastts_train.DEFAULT_STATS_PATH).exists(),
+    reason="fast-TS preprocessing stats not present",
+)
 def test_main_dispatches_filterscopes_to_fastts_trainer(tmp_path, monkeypatch):
     """``main(--modality filterscopes)`` builds a FastTSCodecConfig and calls the fast-TS
     trainer (``fastts_train.train_fastts_codec``) with the fast-TS keyword signature — reusing

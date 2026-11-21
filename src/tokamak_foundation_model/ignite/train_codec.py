@@ -1,47 +1,38 @@
-"""IGNITE Phase-A **streaming, DDP-capable** production codec trainer.
+"""IGNITE Phase-A streaming DDP codec trainer.
 
-The gate-spike (:mod:`ignite.spike`) pre-builds a FIXED batch pool via
-``spike.real_ece_batches``, which opens shots SEQUENTIALLY (~19 min for 40 shots) and
-caps around 40 shots. That does not scale to the thousands of shots we want a production
-codec to see.
-
-This module replaces the fixed pool with the **production data pipeline** — it reuses
+The spike (:mod:`ignite.spike`) builds a fixed batch pool with
+``spike.real_ece_batches``, which opens shots one after another (~19 min for 40 shots)
+and tops out around 40 shots. Production codecs need to see thousands of shots, so this
+module streams them through
 :class:`~tokamak_foundation_model.data.multi_file_dataset.TokamakMultiFileDataset`, the
-exact same class the main foundation-model trainer streams 7878 shots through under DDP.
-That class already implements everything the old hand-rolled ``StreamingSpectroPairs``
-re-invented: a global-idx → ``(file_idx, chunk_idx)`` map via cumulative-length binary
-search, a per-worker LRU HDF5 file-handle cache (with correct ``__getstate__`` /
-``__setstate__`` pickling into DataLoader workers), a length-cache sidecar, and a
-``make_dataloader`` factory.
+class the foundation-model trainer uses under DDP. It already provides the global index
+to ``(file_idx, chunk_idx)`` map, a per-worker LRU cache of HDF5 handles that pickles
+correctly into DataLoader workers, a length-cache sidecar and ``make_dataloader``.
 
 Design
 ------
-* **Data**: :class:`CodecPairDataset` is a THIN subclass of ``TokamakMultiFileDataset``.
-  It reuses the parent's idx-mapping + LRU file handles + length cache + num_workers
-  machinery UNCHANGED and overrides ONLY the per-item transform hook
-  (:meth:`_getitem_standard`) to return the codec's ``(spec_a, spec_b)`` δ-shift log-power
-  pair for ONE spectro modality (ece / co2 / bes / mhr) instead of the processed
-  multi-modal training dict. The parent's ``__getitem__`` still performs the binary-search
-  index map and sets ``self.h5_file = self._get_file_handle(file_idx)`` before dispatching
-  to our ``_getitem_standard(chunk_idx)`` — so the file-handle safety under
-  ``num_workers > 0`` is inherited verbatim (each worker owns its own object copy + LRU).
-* **Training**: reuses :func:`ignite.spike.codec_train_step` (the SINGLE per-step
-  generator/discriminator alternation shared with the spike) so the training math is
-  identical. The codec is DDP-wrapped through a thin :class:`_GenLossAdapter` whose
-  ``forward`` dispatches to ``generator_losses`` — this makes DDP's autograd reducer hook
-  the generator loss (the discriminator has its own optimizer / graph and is wrapped
-  separately).
-* **Gate + best-ckpt**: periodically streams a held-out eval set (disjoint shots) and
-  computes the §4.4 gate via :func:`ignite.spike.compute_gate`, selecting the best
-  checkpoint by :func:`ignite.spike.gate_score` — exactly as the spike does. Rank-0 only
-  logs + writes checkpoints.
+* Data: :class:`CodecPairDataset` subclasses ``TokamakMultiFileDataset`` and overrides
+  only the per-item hook (:meth:`_getitem_standard`), returning the codec's
+  ``(spec_a, spec_b)`` δ-shift log-power pair for one spectro modality instead of the
+  multi-modal training dict. The parent's ``__getitem__`` still maps the index and sets
+  ``self.h5_file`` before calling the hook, so file-handle safety with
+  ``num_workers > 0`` is inherited. The video, slow-TS datasets follow the same pattern.
+* Training: the per-step math is :func:`ignite.spike.codec_train_step` (generator and
+  discriminator alternation). The codec is wrapped in DDP through
+  :class:`_GenLossAdapter`, whose ``forward`` calls ``generator_losses``, so DDP's
+  reducer sees the generator loss; the discriminator has its own optimizer and DDP
+  wrapper.
+* Gate and best checkpoint: a held-out eval set (disjoint shots) is scored with the §4.4
+  gate (:func:`ignite.spike.compute_gate`) and the best checkpoint is chosen by
+  :func:`ignite.spike.gate_score`, as in the spike. Only rank 0 logs and writes.
 
-Reuse boundary (§7): only ``torch`` + sibling ``ignite`` modules + the read-only data
-pipeline (``data.data_loader`` / ``data.multi_file_dataset``). No FAITH *model* code.
+Reuse boundary (§7): ``torch``, sibling ``ignite`` modules and the read-only data
+pipeline (``data.data_loader`` / ``data.multi_file_dataset``). No FAITH model code.
 """
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import math
 import os
@@ -71,162 +62,136 @@ from .slow_ts_codec import SlowTSCodec
 from .video_codec import VideoCodec
 from .video_discriminator import FramePatchGAN
 
-# spectro modalities the codec can train on. All are apply_stft=True + target_fs=500e3
-# (== STFT_FS) in TokamakH5Dataset.SIGNAL_CONFIGS, so their raw windows STFT to the same
-# grid data.log_power_stft expects. Channel counts (after channels_to_use) are read from
-# the loader's SignalConfig at runtime — NOT hard-coded here.
-# "mirnov" has NO trained FSQ codec and is not part of the Phase-A codec family — it is here
-# because CodecPairDataset is also the STFT front end the band-power tokeniser reads through
-# (29 magnetic channels, added 2026-08-15). Loading/STFT parameters come from its SIGNAL_CONFIGS
-# entry; a caller wanting codec-side fields must borrow another modality's cfg.
+# Spectro modalities. All are apply_stft=True with target_fs=500e3 (== STFT_FS) in
+# TokamakH5Dataset.SIGNAL_CONFIGS, so their raw windows STFT onto the grid
+# data.log_power_stft expects. Channel counts come from the loader's SignalConfig at
+# runtime.
+# mirnov (29 magnetic channels) is also the STFT front end the band-power tokeniser
+# reads through; its loading/STFT parameters come from its SIGNAL_CONFIGS entry.
 SPECTRO_MODALITIES = ("ece", "co2", "bes", "mhr", "mirnov")
 
-# video (tangtv) modalities — the two divertor codecs. Each is a MovieConfig in
-# TokamakH5Dataset.MOVIE_CONFIGS: tangtv_lower keeps raw camera channels [0, 2]
-# (LODIV PAR-int + LODIV PERP); tangtv_upper keeps [4, 6] (UPDIV0 PERP + UPDIV0 PAR).
-# Both are 2-channel after channels_to_use (read at runtime, NOT hard-coded here).
+# Video (tangtv) modalities, one codec per divertor. Each is a MovieConfig in
+# TokamakH5Dataset.MOVIE_CONFIGS: tangtv_lower keeps raw camera channels [0, 2] (LODIV
+# PAR-int and PERP), tangtv_upper keeps [4, 6] (UPDIV0 PERP and PAR). Both have 2
+# channels after channels_to_use (read at runtime).
 VIDEO_MODALITIES = ("tangtv_lower", "tangtv_upper")
 
-# slow-TS modalities — the 7 smooth kinetic-profile signals (Thomson / CER / MSE). Each is a
-# non-STFT SignalConfig in TokamakH5Dataset.SIGNAL_CONFIGS at target_fs=100 Hz. Thomson uses
-# zero_is_missing; CER/MSE use an explicit NaN mask (see config.SLOWTS_* + data_loader). One
-# codec per signal, each frozen independently (§4.3 "lightest touch").
+# Slow-TS modalities: the 7 kinetic-profile signals (Thomson / CER / MSE), non-STFT
+# SignalConfigs at target_fs=100 Hz. Thomson uses zero_is_missing, CER/MSE an explicit
+# NaN mask (see config.SLOWTS_* and data_loader). One codec per signal, each frozen on
+# its own (§4.3).
 SLOWTS_MODALITIES = tuple(_SLOWTS_SIGNALS)
 
-# fast-TS (filterscopes) modality — the RAW-SAMPLE (10 kHz waveform) codec. Trained by the separate
-# ``fastts_train`` module (kept separate earlier to avoid a parallel-edit collision with the
-# slow-TS work); ``main()`` folds its launch into this dispatch so ``--modality filterscopes``
-# routes here like every other modality. The value MUST equal ``fastts_train.FASTTS_MODALITY``
-# (defined here too, not imported, because fastts_train imports FROM this module — a top-level
-# import back would be circular).
+# Fast-TS (filterscopes) modality, trained by fastts_train; main() dispatches
+# --modality filterscopes there. Must equal fastts_train.FASTTS_MODALITY; defined here
+# rather than imported because fastts_train imports from this module.
 FASTTS_MODALITY = "filterscopes"
 
 DEFAULT_DATA_DIR = spike.DEFAULT_DATA_DIR
 
 
-# ------------------------------------------------------------------------------------- #
-# per-modality anti-collapse overrides (turned ON only for the 4 collapsing codecs; every
-# OTHER modality keeps its config default, so their byte-identical behavior is preserved).
-# ------------------------------------------------------------------------------------- #
-# Applied to the cfg in ``main()`` after channel-count sizing (like ``modality_channels``). The
-# already-working codecs (ece/bes/cer_ti/cer_rot/ts_core_temp) are ABSENT here → active_bias
-# stays 0 (stratification OFF, byte-identical) and adv_warmup/adversarial_weight stay at their
-# config defaults. The original four failing codecs collapsed to 1 code from step 0 in the
-# real 20k-step runs (frac_codes_used=0.001, minH≈0, env_corr≈0/nan); mse and ts_tangential_*
-# joined later with the same missing-dominated slow-TS signature.
+# Per-modality anti-collapse overrides
 #
-# The thresholds are read off the CPU activity diagnostic (fraction of ACTIVE windows on a spread
-# of real shots):
-#   * co2 (spectro): only ~33% of windows have co2 data at all, and the built log-power windows
-#     have a MEDIAN std of ~0.024 (5-95 pct 0.009-0.318) vs ~0.85 for ece/bes/mhr — i.e. co2 is
-#     degeneracy-dominated (mostly floored at ~-10). min_activity=0.10 selects roughly the top
-#     ~10-20% most-structured windows. co2 ALSO showed adversarial sharpness spikes (13-509 in the
-#     real runs), so it additionally gets the adversarial warmup + lower adversarial_weight below.
-#   * filterscopes (fast-TS): ~76% of built ELM-envelope windows saturate the log1p ceiling to a
-#     CONSTANT (std 0); the minority ~21% are strongly structured (env std >= 2.4). min_activity=0.5
-#     cleanly separates the two (every structured window is >= 2.4). See the REPORT caveat: the
-#     saturation itself is a scale artifact (raw filterscope counts ~1e13-1e15 crush log1p to the
-#     ceiling), so stratification biases onto the learnable minority but does NOT rescale the
-#     envelope — flagged as a residual concern.
-#   * ts_core_density (slow-TS, MASKED): strongly bimodal present-fraction — median ~0.07 but ~34%
-#     of windows are >= 0.75 present. min_activity=0.5 (present-fraction) biases onto the ~38% of
+# Applied to the cfg in main() after channel-count sizing, only for codecs that
+# collapsed (to one code from step 0: frac_codes_used=0.001, minH~0, env_corr~0/nan).
+# Unlisted modalities (ece, bes, cer_ti, cer_rot, ts_core_temp) keep the config
+# defaults, i.e. active_bias 0 (no stratification).
+#
+# Thresholds come from the fraction of active windows over a spread of real shots:
+#   * co2 (spectro): only ~33% of windows have co2 data, and the log-power windows have
+#     a median std of ~0.024 (5-95 pct 0.009-0.318) against ~0.85 for ece/bes/mhr, so
+#     co2 is mostly a floor at ~-10. min_activity=0.10 picks roughly the top 10-20% most
+#     structured windows. co2 also had adversarial sharpness spikes (13-509), so it also
+#     gets the adversarial warmup and a lower adversarial_weight.
+#   * filterscopes (fast-TS): ~76% of envelope windows saturate the log1p ceiling to a
+#     constant (std 0) and ~21% are strongly structured (env std >= 2.4);
+#     min_activity=0.5 separates them. The saturation is a scale artifact (raw counts
+#     ~1e13-1e15), which stratification does not fix.
+#   * ts_core_density (slow-TS, masked): bimodal present fraction, median ~0.07 but ~34%
+#     of windows >= 0.75. min_activity=0.5 (present fraction) favours the ~38% of
 #     well-observed windows.
-#   * tangtv_lower (video): NOT degeneracy-dominated (every built clip has frame std >= ~3.8, like
-#     the working spectro modalities). Its 20k-step run briefly reached env_corr 0.15 then FELL BACK
-#     with adversarial sharpness spikes (13-509) — an adversarial-instability collapse. So it gets
-#     NO activity stratification (active_bias stays 0) and ONLY the adversarial warmup + lower
-#     adversarial_weight.
+#   * tangtv_lower (video): not floor-dominated (every clip has frame std >= ~3.8). It
+#     reached env_corr 0.15 and then fell back with adversarial sharpness spikes, an
+#     adversarial collapse, so it gets no activity stratification, only the adversarial
+#     warmup and lower weight.
 #
-# adv_warmup_steps + adversarial_weight are already cfg-driven inside generator_losses (spectro +
-# video); setting them here changes ONLY the two adversarially-unstable codecs (co2, tangtv_lower).
+# adv_warmup_steps and adversarial_weight are read by generator_losses (spectro and
+# video), so setting them here only affects the codecs listed.
 _activity_overrides: Dict[str, Dict[str, float]] = {
     # spectro
     "co2": {"min_activity": 0.10, "active_bias": 0.5,
             "adv_warmup_steps": 1500, "adversarial_weight": 0.5},
-    # mhr (spectro): adversarial-instability anti-collapse ONLY (like co2's adv knobs), no
-    # activity bias needed (mhr is rich / naturally O(1), not degeneracy-dominated).
+    # mhr (spectro): adversarial knobs only, like co2's; mhr is O(1) and not
+    # floor-dominated, so no activity bias.
     "mhr": {"adv_warmup_steps": 1500, "adversarial_weight": 0.5},
-    # mirnov (spectro, 29 magnetic channels, added 2026-08-19): NEVER had a codec, so no recipe
-    # was ever tuned. With NO entry it collapsed from step 1000 (util frac 0.0000, minH 0.000);
-    # with mhr's adversarial-only knobs it collapsed AGAIN. Its data is clean (no dead/flat
-    # channels, per-freq std median ~1.07) but its per-freq MEAN reaches -9.996 — the same large
-    # DC offset that makes co2 degeneracy-dominated. So it gets co2's FULL recipe: activity
-    # stratification as well as the adversarial knobs.
+    # mirnov (spectro, 29 magnetic channels): with no entry, and again with mhr's
+    # adversarial-only knobs, it collapsed by step 1000. Its data is clean (no dead or
+    # flat channels, per-freq std median ~1.07) but its per-freq mean reaches -9.996,
+    # the same large DC offset as co2, so it gets co2's full recipe.
     "mirnov": {"min_activity": 0.10, "active_bias": 0.5,
                "adv_warmup_steps": 1500, "adversarial_weight": 0.5},
-    # video (adversarial instability only; NO activity bias)
+    # video (adversarial instability only; no activity bias)
     "tangtv_lower": {"adv_warmup_steps": 1500, "adversarial_weight": 0.5},
-    # slow-TS (masked; activity = present-fraction). No discriminator -> no adv knobs.
+    # slow-TS (masked; activity = present fraction). No discriminator, so no adv knobs.
     "ts_core_density": {"min_activity": 0.5, "active_bias": 0.5},
-    # mse (Motional Stark Effect, slow-TS) is neutral-beam-dependent: ~75% of windows are <10%
-    # present (NBI off), median present-fraction 0.000. Without stratification the codec drowns in
-    # mostly-missing windows -> 1-code collapse + decode-corr oscillation (confirmed 2026-07-27).
-    # Same present-fraction stratification that rescued ts_core_density (biases onto the ~25% of
-    # well-observed windows). Pairs with the non-finite-channel masking fix in _fit_window.
+    # mse (Motional Stark Effect, slow-TS) depends on the neutral beams: ~75% of windows
+    # are <10% present (NBI off), median present fraction 0.000. Without stratification
+    # the codec collapses to one code and its decode correlation oscillates. Same
+    # stratification as ts_core_density (favours the ~25% well-observed windows); see
+    # also the non-finite channel masking in _fit_window.
     "mse": {"min_activity": 0.5, "active_bias": 0.5},
-    # ts_tangential_* (slow-TS): same missing-dominated bimodal present-fraction as
-    # ts_core_density (measured 2026-08-05 over 12 spread shots: median 0.067, 59% of windows
-    # <= 0.1 present, 34.75% >= 0.5 — density and temp share the identical mask, same laser),
-    # but both were left unstratified in the v6 fleet. ts_tangential_density DEGRADED over its
-    # 80k v6 run (decode corr 0.30@20k -> 0.03@80k, distinct codes 11 -> 5) as the mostly-
-    # missing windows swamped the batches. NOTE (2026-08-05): slow-TS stratification was a
-    # SILENT NO-OP at production scale until the _chunks_in_current_file re-draw-bound fix —
-    # the ts_core_density/mse entries above never actually stratified their production runs
-    # (their improvements came from standardization/masking); these tangential runs are the
-    # first slow-TS runs where the mechanism is live.
+    # ts_tangential_* (slow-TS): the same bimodal present fraction as ts_core_density
+    # (over 12 shots: median 0.067, 59% of windows <= 0.1 present, 34.75% >= 0.5;
+    # density and temperature share the mask). Unstratified, ts_tangential_density
+    # degraded over an 80k-step run (decode corr 0.30 -> 0.03, distinct codes 11 -> 5)
+    # as mostly-missing windows took over the batches. Slow-TS stratification only works
+    # since the redraw bound fix in _chunks_in_current_file.
     "ts_tangential_density": {"min_activity": 0.5, "active_bias": 0.5},
     "ts_tangential_temp": {"min_activity": 0.5, "active_bias": 0.5},
-    # fast-TS (envelope std). The scale-fix de-saturates the envelope (median within-window std
-    # 0.648, 91% of windows structured) — the DATA is rich, NOT low-info. Yet the codec pinned to
-    # 1 code (frac 0.001) even under entropy_weight=5.0 (2026-07-27). Root cause: filterscopes was
-    # the ONLY collapse-prone codec running full adversarial_weight=1.0 with ZERO adv warmup, so
-    # the discriminator hammered a from-scratch encoder from step 0 -> adversarial-driven 1-code
-    # collapse. Fix = the SAME adv-warmup + halved adversarial_weight its siblings already get.
+    # fast-TS (envelope std). After the scale fix the envelope is rich (median
+    # within-window std 0.648, 91% of windows structured), yet the codec still pinned to
+    # one code, even with entropy_weight=5.0. It was the only collapse-prone codec at
+    # adversarial_weight 1.0 with no warmup, so the discriminator pushed a fresh encoder
+    # into collapse from step 0; the fix is the same warmup and halved weight as the
+    # others.
     #
-    # RAW-MODE EXEMPT (2026-09-03): apply_activity_overrides SKIPS this entry when the config is
-    # the sample-wise codec (cfg.is_raw). BOTH halves are wrong there — min_activity 0.5
-    # thresholds the ELM-ENVELOPE std (median 0.648), whereas the raw window's std has median
-    # ~0.007 in standardized units, so 0.5 would reject essentially every window; and
-    # adversarial_weight 0.5 would SILENTLY re-enable the GAN that the raw codec deliberately
-    # defaults OFF. The entry stays so the ENVELOPE codec's behaviour is byte-identical.
+    # apply_activity_overrides skips this entry for the raw-sample codec (cfg.is_raw):
+    # 0.5 is a threshold on envelope std (median 0.648), while raw windows have a median
+    # std of ~0.007 in standardised units, so it would reject nearly every window; and
+    # adversarial_weight 0.5 would re-enable the GAN the raw codec has off by default.
     "filterscopes": {"min_activity": 0.5, "active_bias": 0.5,
                      "adv_warmup_steps": 1500, "adversarial_weight": 0.5},
 }
 
-# Modalities that need WHOLE-SHOT presence filtering (fix (a) for co2 collapse). A diagnostic
-# recorded on only a subset of shots stores a length-1 (C, 1) placeholder on the shots that
-# lack it; that placeholder floors to silence and swamps the codec batch, collapsing the FSQ
-# to one code. Within-shot activity stratification cannot rescue a shot with zero signal (no
-# active window to re-draw to), so these shots are dropped up front via
-# filter_signal_present_files. Only co2 qualifies today: it is absent on the older shot range
-# (placeholder shape (4, 1)) and present on the newer one (shape (4, ~4.5M)). ece/bes/mhr are
-# present broadly and are NOT filtered (byte-identical). Slow-TS neutral-beam gaps (cer/mse)
-# are handled by masking, not shot-dropping, so they are not listed here.
+# Modalities that need whole-shot presence filtering. A diagnostic recorded on only some
+# shots stores a length-1 (C, 1) placeholder on the others; it floors to silence, swamps
+# the batch and collapses the FSQ to one code. Within-shot stratification cannot help a
+# shot with no active window, so such shots are dropped up front with
+# filter_signal_present_files. Only co2 qualifies: absent on the older shot range
+# (placeholder (4, 1)), present on the newer one ((4, ~4.5M)). ece/bes/mhr are present
+# broadly. Slow-TS beam gaps (cer/mse) are handled by masking instead.
 _PRESENCE_FILTER_SIGNALS: frozenset = frozenset({"co2"})
 
-# Per-modality spectro INPUT-STANDARDIZATION (global per-freq z-score of the log-power input).
-# For THIN modalities the log-power window is a large near-constant plate (co2 ~20 per freq,
-# across-window std ~0.005 for most bins) with real signal in only a few bins. Pure MAE on that
-# plate is minimized by a constant -> the FSQ collapses to one code regardless of token count
-# (confirmed: both 192-tok and coarse-16 collapsed). Subtracting the dataset per-freq mean and
-# dividing by the per-freq std (clamped to a FLOOR so near-constant "noise" bins are not blown
-# up) lifts the informative bins to O(1), so a constant can no longer minimize the loss and the
-# few real bins become codeable. Stats are computed in the CODEC's OWN log_power_stft space
-# (the FM's log_per_bin stats are in different log units -> misaligned), keyed on the modality.
-# co2 keeps the FINE 192-token resolution (user 2026-07-24: coarse arch did NOT help; the lever
-# is the input scale, not token count). No-op for ece/bes/mhr (rich, naturally O(1)).
+# Spectro modalities that get raw per-channel input standardisation. For thin modalities
+# the log-power window is a large near-constant plate (co2 ~20 per freq, across-window
+# std ~0.005 for most bins) with signal in only a few bins. MAE on that plate is
+# minimised by a constant, so the FSQ collapses to one code whatever the token count
+# (192 and 16 tokens both collapsed). Rescaling the input lifts the informative bins to
+# O(1). co2 keeps the 192-token resolution: the input scale, not the token count, is
+# what matters. Not needed for ece/bes/mhr, which are O(1) already.
 _SPECTRO_STANDARDIZE_SIGNALS: frozenset = frozenset({"co2"})
 
 
 def apply_spectro_standardization(cfg, modality: str, stats_path=None, log_fn=None) -> None:
-    """Enable RAW per-channel input standardization on ``cfg`` IN PLACE for non-O(1)-raw spectros.
+    """Turn on raw per-channel input standardisation on ``cfg`` in place.
 
-    No-op for any modality not in :data:`_SPECTRO_STANDARDIZE_SIGNALS`. Loads the FM's
-    ``preprocessing_stats[modality]['raw']`` per-channel (C,) mean/std (raw is raw — no log-unit
-    mismatch, unlike a log-power stat) and sets ``cfg.input_standardize`` + ``cfg.raw_mean`` /
-    ``cfg.raw_std`` (ckpt-serializable). ``log_power_stft`` z-scores the raw per channel BEFORE the
-    STFT, shifting co2's log-power out of the _LOG_CEIL clip. Must run BEFORE the codec/dataset are
-    built. Missing/degenerate stats -> standardization stays OFF (warn), never crash.
+    No-op for modalities not in :data:`_SPECTRO_STANDARDIZE_SIGNALS`. Loads the FM's
+    ``preprocessing_stats[modality]['raw']`` per-channel (C,) mean/std (raw units, so no
+    log-unit mismatch) and sets ``cfg.input_standardize``, ``cfg.raw_mean`` and
+    ``cfg.raw_std`` (saved in the checkpoint). ``log_power_stft`` z-scores the raw
+    signal per channel before the STFT, which moves co2's log-power out of the _LOG_CEIL
+    clip. Must run before the codec and dataset are built. Missing or degenerate stats
+    leave standardisation off with a warning.
     """
     if modality not in _SPECTRO_STANDARDIZE_SIGNALS:
         return
@@ -245,7 +210,7 @@ def apply_spectro_standardization(cfg, modality: str, stats_path=None, log_fn=No
         return
     mean = _np.asarray(raw["mean"], dtype=_np.float32)   # (C,)
     std = _np.asarray(raw["std"], dtype=_np.float32)
-    # sanitize: a non-finite / zero-std channel would poison the z-score -> center 0, scale 1.
+    # A non-finite or zero-std channel would break the z-score: use centre 0, scale 1.
     mean = _np.where(_np.isfinite(mean), mean, 0.0)
     std = _np.where(_np.isfinite(std) & (std > 0), std, 1.0)
     if mean.shape[0] != cfg.channels:
@@ -264,20 +229,16 @@ def apply_spectro_standardization(cfg, modality: str, stats_path=None, log_fn=No
 
 
 def apply_activity_overrides(cfg, modality: str, log_fn=None) -> None:
-    """Set the per-modality anti-collapse overrides on ``cfg`` IN PLACE (no-op if not listed).
+    """Apply the per-modality anti-collapse overrides to ``cfg`` in place.
 
-    Only the four collapsing codecs appear in :data:`_activity_overrides`; every other modality
-    is left at its config default, so this is a no-op for the already-working codecs. Each field
-    is set only if ``cfg`` actually has it (video / slow-TS lack some adversarial knobs), so a
-    stray field never crashes a codec family that doesn't use it.
+    No-op for modalities not in :data:`_activity_overrides`. Each field is set only if
+    ``cfg`` has it (video and slow-TS lack some adversarial knobs).
     """
     ov = _activity_overrides.get(modality)
     if not ov:
         return
-    # The fast-TS entry is calibrated for the ENVELOPE codec only (see the table note): its
-    # min_activity threshold is an envelope-std threshold, and its adversarial_weight would
-    # silently switch the GAN back on for the raw codec. getattr so a config pickled before
-    # `target` existed still takes the envelope branch.
+    # The fast-TS entry is calibrated for the envelope codec only (see the table).
+    # getattr so a config pickled before `target` existed takes the envelope branch.
     if modality == FASTTS_MODALITY and getattr(cfg, "is_raw", False):
         if log_fn is not None:
             log_fn(f"[train_codec] anti-collapse overrides for {modality}: SKIPPED "
@@ -305,30 +266,28 @@ def compute_logpow_stats(
     freq_bins: Optional[int] = None,
     time_frames: Optional[int] = None,
 ) -> dict:
-    """Dataset-level per-(channel,freq) log-power mean/std for ``--logpow_stats_path``.
+    """Dataset-level per-(channel, freq) log-power mean/std for ``--logpow_stats_path``.
 
-    COMPOSE convention (2026-07-31): stats are computed in the space the codec actually
-    SEES — i.e. AFTER ``apply_spectro_standardization``'s raw z-score for the modalities
-    in ``_SPECTRO_STANDARDIZE_SIGNALS`` (co2). Without raw-z, co2's log-power is 100%
-    clipped at the +20 ceiling and the stats degenerate (mean 20, std 0) — the pre-fix
-    ``codec_co2_perfreq_stats.pt`` on foundation_model_meta is exactly that; REGENERATE
-    it with this function, never reuse it.
+    The stats are computed in the space the codec sees, i.e. after
+    ``apply_spectro_standardization``'s raw z-score for the modalities in
+    ``_SPECTRO_STANDARDIZE_SIGNALS`` (co2). Without it co2's log-power is all clipped at
+    the +20 ceiling and the stats degenerate (mean 20, std 0); the old
+    ``codec_co2_perfreq_stats.pt`` on foundation_model_meta is like that, so regenerate
+    it with this function.
 
-    WITHIN-SHOT std convention (2026-07-31 v2, measured in gate job 5131926): the
-    POOLED-across-shots std is dominated by across-shot regime variance (~5x the
-    within-shot signal scale for ece/mhr) and dividing by it crushes any one shot's
-    structure below loss visibility — ece/mhr reverted to 1-code decoder-only recon.
-    So: ``mean`` = pooled over all sampled windows (dataset-level plate removal, which
-    transfers), ``std`` = sqrt(average over shots of the per-shot variance around the
-    per-shot mean) — the within-shot scale the gate campaign validated. Samples
-    ``windows_per_shot`` windows spread within each shot (deterministic; no cache files
-    are read or written). Writes ``{mean, std, std_kind, n_windows, n_shots, modality,
-    space}`` to ``out_path`` (existing file is backed up to ``.bak`` first).
+    ``mean`` is pooled over all sampled windows. ``std`` is the within-shot scale,
+    sqrt(mean over shots of each shot's variance about its own mean): the pooled std is
+    dominated by differences between shots (~5x the within-shot scale for ece/mhr), and
+    dividing by it hid each shot's structure from the loss, so ece/mhr fell back to one
+    code. ``windows_per_shot`` windows are taken evenly spread within each shot
+    (deterministic; no cache files are read or written). Writes ``{mean, std, std_kind,
+    n_windows, n_shots, modality, space}`` and the STFT geometry to ``out_path``,
+    moving an existing file to ``.bak`` first.
     """
     cfg = SpectroCodecConfig()
     cfg.channels = modality_channels(modality)
-    # STFT GEOMETRY passthrough (all None => the 1024/256/512/96 default, byte-identical).
-    # The written (C, F) stats are only valid for the grid they were computed on.
+    # STFT geometry (None keeps the default 1024/256/512/96). The (C, F) stats are only
+    # valid on the grid they were computed on.
     for _name, _val in (("stft_n_fft", stft_n_fft), ("stft_hop", stft_hop),
                         ("freq_bins", freq_bins), ("time_frames", time_frames)):
         if _val is not None:
@@ -372,8 +331,8 @@ def compute_logpow_stats(
         "modality": modality,
         "space": ("codec_log_power_stft__post_raw_std"
                   if cfg.input_standardize else "codec_log_power_stft"),
-        # STFT grid these stats are valid for — a 512-bin file loaded into a 256-bin codec is
-        # a silent correctness bug, so record the geometry alongside the numbers.
+        # The STFT grid these stats belong to, since loading 512-bin stats into a
+        # 256-bin codec would be a silent error.
         "stft_n_fft": int(cfg.stft_n_fft),
         "stft_hop": int(cfg.stft_hop),
         "freq_bins": int(cfg.freq_bins),
@@ -394,11 +353,9 @@ def compute_logpow_stats(
 
 
 def _import_multifile():
-    """Lazily import the production multi-file dataset + samplers.
+    """Import the production multi-file dataset and samplers.
 
-    Imported lazily so that ``import ignite.train_codec`` for module-level helpers
-    (``modality_channels`` / the CLI parser) does not eagerly pull in the heavier data
-    stack; the classes are needed only when a dataset/loader is actually constructed.
+    Kept in a function so the import sits in one place; it runs at module import below.
     """
     from tokamak_foundation_model.data.multi_file_dataset import (
         DistributedTwoLevelSampler,
@@ -409,8 +366,8 @@ def _import_multifile():
     return TokamakMultiFileDataset, TwoLevelSampler, DistributedTwoLevelSampler
 
 
-# Bind the production dataset + samplers at import time (cheap; the module is already a
-# dependency of the trainer). CodecPairDataset subclasses TokamakMultiFileDataset directly.
+# Bind the dataset and samplers at import; CodecPairDataset subclasses
+# TokamakMultiFileDataset directly.
 (
     TokamakMultiFileDataset,
     TwoLevelSampler,
@@ -418,9 +375,7 @@ def _import_multifile():
 ) = _import_multifile()
 
 
-# ------------------------------------------------------------------------------------- #
-# modality channel-count helper (read-only against the loader config)
-# ------------------------------------------------------------------------------------- #
+# Channel counts (read from the loader config)
 def _channels_after_selection(num_channels: int, channels_to_use) -> int:
     """Channel count after applying a ``channels_to_use`` slice / index-list / None."""
     if channels_to_use is None:
@@ -431,17 +386,16 @@ def _channels_after_selection(num_channels: int, channels_to_use) -> int:
 
 
 def modality_channels(modality: str) -> int:
-    """Channels actually loaded for ``modality`` after ``channels_to_use``.
+    """Channels loaded for ``modality`` after ``channels_to_use``.
 
-    Reads ``TokamakH5Dataset.SIGNAL_CONFIGS`` (spectro) or ``MOVIE_CONFIGS`` (video),
-    class-level + read-only. Mirrors ``spike._num_ece_channels`` but for any codec modality.
+    Reads the class-level ``TokamakH5Dataset.SIGNAL_CONFIGS`` (spectro, slow-TS) or
+    ``MOVIE_CONFIGS`` (video). Like ``spike._num_ece_channels`` for any codec modality.
     """
     from tokamak_foundation_model.data.data_loader import TokamakH5Dataset
 
     if modality == FASTTS_MODALITY:
-        # fast-TS (filterscopes) is a non-STFT signal; reuse the fast-TS trainer's helper so the
-        # channel logic lives in exactly one place (lazy import: fastts_train imports FROM this
-        # module, so a top-level import here would be circular).
+        # Fast-TS uses the fast-TS trainer's helper (imported lazily: fastts_train
+        # imports from this module).
         from .fastts_train import fastts_channels
         return fastts_channels(modality)
 
@@ -458,8 +412,8 @@ def modality_channels(modality: str) -> int:
     )
     if cfg_sig is None:
         raise ValueError(f"unknown modality {modality!r}; not in SIGNAL_CONFIGS")
-    # slow-TS signals (Thomson / CER / MSE) are non-STFT raw signals; spectro signals are
-    # STFT. Anything else that is non-STFT is not a codec modality we support here.
+    # Slow-TS signals are raw (non-STFT), spectro signals are STFT; any other non-STFT
+    # signal is not a codec modality.
     if not cfg_sig.apply_stft and modality not in SLOWTS_MODALITIES:
         raise ValueError(
             f"modality {modality!r} is not a spectro (apply_stft) or slow-TS signal"
@@ -476,19 +430,18 @@ def video_divertor(modality: str) -> str:
     raise ValueError(f"{modality!r} is not a video modality {VIDEO_MODALITIES}")
 
 
-# Full-dataset per-channel tangtv liveness scan (scripts/data_preparation/scan_video_channels.py).
-# dict {shot_int: [7 flags]}; a flag is 1 when that camera's middle frame is finite. Precomputed
-# for ALL 8753 shots, so the video presence filter costs ONE torch.load and opens NO HDF5 file —
-# unlike a cold scan, which is the documented NCCL-watchdog crash.
+# Per-channel tangtv liveness for every shot (scripts/data_preparation/
+# scan_video_channels.py): {shot_int: [7 flags]}, a flag is 1 when that camera's middle
+# frame is finite. The video presence filter needs only this one torch.load and no HDF5
+# scan (a cold scan at job time hits the NCCL watchdog).
 VIDEO_LIVENESS_CACHE = Path(
     "/lustre/orion/fus187/proj-shared/foundation_model_meta/video_channel_liveness.pt"
 )
 
 
-# Full-dataset per-channel SPECTRO liveness scan
-# (scripts/data_preparation/scan_video_channels.py --family spectro). Same role and same
-# one-torch.load contract as VIDEO_LIVENESS_CACHE: never a cold HDF5 scan at job time.
-# dict {shot_int: {modality: {"n", "t0", "t1", "live" [C flags], "live_frac" [C floats]}}}.
+# Per-channel spectro liveness (scan_video_channels.py --family spectro), used the same
+# way as VIDEO_LIVENESS_CACHE.
+# {shot_int: {modality: {"n", "t0", "t1", "live" [C flags], "live_frac" [C floats]}}}.
 SPECTRO_LIVENESS_CACHE = Path(
     "/lustre/orion/fus187/proj-shared/foundation_model_meta/spectro_channel_liveness.pt"
 )
@@ -503,25 +456,19 @@ def derive_presence_lengths_sidecar(
     require_all: bool = False,
     log_fn=None,
 ) -> Optional[Path]:
-    """Write ``codec_<mod>_presence_lengths.pt`` by SUBSETTING the unfiltered sidecar.
+    """Write ``codec_<mod>_presence_lengths.pt`` by subsetting the unfiltered sidecar.
 
-    WHY THIS EXISTS. ``TokamakMultiFileDataset._load_or_compute_lengths`` reuses a sidecar
-    only when its stored PATH LIST matches the dataset's, so ``--spectro_presence any``
-    (a different shot list) misses ``codec_<mod>_lengths.pt`` and every arm cold-scans every
-    shot at ~0.77 s/file -- ~98 min for ece's 7616 shots, i.e. the whole of a 2 h leg. That
-    cost mirnov two entire legs on 2026-09-04, and it is what pushed ece to run unfiltered:
-    MEASURED in job 5419336, the 4 unfiltered ece arms advanced ~3x slower than the
-    presence-filtered mirnov arms beside them (step 3000 vs 6000 at 29 min), because ~13% of
-    ece shots are empty stubs on which every one of ``max_tries`` re-draws fails.
+    ``TokamakMultiFileDataset._load_or_compute_lengths`` reuses a sidecar only when its
+    stored path list matches, so a presence-filtered shot list misses
+    ``codec_<mod>_lengths.pt`` and every run cold-scans every shot at ~0.77 s per file
+    (~98 min for ece's 7616 shots, most of a 2 h leg).
 
-    But NO SCAN IS NEEDED: a per-file chunk count depends only on that file's duration and
-    the dataset's window geometry, never on which other shots are in the list, and the
-    presence-filtered train list is a SUBSET of the unfiltered one. So the lengths can be
-    copied across exactly.
+    No scan is needed: a file's chunk count depends only on its duration and the window
+    geometry, and the filtered list is a subset of the unfiltered one, so the lengths
+    can be copied.
 
-    Refuses to write (returns None) if ANY required path is absent from the unfiltered cache
-    -- a partially-correct lengths cache would silently mis-index every window, which is far
-    worse than a slow scan.
+    Writes nothing and returns None if any required path is missing from the unfiltered
+    cache, since a partly wrong lengths cache would silently mis-index windows.
     """
     cdir = Path(lengths_cache_dir)
     src = cdir / f"codec_{modality}_lengths.pt"
@@ -557,18 +504,15 @@ def spectro_live_shots(
     liveness_path: Union[str, Path] = SPECTRO_LIVENESS_CACHE,
     log_fn=None,
 ) -> List[str]:
-    """Keep only the shots whose channels for THIS spectro modality actually recorded.
+    """Keep only shots whose channels for this spectro modality recorded data.
 
-    The spectro codecs had NO per-channel presence filter at all (only co2 had a whole-shot
-    "is the group non-empty" filter, via ``_PRESENCE_FILTER_SIGNALS``). A shot whose HDF5
-    group is an empty ``(C, 1)`` stub can never yield a real window — every draw falls
-    through ``_draw_valid_pair``'s re-draws to the eps-floor last-resort pair — so those
-    shots contribute nothing but a constant plate, which was then reconstructed and shown to
-    the discriminator as REAL.
+    A shot whose HDF5 group is an empty ``(C, 1)`` stub never yields a real window:
+    every draw falls through ``_draw_valid_pair``'s redraws to the eps-floor fallback
+    pair, a constant plate that is then reconstructed and shown to the discriminator as
+    real. (co2 also has the whole-shot filter in ``_PRESENCE_FILTER_SIGNALS``.)
 
-    ``require_all`` additionally drops shots with any dead channel. Order is preserved.
-    Falls back to the input list (with a warning) if the liveness cache is missing, so this
-    can never harden into a hard dependency.
+    ``require_all`` also drops shots with any dead channel. Order is kept. If the
+    liveness cache is missing, the input list is returned with a warning.
     """
     path = Path(liveness_path)
     if not path.exists():
@@ -593,10 +537,10 @@ def spectro_live_shots(
 
 
 def video_channels_of(modality: str) -> List[int]:
-    """The RAW tangtv channel indices this divertor codec consumes (lower [0,2], upper [4,6]).
+    """Raw tangtv channel indices this divertor codec uses (lower [0,2], upper [4,6]).
 
-    Read from ``MOVIE_CONFIGS[modality].channels_to_use`` rather than hard-coded, so the
-    presence filter can never disagree with what the loader actually slices.
+    Read from ``MOVIE_CONFIGS[modality].channels_to_use``, so the presence filter always
+    matches what the loader slices.
     """
     from tokamak_foundation_model.data.data_loader import TokamakH5Dataset
 
@@ -619,23 +563,21 @@ def video_live_shots(
     liveness_path: Union[str, Path] = VIDEO_LIVENESS_CACHE,
     log_fn=None,
 ) -> List[str]:
-    """Keep only the shots whose cameras for THIS divertor were actually recording.
+    """Keep only shots whose cameras for this divertor were recording.
 
-    The video codec had NO presence filter, and the cost is large and measured (all 8753 shots,
-    2026-09-03):
+    Over all 8753 shots:
 
-        tangtv_lower (ch 0, 2)   both live 2640 (30.16%)   one 1623 (18.54%)   NEITHER 4490 (51.30%)
-        tangtv_upper (ch 4, 6)   both live 1820 (20.79%)   one  930 (10.62%)   NEITHER 6003 (68.58%)
+        lower (ch 0, 2)   both 2640 (30.16%)   one 1623 (18.54%)   none 4490 (51.30%)
+        upper (ch 4, 6)   both 1820 (20.79%)   one  930 (10.62%)   none 6003 (68.58%)
 
-    A shot with no live camera yields a fully-NaN slab that the loader ZERO-FILLS, and
-    ``VideoCodecPairDataset._draw_valid_clip`` cannot re-draw out of it (no window in the shot
-    has data), so it falls through to the all-zero last-resort clip. Half of the lower stream
-    and two thirds of the upper stream was therefore constant zero -- fed to the discriminator
-    as "real".
+    A shot without a live camera is an all-NaN slab that the loader fills with zeros,
+    and ``VideoCodecPairDataset._draw_valid_clip`` cannot redraw out of it, so it ends
+    at the all-zero fallback clip. Unfiltered, half the lower stream and two thirds of
+    the upper stream are constant zero.
 
-    ``require_all`` additionally drops the one-camera-live shots, leaving only fully-populated
-    ones (2640 / 1820 shots). Order is preserved. Falls back to the input list (with a warning)
-    if the liveness cache is missing, so this can never harden into a hard dependency.
+    ``require_all`` also drops shots with only one live camera (leaving 2640 / 1820
+    shots). Order is kept. If the liveness cache is missing, the input list is returned
+    with a warning.
     """
     path = Path(liveness_path)
     if not path.exists():
@@ -659,14 +601,11 @@ def video_live_shots(
     return keep
 
 
-# ------------------------------------------------------------------------------------- #
-# δ-shift-pair dataset — a THIN subclass of the production TokamakMultiFileDataset
-# ------------------------------------------------------------------------------------- #
+# Spectro δ-shift-pair dataset
 def _shot_paths(shots: Sequence[Union[str, int]], data_dir: Union[str, Path]) -> List[Path]:
     """Resolve ``shots`` to existing ``{shot}_processed.h5`` paths under ``data_dir``.
 
-    Missing files are dropped (the parent dataset would give them length 0 anyway); the
-    order of the surviving shots is preserved so ranks derive a deterministic file list.
+    Missing files are dropped; order is kept, so every rank gets the same file list.
     """
     d = Path(data_dir)
     paths: List[Path] = []
@@ -677,145 +616,118 @@ def _shot_paths(shots: Sequence[Union[str, int]], data_dir: Union[str, Path]) ->
     return paths
 
 
-# ------------------------------------------------------------------------------------- #
-# activity-stratified re-draw — shared by ALL FOUR codec datasets (anti degenerate-window
-# domination). Wraps a per-item "draw one valid item" callable with a biased re-draw toward
-# ACTIVE windows so the batch is ~50 % active instead of the natural 35-48 %, WITHOUT dropping
-# quiet windows (a below-threshold draw is still ACCEPTED as the fallback, so the codec keeps
-# learning a "quiet" code for Phase-B generalization).
-# ------------------------------------------------------------------------------------- #
+# Activity-stratified redraw, shared by all four codec datasets. Biases the batch toward
+# active windows (~50% instead of the natural 35-48%) without dropping quiet ones: a
+# below-threshold draw is still accepted as the fallback, so the codec still learns a
+# code for quiet windows.
 def _stratified_draw(
     idx: int,
-    draw_valid,          # callable(chunk_idx) -> item  (already re-draws degenerate windows)
+    draw_valid,          # callable(chunk_idx) -> item  (redraws degenerate windows)
     activity_of,         # callable(item) -> float      (per-modality activity score)
-    n_chunks,            # callable() -> int            (re-draw bound, best-effort)
+    n_chunks,            # callable() -> int            (redraw bound, best effort)
     *,
     min_activity: float,
     active_bias: float,
     max_tries: int,
     seed: int,
 ):
-    """Draw one item for global-window ``idx`` with an activity-stratified re-draw.
+    """Draw one item for window ``idx`` with an activity-stratified redraw.
 
-    Contract (BYTE-IDENTICAL when ``active_bias <= 0``): returns exactly ``draw_valid(idx)`` and
-    performs NO extra RNG / re-draw. This preserves the already-working modalities verbatim.
+    With ``active_bias <= 0`` this returns ``draw_valid(idx)`` and uses no extra RNG.
 
-    When ``active_bias > 0``: draw the base item; if it is already active
-    (``activity_of(item) >= min_activity``) keep it. Otherwise, with probability ``active_bias``,
-    re-draw from up to ``max_tries`` nearby chunks and take the FIRST active one found. If none of
-    the re-draws is active (or the biased coin came up tails), ACCEPT the base item — quiet windows
-    are down-weighted, never dropped. All RNG is seeded from ``idx`` so it is deterministic per
-    item (reproducible across workers / resumes), matching the degenerate-redraw convention.
+    With ``active_bias > 0``: draw the base item and keep it if it is active
+    (``activity_of(item) >= min_activity``). Otherwise, with probability
+    ``active_bias``, try up to ``max_tries`` other chunks and return the first active
+    one. If none is active (or the coin says no), return the base item, so quiet windows
+    are down-weighted, never dropped. The RNG is seeded from ``idx``, so each item is
+    deterministic across workers and resumes.
     """
     base = draw_valid(idx)
     if active_bias <= 0.0:
-        return base                                   # OFF: byte-identical, no extra RNG
+        return base                                   # off: no extra RNG
     if float(activity_of(base)) >= min_activity:
         return base                                   # already active
     gen = torch.Generator().manual_seed(int(seed) + 90_001 * int(idx) + 13)
     if float(torch.rand((), generator=gen)) >= active_bias:
-        return base                                   # biased coin tails -> keep quiet window
+        return base                                   # coin says keep the quiet window
     n = max(1, int(n_chunks()))
     for _ in range(int(max_tries)):
         alt = int(torch.randint(0, n, (1,), generator=gen).item())
         cand = draw_valid(alt)
         if float(activity_of(cand)) >= min_activity:
             return cand                               # found an active window
-    return base                                       # no active re-draw found -> keep base
+    return base                                       # no active redraw found
 
 
 def _chunks_in_current_file(ds, chunk_idx: int) -> int:
-    """Re-draw bound for hooks whose ``alt`` index is a WITHIN-SHOT chunk index.
+    """Redraw bound for hooks whose ``alt`` index is a within-shot chunk index.
 
-    ``_build_window`` / ``_build_clip`` consume the re-draw's ``alt`` as an index into the
-    shot currently pinned on ``ds.h5_file`` (``t_start = warmup + alt * step``), so the bound
-    MUST be THIS file's chunk count — the parent ``__getitem__`` records it as
-    ``_cur_file_n_chunks``. The previous bound (`_cumulative_lengths_span()`, the GLOBAL
-    window total) made P(alt lands inside the current shot) ≈ 1e-4 at the 9000-shot
-    production scale, so every re-draw candidate was out-of-range → None → the stratified
-    AND degenerate re-draws silently no-oped (proven 2026-08-05: the ts_tangential_*
-    "stratified" retrains reproduced their unstratified predecessors bit-for-bit, and a
-    direct probe measured 0/200 valid candidates). The spectro / fast-TS datasets were
-    never affected — they already bound via ``_chunks_in_current_shot`` (xdata-derived).
-    Falls back to ``chunk_idx + 1`` (never smaller than the requested chunk).
+    ``_build_window`` / ``_build_clip`` use ``alt`` as an index into the shot on
+    ``ds.h5_file`` (``t_start = warmup + alt * step``), so the bound must be this file's
+    chunk count, which the parent ``__getitem__`` stores as ``_cur_file_n_chunks``. A
+    global bound would put almost every candidate outside the shot and make the redraws
+    silent no-ops. (The spectro and fast-TS datasets use ``_chunks_in_current_shot``.)
+    Falls back to ``chunk_idx + 1``.
     """
     n = int(getattr(ds, "_cur_file_n_chunks", 0))
     return n if n > 0 else int(chunk_idx) + 1
 
 
 class CodecPairDataset(TokamakMultiFileDataset):
-    """``(spec_a, spec_b)`` δ-shift log-power pairs for ONE spectro modality.
+    """``(spec_a, spec_b)`` δ-shift log-power pairs for one spectro modality.
 
-    A **thin** subclass of :class:`~tokamak_foundation_model.data.multi_file_dataset.\
-TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery WHOLESALE
-    — the global-idx → ``(file_idx, chunk_idx)`` binary-search map, the per-worker LRU
-    HDF5 file-handle cache (with the correct ``__getstate__``/``__setstate__`` pickling into
-    DataLoader workers), the length-cache sidecar, and the ``num_workers`` plumbing — and
-    overrides ONLY the per-item transform hook :meth:`_getitem_standard`.
+    A thin subclass of :class:`TokamakMultiFileDataset` that overrides only
+    :meth:`_getitem_standard`. For a global ``idx`` the parent's ``__getitem__``
+    binary-searches the cumulative lengths for ``file_idx`` and ``chunk_idx``, sets
+    ``self.h5_file = self._get_file_handle(file_idx)`` (per-worker LRU handle) and calls
+    ``self._getitem_standard(chunk_idx)``. The index map, file handles and worker safety
+    are therefore inherited, and the override sees the open handle for the item's shot
+    and the within-shot window index.
 
-    Why ``_getitem_standard`` is the right hook
-    -------------------------------------------
-    The parent's :meth:`TokamakMultiFileDataset.__getitem__` does, for a global ``idx``:
-    (1) a binary-search of the cumulative-length array to get ``pos``; (2) ``file_idx =
-    self._valid_indices[pos]`` and ``chunk_idx = idx - cumulative_lengths[pos]``; (3)
-    ``self.h5_file = self._get_file_handle(file_idx)`` (per-worker LRU handle); then (4)
-    ``return self._getitem_standard(chunk_idx)`` — our override.
+    Windows start at ``t_start = warmup_s + chunk_idx * step_size_s``, as in the parent.
+    The dataset is built with ``chunk_duration_s = CHUNK_S + span_tail_s`` (the full
+    δ-extended span), so the parent's length formula
+    (``floor((duration - chunk_duration_s) / step_size_s) + 1``) already keeps
+    ``[t_start, t_start + CHUNK_S + δ_max]`` inside the shot. ``step_size_s = CHUNK_S``
+    keeps windows 50 ms apart.
 
-    So by overriding *only* ``_getitem_standard`` we inherit the binary-search index map,
-    the LRU file-handle acquisition, and the num_workers file-handle safety **verbatim** —
-    we do NOT re-implement any of it. When our override runs, ``self.h5_file`` is already the
-    correct open handle for this item's shot (owned by this worker's own object copy), and
-    ``chunk_idx`` is the within-shot window index.
-
-    Windowing reuse
-    ---------------
-    The parent's :meth:`TokamakH5Dataset._getitem_standard` computes the window start as
-    ``t_start = warmup_s + chunk_idx * step_size_s``. We reuse that EXACT formula (see
-    :meth:`_getitem_standard` below). We construct the dataset with
-    ``chunk_duration_s = CHUNK_S + span_tail_s`` (the FULL δ-extended span) so the parent's
-    length computation (``floor((duration - chunk_duration_s) / step_size_s) + 1``) already
-    guarantees the extended window ``[t_start, t_start + CHUNK_S + δ_max]`` fits inside the
-    shot's real data for every ``chunk_idx`` — no per-item overrun guard needed for the map.
-    ``step_size_s = CHUNK_S`` keeps successive windows 50 ms apart (non-overlapping cores).
-
-    δ-pair construction
-    -------------------
-    ``_getitem_standard`` loads the RAW extended window for the modality's ``SignalConfig``
-    over ``[t_start, t_start + span_s]`` via the parent's
-    :meth:`TokamakH5Dataset._load_signal_raw` (already resampled to ``target_fs == STFT_FS``,
-    zero-/NaN-padded), then builds the pair with :func:`ignite.data.shift_pair_windows`
-    (raw δ-shift + re-STFT to log-power). Degenerate windows (all-NaN / near-flat / past the
-    real data end) are guarded exactly as the spike's ``_load_raw_span`` does, and replaced by
-    a re-draw from a nearby valid chunk so every item is a real, finite pair.
+    Each item loads the raw extended window with
+    :meth:`TokamakH5Dataset._load_signal_raw` (resampled to ``target_fs == STFT_FS``,
+    zero/NaN padded) and builds the pair with :func:`ignite.data.shift_pair_windows`
+    (raw δ shift, then STFT to log-power). Degenerate windows (NaN, near flat, past the
+    data end) are rejected as in the spike's ``_load_raw_span`` and redrawn from another
+    chunk.
 
     Parameters
     ----------
     modality : str
         One of :data:`SPECTRO_MODALITIES`.
     shots : sequence of shot ids (str/int)
-        Shots to stream windows from (typically thousands). Resolved to
-        ``{shot}_processed.h5`` under ``data_dir``; missing files are dropped.
+        Shots to stream windows from, resolved to ``{shot}_processed.h5`` under
+        ``data_dir``; missing files are dropped.
     cfg : SpectroCodecConfig
-        Provides ``freq_bins`` / ``time_frames`` / ``consistency_delta_ms``. ``cfg`` is NOT
-        mutated — the caller sets ``cfg.channels`` (use :func:`modality_channels`).
+        Provides ``freq_bins`` / ``time_frames`` / ``consistency_delta_ms``. Not
+        modified; the caller sets ``cfg.channels`` (see :func:`modality_channels`).
     data_dir : path
         Directory of ``{shot}_processed.h5`` files.
     delta_ms_range : (lo, hi) or None
-        δ draw range in ms; defaults to ``cfg.consistency_delta_ms``.
+        δ range in ms; defaults to ``cfg.consistency_delta_ms``.
     t0_start : float
-        Earliest window start (s), forwarded to the parent as ``warmup_s`` (default 1.0,
-        skips ramp-up per the windowing convention).
+        Earliest window start (s), passed to the parent as ``warmup_s`` (default 1.0,
+        skipping the ramp-up).
     min_std : float
         Minimum raw std for a window to count as non-degenerate.
     seed : int
-        Base RNG seed; combined with the item ``idx`` so the δ draw / re-draw is
-        deterministic per item (reproducible across workers and resumes).
+        Base RNG seed, combined with ``idx`` so the δ draw and redraws are deterministic
+        per item.
     lengths_cache_path : path or None
-        Forwarded to the parent's length-cache sidecar (skip re-scanning shot lengths).
+        Parent's length-cache sidecar.
     max_open_files : int
-        Forwarded to the parent's per-worker LRU file-handle cap.
+        Parent's per-worker file-handle limit.
     max_tries : int
-        Max nearby-chunk re-draws before falling back to the last finite pair for a bad item.
+        Redraws before falling back to the eps-floor pair.
+    emit_mask : bool
+        Return ``(spec_a, spec_b, mask)`` instead of a 2-tuple (see ``__init__``).
     """
 
     def __init__(
@@ -843,29 +755,24 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
         self.min_std = float(min_std)
         self.pair_seed = int(seed)
         self.max_tries = int(max_tries)
-        # activity-stratified sampling knobs (0 = OFF -> byte-identical to no stratification).
+        # Activity-stratified sampling (0 = off).
         self.min_activity = float(getattr(cfg, "min_activity", 0.0))
         self.active_bias = float(getattr(cfg, "active_bias", 0.0))
-        # MISSING-DATA knobs (2026-09-03). See SpectroCodecConfig.mask_missing for the
-        # measured motivation.
-        #
-        # ITEM ARITY IS A CONSTRUCTOR ARGUMENT, NOT A cfg FIELD, and deliberately so. The
-        # trainer opts in with emit_mask=cfg.mask_missing; every OTHER consumer of this
-        # dataset builds it from a checkpoint's pickled cfg — the audit / figure scripts,
-        # train_dynamics._single_shot_dataset (the frame-code cache), compute_logpow_stats —
-        # and those all unpack a 2-tuple. Keying the arity off the cfg would silently change
-        # what they receive the moment a masked codec's checkpoint is loaded, i.e. it would
-        # break the cache rebuild rather than the trainer. Default False = the 2-tuple this
-        # dataset has always returned, and no mask is even built.
+        # Missing-data handling (see SpectroCodecConfig.mask_missing). Whether items
+        # carry a mask is a constructor argument, not a cfg field: the trainer passes
+        # emit_mask=cfg.mask_missing, while every other user (audit and figure scripts,
+        # train_dynamics._single_shot_dataset for the frame-code cache,
+        # compute_logpow_stats) builds this dataset from a checkpoint's cfg and unpacks
+        # a 2-tuple. Keying it on the cfg would change their items as soon as a masked
+        # codec is loaded.
         self.emit_mask = bool(emit_mask)
         self.require_live_channels = bool(getattr(cfg, "require_live_channels", False))
-        # A fully-missing window is rejected only when someone is actually consuming the mask.
+        # Reject fully missing windows only when the mask is actually returned.
         self.mask_missing = self.emit_mask
 
-        # δ-extended span the STFT pair needs: A covers [t0, t0+CHUNK_S]; B is shifted by up
-        # to δ_max, ending at t0 + CHUNK_S + δ_max. Make the parent reserve room for the WHOLE
-        # span by using it as chunk_duration_s, while step_size_s stays at CHUNK_S so windows
-        # advance 50 ms at a time (non-overlapping cores).
+        # Span the pair needs: A covers [t0, t0 + CHUNK_S], B is shifted by up to δ_max.
+        # The parent reserves the whole span as chunk_duration_s, while step_size_s
+        # stays CHUNK_S so windows advance 50 ms at a time.
         self.span_tail_s = float(self.delta_ms_range[1]) / 1000.0
         span_s = CHUNK_S + self.span_tail_s
 
@@ -876,9 +783,8 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
                 f"for the {len(list(shots))} requested shots."
             )
 
-        # Reuse the parent's full production machinery: idx-map + LRU handles + length cache.
-        # chunk_duration_s = full δ-span so windows fit; step_size_s = CHUNK_S; warmup_s =
-        # t0_start (the parent's _getitem_standard uses warmup_s + idx*step_size_s as t_start).
+        # chunk_duration_s = full δ span so windows fit; step_size_s = CHUNK_S;
+        # warmup_s = t0_start.
         super().__init__(
             hdf5_paths=paths,
             chunk_duration_s=span_s,
@@ -890,26 +796,21 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
             lengths_cache_path=lengths_cache_path,
             max_open_files=max_open_files,
         )
-        # The parent's __getitem__ dispatches on self.signal_configs; keep only ours so
-        # _load_signal_raw / duration reflect the codec modality (harmless for span math).
+        # Our modality's SignalConfig, for _load_signal_raw and the shot-length lookup.
         self._cfg_sig = next(c for c in self.signal_configs if c.name == modality)
 
-    # -- the ONLY overridden hook: per-item δ-pair transform -------------------------- #
+    # Per-item hook: δ-pair
     def _getitem_standard(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore[override]
         """Return one ``(spec_a, spec_b)`` δ-shift log-power pair for window ``idx``.
 
-        Called by the parent's ``__getitem__`` AFTER it has (a) binary-search-mapped the
-        global index to ``(file_idx, chunk_idx)`` and (b) set ``self.h5_file`` to this shot's
-        per-worker LRU handle. Here ``idx`` is the within-shot ``chunk_idx``.
+        Called by the parent's ``__getitem__`` after it mapped the global index and set
+        ``self.h5_file`` to this shot's handle; ``idx`` is the within-shot
+        ``chunk_idx``.
 
-        Reuses the parent's windowing formula (``t_start = warmup_s + idx * step_size_s``)
-        and the parent's :meth:`_load_signal_raw` to pull the RAW δ-extended window, then
-        builds the pair via :func:`ignite.data.shift_pair_windows`.
-
-        With ``cfg.active_bias > 0`` an activity-stratified re-draw (:func:`_stratified_draw`)
-        biases the draw toward log-power windows with std ``>= cfg.min_activity`` (co2 is mostly
-        floored). With ``active_bias == 0`` (ece/bes/mhr default) this is byte-identical to the
-        plain build+degenerate-redraw below.
+        With ``cfg.active_bias > 0`` the draw (:func:`_stratified_draw`) is biased
+        toward log-power windows with std at least ``cfg.min_activity`` (co2 is mostly
+        at the floor). With ``active_bias == 0`` (ece/bes/mhr) it is the plain build
+        below.
         """
         item = _stratified_draw(
             idx, self._draw_valid_pair, lambda p: float(p[0].std()),
@@ -917,18 +818,17 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
             min_activity=self.min_activity, active_bias=self.active_bias,
             max_tries=self.max_tries, seed=self.pair_seed,
         )
-        # ARITY CONTRACT (see __init__): 2-tuple unless the CONSTRUCTOR asked for the mask.
-        # With emit_mask=True the third element is the ``(C, cfg.time_frames)``
-        # per-(channel, STFT-frame) validity mask for ``spec_a``.
+        # 2-tuple unless the constructor asked for the mask; then the third element is
+        # the (C, cfg.time_frames) per-(channel, STFT frame) validity mask of spec_a.
         return item if self.emit_mask else (item[0], item[1])
 
     def _draw_valid_pair(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Build the δ-pair for window ``idx``, re-drawing DEGENERATE windows (the prior path)."""
+        """Build the δ-pair for window ``idx``, redrawing degenerate windows."""
         pair = self._build_pair(idx)
         if pair is not None:
             return pair
-        # Degenerate window (padded tail / all-flat / NaN): re-draw from nearby chunks so we
-        # never return garbage. Bounded to this shot's chunk range.
+        # Degenerate window (padded tail, flat, NaN): redraw from other chunks of this
+        # shot.
         n_chunks = self._chunks_in_current_shot(idx)
         gen = torch.Generator().manual_seed(self.pair_seed + 100_003 * int(idx) + 7)
         for _ in range(self.max_tries):
@@ -936,27 +836,25 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
             pair = self._build_pair(alt)
             if pair is not None:
                 return pair
-        # Last resort: an eps-floor "silent" pair (finite, non-NaN). NOT rare: a shot whose
-        # HDF5 group is an empty (C, 1) stub — measured in 100% of a 60-shot 190xxx sample for
-        # bes and co2 — can NEVER produce a real window, so every draw from it lands here.
-        # This constant plate was being reconstructed, discriminated as REAL and counted in the
-        # FSQ entropy statistic: exactly the video failure. Its mask is ALL-INVALID.
+        # Last resort: an eps-floor pair (finite) with an all-invalid mask. Not rare: a
+        # shot whose HDF5 group is an empty (C, 1) stub (all of a 60-shot 190xxx sample
+        # for bes and co2) can never give a real window, so every draw from it ends
+        # here.
         C = self._num_channels()
         floor = float(math.log10(1e-10))
         z = torch.full((C, self.codec_cfg.freq_bins, self.codec_cfg.time_frames), floor)
         return z, z.clone(), torch.zeros((C, self.codec_cfg.time_frames))
 
-    # -- helpers (all reuse parent state; no re-implementation of the index map) ------- #
+    # Helpers
     def _build_pair(self, chunk_idx: int) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
-        """Build the δ-pair for a within-shot ``chunk_idx``; None if the window is degenerate.
+        """Build the δ-pair for a within-shot ``chunk_idx``, or None if degenerate.
 
-        ``t_start`` reuses the parent's EXACT formula. The extended span is loaded via the
-        parent's ``_load_signal_raw`` (already at ``target_fs == STFT_FS``); guards mirror
-        :func:`ignite.spike._load_raw_span`.
+        The extended span comes from the parent's ``_load_signal_raw`` (at ``target_fs
+        == STFT_FS``); the checks follow :func:`ignite.spike._load_raw_span`.
         """
         step = getattr(self, "step_size_s", self.chunk_duration_s)
         warmup = getattr(self, "warmup_s", 0.0)
-        t_start = warmup + chunk_idx * step          # parent windowing, reused verbatim
+        t_start = warmup + chunk_idx * step          # parent's windowing formula
         span_s = CHUNK_S + self.span_tail_s
         t_end = t_start + span_s
 
@@ -970,38 +868,36 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
             return None
         if float(raw.std()) < self.min_std:
             return None                              # all-zero / flat window
-        # NOTE the std guard is GLOBAL over ALL channels, which is exactly why a per-channel
-        # mask is needed: a 40-channel ece window with 12 zero-slab channels still has a large
-        # global std and sails through. `nan_mask` used to be DISCARDED here (bound to `_nan`).
+        # The std check is over all channels, so a 40-channel ece window with 12 zero
+        # channels still passes; that is what the per-channel mask below is for.
 
         lo, hi = self.delta_ms_range
         gen = torch.Generator().manual_seed(self.pair_seed + 1_000_003 * int(chunk_idx) + 1)
         d = float(lo + (hi - lo) * float(torch.rand((), generator=gen)))
-        # `raw` already starts at t_start -> rebase t0 to 0.0 for the pair slicer.
+        # raw starts at t_start, so t0 = 0.0 for the pair slicer.
         spec_a, spec_b = data.shift_pair_windows(
             raw, t0=0.0, cfg=self.codec_cfg, delta_ms=d
         )
-        # Per-(channel, STFT-frame) validity for window A (the reconstruction target), built
-        # from the SAME raw samples A is STFT'd from: `raw` starts at t_start and A spans
-        # [t_start, t_start + CHUNK_S] = the first cfg.window_samples samples.
+        # Per-(channel, STFT frame) validity of window A (the reconstruction target),
+        # from the raw samples A is computed from: the first cfg.window_samples samples.
         mask = data.spectro_frame_mask(
             raw[:, : self.codec_cfg.window_samples],
             nan_mask[:, : self.codec_cfg.window_samples],
             self.codec_cfg,
         )
-        # `require_live_channels`: reject (-> re-draw) any window with a dead channel so the
-        # codec only ever sees fully-populated windows. OFF by default.
+        # require_live_channels (off by default): reject, and so redraw, any window with
+        # a dead channel.
         if self.require_live_channels and float(mask.min()) <= 0.0:
             return None
         if self.mask_missing and float(mask.sum()) <= 0.0:
-            return None                              # nothing real in this window at all
+            return None                              # nothing real in this window
         return spec_a, spec_b, mask
 
     def _chunks_in_current_shot(self, chunk_idx: int) -> int:
-        """Number of chunks in the shot currently pinned on ``self.h5_file`` (best-effort).
+        """Number of chunks in the shot on ``self.h5_file`` (best effort).
 
-        Used only to bound the re-draw range. Falls back to ``chunk_idx + 1`` if the shot
-        length can't be recovered (never smaller than the requested chunk).
+        Only bounds the redraw range. Falls back to ``chunk_idx + 1`` if the shot length
+        cannot be read.
         """
         try:
             xd = None
@@ -1036,10 +932,10 @@ TokamakMultiFileDataset`. It re-uses the parent's production streaming machinery
 
 
 def _pair_collate(batch):
-    """Stack ``(spec_a, spec_b[, mask])`` items into ``(B, C, F, T)`` batched tensors.
+    """Stack ``(spec_a, spec_b[, mask])`` items into ``(B, C, F, T)`` batches.
 
-    Arity follows the ITEM: a 2-tuple for the legacy (unmasked) dataset — byte-identical —
-    and a 3-tuple ``(a, b, (B, C, T) mask)`` when the dataset carries ``cfg.mask_missing``.
+    Returns a 2-tuple for unmasked items and ``(a, b, (B, C, T) mask)`` when the dataset
+    uses ``cfg.mask_missing``.
     """
     spec_a = torch.stack([it[0] for it in batch], dim=0)
     spec_b = torch.stack([it[1] for it in batch], dim=0)
@@ -1058,19 +954,17 @@ def make_codec_loader(
     seed: int = 0,
     shuffle: bool = True,
 ) -> DataLoader:
-    """Build a δ-pair DataLoader over a :class:`CodecPairDataset`, reusing the parent's
-    file-locality sampler.
+    """Build a δ-pair DataLoader over a :class:`CodecPairDataset`.
 
-    Sampler choice mirrors the main foundation-model trainer:
-      * DDP (``world_size > 1``): :class:`DistributedTwoLevelSampler` — file-level sharding
-        with sequential intra-file iteration, which keeps the parent's per-worker LRU
-        file-handle cache warm (the DDP analogue of ``DistributedSampler`` tuned for this
-        dataset; see its docstring).
-      * single-process: :class:`TwoLevelSampler` — the same locality-preserving sampler
-        ``make_dataloader`` uses.
+    Samplers as in the main foundation-model trainer:
 
-    The collate stacks ``(spec_a, spec_b)`` items into ``(B, C, F, T)`` batches (the codec's
-    δ-pair contract), rather than the parent's multi-modal ``collate_fn``.
+    * DDP (``world_size > 1``): :class:`DistributedTwoLevelSampler`, which shards by
+      file and iterates each file in order, keeping the per-worker file-handle cache
+      warm.
+    * single process: :class:`TwoLevelSampler`, as ``make_dataloader`` uses.
+
+    The collate stacks ``(spec_a, spec_b)`` items into ``(B, C, F, T)`` batches instead
+    of the parent's multi-modal ``collate_fn``.
     """
     if world_size > 1:
         sampler: torch.utils.data.Sampler = DistributedTwoLevelSampler(
@@ -1092,12 +986,11 @@ def make_codec_loader(
 
 
 def _epoch_cycler(loader: DataLoader):
-    """Yield batches from ``loader`` forever, re-iterating (a new epoch) when exhausted.
+    """Yield batches from ``loader`` forever, starting a new epoch when it is exhausted.
 
-    The production dataset/loader is a FINITE map-style epoch (one pass over the shot
-    windows), while the trainer runs a fixed ``steps`` budget that may span many epochs. This
-    turns the finite loader into an endless batch stream. ``set_epoch`` is called on the
-    sampler each epoch (mirrors the main trainer) so DDP shuffling advances across epochs.
+    The loader covers one finite pass over the windows, while training runs a fixed
+    number of steps. ``set_epoch`` is called on the sampler each epoch so DDP shuffling
+    changes between epochs.
     """
     sampler = getattr(loader, "sampler", None)
     epoch = 0
@@ -1109,41 +1002,32 @@ def _epoch_cycler(loader: DataLoader):
         epoch += 1
 
 
-# ===================================================================================== #
-# VIDEO (tangtv) codec — dataset + loader + gate, mirroring the spectro machinery above.
-# ===================================================================================== #
+# Video (tangtv) codec: dataset, loader and gate, following the spectro code above
 class VideoCodecPairDataset(TokamakMultiFileDataset):
-    """tangtv frame windows ``(frames (C,T,H,W), frame_mask (T,))`` for ONE divertor.
+    """tangtv frame windows ``(frames (C,T,H,W), frame_mask)`` for one divertor.
 
-    A **thin** subclass of :class:`~tokamak_foundation_model.data.multi_file_dataset.\
-TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. It reuses the
-    parent's production streaming machinery WHOLESALE — the global-idx → ``(file_idx,
-    chunk_idx)`` binary-search map, the per-worker LRU HDF5 file-handle cache (with the
-    ``__getstate__``/``__setstate__`` pickling into DataLoader workers), the length-cache
-    sidecar, and the ``num_workers`` plumbing — and overrides ONLY the per-item transform hook
-    :meth:`_getitem_standard`. It does **not** touch ``data_loader.py`` /
-    ``multi_file_dataset.py``.
+    A thin subclass of :class:`TokamakMultiFileDataset`,
+    like :class:`CodecPairDataset`; only :meth:`_getitem_standard` is overridden.
 
-    Difference from :class:`CodecPairDataset` (spectro)
-    ---------------------------------------------------
-    The video codec has **no δ-shift consistency pair** (docs/IGNITE_DESIGN.md §4.3; video
-    has no STFT-phase realization nuisance). So the transform returns the video **frames**
-    plus a **per-frame validity mask** — NOT a pair. The parent's ``__getitem__`` still does
-    the binary-search index map and sets ``self.h5_file`` before dispatching to our
-    ``_getitem_standard(chunk_idx)``; here ``chunk_idx`` is the within-shot window index and
-    ``self.h5_file`` is this worker's LRU handle. We reuse the parent's windowing formula
-    (``t_start = warmup_s + chunk_idx * step_size_s``) and the parent's
-    :meth:`TokamakH5Dataset._load_movie_raw` (already resampled to ``target_fps`` and
-    zero-filled where the camera was off / NaN) — the video analogue of the spectro dataset's
-    ``_load_signal_raw`` reuse.
+    The video codec has no δ-shift pair (docs/IGNITE_DESIGN.md §4.3; video has no
+    STFT-phase nuisance), so an item is the frames plus a validity mask, not a pair.
+    ``chunk_idx`` is the within-shot window index. Windows use the parent's formula
+    (``t_start = warmup_s + chunk_idx * step_size_s``) and
+    :meth:`TokamakH5Dataset._load_movie_raw` (resampled to ``target_fps``, zero where
+    the camera was off or NaN).
+
+    The mask is ``(T,)`` all ones by default, or ``(C, T)`` per (channel, frame) with
+    ``cfg.mask_missing``.
 
     Parameters
     ----------
     modality : str
         One of :data:`VIDEO_MODALITIES` (``tangtv_lower`` / ``tangtv_upper``).
-    shots, cfg, data_dir, seed, lengths_cache_path, max_open_files, max_tries, t0_start,
-    min_std : as :class:`CodecPairDataset` (``cfg`` here is a :class:`VideoCodecConfig`).
-        ``cfg`` is NOT mutated. ``min_std`` guards degenerate (flat / dead-camera) windows.
+    shots, cfg, data_dir, seed, lengths_cache_path, max_open_files, max_tries, t0_start
+        As for :class:`CodecPairDataset` (``cfg`` is a :class:`VideoCodecConfig`, not
+        modified).
+    min_std : float
+        Clips with a lower std (flat, dead camera) are rejected.
     """
 
     def __init__(
@@ -1168,10 +1052,10 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
         self.min_std = float(min_std)
         self.pair_seed = int(seed)
         self.max_tries = int(max_tries)
-        # activity-stratified sampling knobs (0 = OFF -> byte-identical to no stratification).
+        # Activity-stratified sampling (0 = off).
         self.min_activity = float(getattr(cfg, "min_activity", 0.0))
         self.active_bias = float(getattr(cfg, "active_bias", 0.0))
-        # MISSING-DATA knobs (both default False => byte-identical to the previous dataset).
+        # Missing-data handling (both off by default).
         self.mask_missing = bool(getattr(cfg, "mask_missing", False))
         self.require_live_channels = bool(getattr(cfg, "require_live_channels", False))
 
@@ -1182,11 +1066,8 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
                 f"{data_dir} for the {len(list(shots))} requested shots."
             )
 
-        # A video window is a single CHUNK_S (50 ms) clip: chunk_duration_s = step_size_s =
-        # CHUNK_S (non-overlapping 50 ms windows), warmup_s = t0_start. The parent's length
-        # formula floor((duration - chunk_duration_s)/step_size_s)+1 guarantees each window
-        # fits inside the shot's real data. We request the movie by NAME so the parent loads
-        # THIS divertor's channel set only.
+        # A window is one non-overlapping CHUNK_S (50 ms) clip starting after t0_start.
+        # The movie is requested by name, so only this divertor's channels are loaded.
         super().__init__(
             hdf5_paths=paths,
             chunk_duration_s=CHUNK_S,
@@ -1200,18 +1081,16 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
         )
         self._cfg_movie = next(c for c in self.movie_configs if c.name == modality)
 
-    # -- the ONLY overridden hook: per-item frame-window transform -------------------- #
+    # Per-item hook: frame window
     def _getitem_standard(self, idx: int):  # type: ignore[override]
-        """Return one ``(frames (C,T,H,W), frame_mask (T,))`` for window ``idx``.
+        """Return one ``(frames (C,T,H,W), frame_mask)`` for window ``idx``.
 
-        Called by the parent's ``__getitem__`` AFTER it mapped the global index to
-        ``(file_idx, chunk_idx)`` and set ``self.h5_file``. ``idx`` here is the within-shot
-        ``chunk_idx``. Reuses the parent's windowing formula + :meth:`_load_movie_raw`.
+        Called by the parent's ``__getitem__`` after it mapped the global index and set
+        ``self.h5_file``; ``idx`` is the within-shot ``chunk_idx``.
 
-        With ``cfg.active_bias > 0`` an activity-stratified re-draw biases toward clips with
-        frame std ``>= cfg.min_activity``. In production the trainer leaves ``active_bias == 0``
-        for tangtv (its collapse is adversarial, not degenerate-window — see the config note), so
-        this is byte-identical to the plain build+degenerate-redraw below.
+        With ``cfg.active_bias > 0`` the draw is biased toward clips with frame std at
+        least ``cfg.min_activity``. Training leaves ``active_bias == 0`` for tangtv (its
+        collapse was adversarial, not caused by empty windows).
         """
         return _stratified_draw(
             idx, self._draw_valid_clip, lambda c: float(c[0].std()),
@@ -1221,12 +1100,12 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
         )
 
     def _draw_valid_clip(self, idx: int):
-        """Build the clip for window ``idx``, re-drawing DEGENERATE windows (the prior path)."""
+        """Build the clip for window ``idx``, redrawing degenerate windows."""
         clip = self._build_clip(idx)
         if clip is not None:
             return clip
-        # Degenerate window (dead camera / all-flat): re-draw from nearby chunks WITHIN this
-        # shot (alt is a within-shot index — see _chunks_in_current_file).
+        # Degenerate window (dead camera, flat): redraw from other chunks of this shot
+        # (alt is a within-shot index, see _chunks_in_current_file).
         n_chunks = max(1, _chunks_in_current_file(self, idx))
         gen = torch.Generator().manual_seed(self.pair_seed + 100_003 * int(idx) + 7)
         for _ in range(self.max_tries):
@@ -1234,59 +1113,53 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
             clip = self._build_clip(alt)
             if clip is not None:
                 return clip
-        # Last resort: a finite all-zero clip (rare; whole shot degenerate) + all-invalid mask.
+        # Last resort (whole shot degenerate): an all-zero clip with an all-invalid
+        # mask.
         cfg = self.codec_cfg
         z = torch.zeros((cfg.channels, cfg.frames, cfg.height, cfg.width))
         m = (torch.zeros((cfg.channels, cfg.frames), dtype=torch.float32)
              if self.mask_missing else torch.zeros(cfg.frames, dtype=torch.float32))
         return z, m
 
-    # -- helpers (reuse parent state; no re-implementation of the index map) ---------- #
+    # Helpers
     def _build_clip(self, chunk_idx: int):
-        """Build ``(frames, frame_mask)`` for a within-shot ``chunk_idx``; None if degenerate.
+        """Build ``(frames, frame_mask)`` for a within-shot ``chunk_idx``, or None.
 
-        ``t_start`` reuses the parent's EXACT windowing formula; the frames come from the
-        parent's ``_load_movie_raw`` (already resampled to ``target_fps``, NaN→0 filled).
-        A per-CHANNEL availability mask is returned by ``_load_movie_raw``; we fold it into a
-        per-FRAME validity mask (a frame is valid iff ANY channel is live and the frame is
-        finite + non-flat).
+        Frames come from the parent's ``_load_movie_raw`` (resampled to ``target_fps``,
+        NaN filled with 0), which also returns a per-channel liveness flag. Returns None
+        for non-finite or flat clips and clips without a live camera.
         """
         cfg = self.codec_cfg
         step = getattr(self, "step_size_s", self.chunk_duration_s)
         warmup = getattr(self, "warmup_s", 0.0)
-        t_start = warmup + chunk_idx * step          # parent windowing, reused verbatim
+        t_start = warmup + chunk_idx * step          # parent's windowing formula
         t_end = t_start + CHUNK_S
 
         frames, channel_valid = self._load_movie_raw(
             self.h5_file, self._cfg_movie, t_start, t_end
         )
-        # frames: (C, T, H, W) at target_fps. Crop/pad T to cfg.frames defensively (a 50 ms
-        # window at target_fps should already be cfg.frames; guard rounding drift).
+        # frames: (C, T, H, W) at target_fps. Fit T to cfg.frames in case of rounding.
         frames = self._fit_frames(frames)
         if not torch.isfinite(frames).all():
             return None
         if float(frames.std()) < self.min_std:
             return None                              # dead camera / flat window
-        # per-frame validity: any live channel AND finite. channel_valid is (C,) bool; a frame
-        # is valid if at least one channel is live (the loader zero-fills off cameras).
+        # channel_valid is (C,) bool; the loader zero-fills cameras that were off.
         any_live = bool(channel_valid.any().item())
         if not any_live:
             return None
-        # `require_live_channels`: a clip with ANY dead camera is rejected (and re-drawn), so
-        # the codec only ever sees fully-populated windows. MEASURED motivation: among the
-        # tangtv_lower shots that have at least one live camera, 19.0% of the channel-slots
-        # are still a zero slab (tangtv_upper 16.9%) -- see VideoCodecConfig.mask_missing.
+        # require_live_channels rejects (and so redraws) any clip with a dead camera.
+        # Even among shots with a live camera, 19.0% (lower) / 16.9% (upper) of the
+        # channel slots are zero (see VideoCodecConfig.mask_missing).
         if self.require_live_channels and not bool(channel_valid.all().item()):
             return None
         if not self.mask_missing:
-            # LEGACY (default): an unconditional all-ones per-frame mask. Kept so the default
-            # path is byte-identical; note this mask excluded NOTHING, which is precisely the
-            # 2026-09-03 audit finding.
+            # Default: an all-ones per-frame mask, which excludes nothing.
             frame_mask = torch.ones(cfg.frames, dtype=torch.float32)
             return frames, frame_mask
-        # REAL per-(C, T) validity: a (channel, frame) entry is valid iff the loader flagged
-        # that camera live for this window AND the frame is finite. `channel_valid` may be
-        # shorter than cfg.channels only in tests that shrink the grid; broadcast defensively.
+        # Per (channel, frame) validity: the loader flagged the camera live for this
+        # window and the frame is finite. channel_valid is shorter than cfg.channels
+        # only in tests with a reduced grid, so pad it.
         cv = channel_valid.to(torch.float32).reshape(-1)
         if cv.numel() < cfg.channels:
             cv = torch.cat([cv, torch.zeros(cfg.channels - cv.numel())])
@@ -1298,26 +1171,24 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` is for spectro. I
         return frames, mask
 
     def _fit_frames(self, frames: torch.Tensor) -> torch.Tensor:
-        """Crop/pad the loaded ``(C, T, H, W)`` to exactly ``(cfg.channels, cfg.frames, H, W)``.
+        """Crop/pad the loaded ``(C, T, H, W)`` to ``(cfg.channels, cfg.frames, H, W)``.
 
-        ``_load_movie_raw`` already resamples H×W to its ``MovieConfig`` target (120×360 for
-        tangtv, == the production ``VideoCodecConfig`` H/W), and a 50 ms window at target_fps
-        is already ``cfg.frames``. This guard makes the codec ``cfg`` authoritative for the
-        WHOLE ``(T, H, W)`` shape — the time axis can drift a frame from rounding, and H/W is
-        trilinearly resized only if it differs (a no-op in production; lets tests use a smaller
-        grid). Time is right-cropped / right-padded (repeat last frame); H/W is resized via
-        ``F.interpolate`` (the same trilinear-family resample the loader itself uses).
+        ``_load_movie_raw`` already resamples to the ``MovieConfig`` size (120x360 for
+        tangtv, as in ``VideoCodecConfig``) and a 50 ms window is already ``cfg.frames``
+        long. This makes ``cfg`` authoritative anyway: time can be off by a frame from
+        rounding (cropped, or padded by repeating the last frame), and H/W are resized
+        trilinearly only if they differ (lets tests use a smaller grid).
         """
         cfg = self.codec_cfg
         C, T, H, W = frames.shape
-        # spatial fit (usually a no-op: loader already at cfg.height × cfg.width).
+        # Spatial fit (normally a no-op).
         if (H, W) != (cfg.height, cfg.width):
             frames = torch.nn.functional.interpolate(
                 frames.unsqueeze(0), size=(T, cfg.height, cfg.width),
                 mode="trilinear", align_corners=False,
             ).squeeze(0)
             C, T = frames.shape[0], frames.shape[1]
-        # time fit.
+        # Time fit.
         if T > cfg.frames:
             frames = frames[:, : cfg.frames]
         elif T < cfg.frames:
@@ -1347,9 +1218,8 @@ def make_video_loader(
 ) -> DataLoader:
     """Build a frame-window DataLoader over a :class:`VideoCodecPairDataset`.
 
-    Identical sampler/plumbing choice as :func:`make_codec_loader` (the file-locality
-    ``DistributedTwoLevelSampler`` under DDP, ``TwoLevelSampler`` single-process), only the
-    collate differs (``(frames, mask)`` instead of ``(spec_a, spec_b)``).
+    Same samplers as :func:`make_codec_loader`; only the collate differs
+    (``(frames, mask)`` instead of ``(spec_a, spec_b)``).
     """
     if world_size > 1:
         sampler: torch.utils.data.Sampler = DistributedTwoLevelSampler(
@@ -1370,18 +1240,15 @@ def make_video_loader(
     )
 
 
-# ===================================================================================== #
-# SLOW-TS (Thomson / CER / MSE) codec — dataset + loader + gate, mirroring the machinery
-# above. The "lightest touch" family (§4.3): masked reconstruction + entropy, NO δ-pair,
-# NO discriminator.
-# ===================================================================================== #
+# Slow-TS (Thomson / CER / MSE) codec: dataset, loader and gate. The lightest family
+# (§4.3): masked reconstruction and entropy, no δ-pair, no discriminator.
 def slowts_codec_cfg(signal: str, channels: int) -> SlowTSCodecConfig:
-    """Build a :class:`SlowTSCodecConfig` for ``signal`` with the loader's real channel count.
+    """Build a :class:`SlowTSCodecConfig` for ``signal`` with the loader's channels.
 
-    ``channels`` is the number of profile positions actually loaded (from
-    :func:`modality_channels`). The patch sizes come from :func:`slowts_patch_for` (4 radial-zone
-    tokens per window by default; ``patch_c = ceil(channels / 4)``). Kept as a helper so the
-    trainer + CLI + tests build the cfg the same way.
+    ``channels`` is the number of profile positions loaded (:func:`modality_channels`).
+    Patch sizes come from :func:`slowts_patch_for` (4 radial-zone tokens per window,
+    ``patch_c = ceil(channels / 4)``). The trainer, CLI and tests all build the cfg
+    here.
     """
     patch_c, patch_t = slowts_patch_for(channels)
     return SlowTSCodecConfig(
@@ -1393,25 +1260,23 @@ def load_slowts_channel_stats(
     signal: str,
     stats_path: Optional[Union[str, Path]] = None,
 ) -> Tuple[str, List[float], List[float]]:
-    """Per-signal preprocessing method + per-channel mean/std for ``signal`` (the SCALE FIX).
+    """Preprocessing method and per-channel mean/std for ``signal``.
 
-    The slow-TS analogue of :func:`fastts_train.load_fastts_channel_stats`. Reads the SAME
-    ``preprocessing_stats.pt`` the data_loader consumes and returns
-    ``(method, mean_list, std_list)`` where:
+    The slow-TS version of :func:`fastts_train.load_fastts_channel_stats`. Reads the
+    ``preprocessing_stats.pt`` the data loader uses and returns
+    ``(method, mean_list, std_list)``:
 
-      * ``method`` is the FM model's preprocessing for this signal
-        (:data:`config.SLOWTS_PREPROCESS_METHOD` — a READ of the loader's
-        ``SignalConfig.preprocess.method``: ``"log_standardize"`` for the 4 Thomson signals,
-        ``"standardize"`` for cer_ti/cer_rot/mse).
-      * ``mean`` / ``std`` are the per-channel stats from the sub-dict the loader would use for
-        that method — the ``'log'`` sub-dict for ``log_standardize``, the ``'raw'`` sub-dict for
-        ``standardize`` — mirroring ``data_loader._update_preprocessing_stats``. NaNs are mapped to
-        mean 0 / std 1 exactly like the loader; length == the signal's ``C`` channels (none of the
-        7 slow-TS signals use ``channels_to_use``, so no slicing is needed — asserted here).
+    * ``method`` is the FM's preprocessing for this signal
+      (:data:`config.SLOWTS_PREPROCESS_METHOD`, read from the loader's
+      ``SignalConfig.preprocess.method``): ``"log_standardize"`` for the 4 Thomson
+      signals, ``"standardize"`` for cer_ti/cer_rot/mse.
+    * ``mean`` / ``std`` come from the sub-dict the loader uses for that method
+      (``'log'`` for ``log_standardize``, ``'raw'`` for ``standardize``), as in
+      ``data_loader._update_preprocessing_stats``. Non-finite values become mean 0 / std
+      1. None of the slow-TS signals use ``channels_to_use``, so no slicing is needed.
 
-    DATA-pipeline reuse (stats + the loader's standardize MECHANISM); no FAITH model code is
-    imported. Raises if the signal / stats are absent so a mis-pointed ``--stats_path`` fails loud
-    instead of silently skipping the fix. ``stats_path=None`` => the canonical
+    Raises if the signal or its stats are missing, so a wrong ``--stats_path`` fails
+    instead of silently skipping the scaling. ``stats_path=None`` uses
     ``fastts_train.DEFAULT_STATS_PATH``.
     """
     import numpy as np
@@ -1438,54 +1303,44 @@ def load_slowts_channel_stats(
 
     mean = np.asarray(sub["mean"], dtype=np.float64)
     std = np.asarray(sub["std"], dtype=np.float64)
-    mean[~np.isfinite(mean)] = 0.0   # mirror _update_preprocessing_stats NaN handling (+ inf guard)
+    mean[~np.isfinite(mean)] = 0.0   # as _update_preprocessing_stats (NaN and inf)
     std[~np.isfinite(std)] = 1.0
     return method, mean.astype(np.float32).tolist(), std.astype(np.float32).tolist()
 
 
 class SlowTSCodecPairDataset(TokamakMultiFileDataset):
-    """slow-TS windows ``(signal (C,T), mask (C,T))`` for ONE signal (Thomson / CER / MSE).
+    """Slow-TS windows ``(signal (C,T), mask (C,T))`` for one Thomson/CER/MSE signal.
 
-    A **thin** subclass of :class:`~tokamak_foundation_model.data.multi_file_dataset.\
-TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
-    :class:`VideoCodecPairDataset` (video) are. It reuses the parent's production streaming
-    machinery WHOLESALE — the global-idx → ``(file_idx, chunk_idx)`` binary-search map, the
-    per-worker LRU HDF5 file-handle cache (with the ``__getstate__``/``__setstate__`` pickling
-    into DataLoader workers), the length-cache sidecar, and the ``num_workers`` plumbing — and
-    overrides ONLY the per-item transform hook :meth:`_getitem_standard`. It does **not** touch
-    ``data_loader.py`` / ``multi_file_dataset.py``.
+    A thin subclass of :class:`TokamakMultiFileDataset`, like :class:`CodecPairDataset`
+    and :class:`VideoCodecPairDataset`. The parent provides the index map, the
+    per-worker LRU file handles, the length cache and worker plumbing; only
+    :meth:`_getitem_standard` is overridden.
 
-    Difference from the spectro / video datasets
-    ---------------------------------------------
-    The slow-TS codec has NO δ-shift consistency pair (§4.3; no realization nuisance) and NO
-    adversarial term. So the transform returns the slow-TS **window** ``(C, T)`` plus a
-    per-sample **validity mask** ``(C, T)`` — NOT a pair. The parent's ``__getitem__`` still
-    does the binary-search index map and sets ``self.h5_file`` before dispatching to our
-    ``_getitem_standard(chunk_idx)``; here ``chunk_idx`` is the within-shot window index and
-    ``self.h5_file`` is this worker's LRU handle. We reuse the parent's windowing formula
-    (``t_start = warmup_s + chunk_idx * step_size_s``) and the parent's
-    :meth:`TokamakH5Dataset._load_signal_raw` (already resampled to ``target_fs`` == 100 Hz,
-    NaN→0 filled, with the raw NaN mask returned) — the slow-TS analogue of the other datasets'
-    ``_load_signal_raw`` / ``_load_movie_raw`` reuse.
+    The slow-TS codec has no δ-shift pair (§4.3) and no adversarial term, so an item is
+    a window ``(C, T)`` plus a validity mask ``(C, T)``, not a pair. ``chunk_idx`` is
+    the within-shot window index and ``self.h5_file`` this worker's handle. Windows use
+    the parent's formula (``t_start = warmup_s + chunk_idx * step_size_s``) and its
+    :meth:`TokamakH5Dataset._load_signal_raw` (resampled to 100 Hz, NaN filled with 0,
+    raw NaN mask returned).
 
-    Missingness / mask contract
-    ---------------------------
-    ``_load_signal_raw`` returns ``(raw (C,T), valid_len, nan_mask (C,T))`` where ``nan_mask``
-    is 1.0 where the raw HDF5 value was NaN. We derive the per-sample VALIDITY mask (1 = real)
-    EXACTLY as ``data_loader.TokamakH5Dataset._process_signal`` would for this signal:
-      * ``zero_is_missing`` signals (Thomson): valid = (raw != 0) AND (nan_mask == 0).
-      * otherwise (CER / MSE): valid = (nan_mask == 0).
-    This mirrors the loader's own ``element_mask = data != 0.0`` (zero_is_missing) vs the NaN
-    mask, so the codec's masked reconstruction never trains toward the zero/NaN-fill of a
-    missing sample.
+    Mask
+    ----
+    ``_load_signal_raw`` returns ``(raw (C,T), valid_len, nan_mask (C,T))`` with
+    ``nan_mask`` 1.0 where the raw value was NaN. The validity mask (1 = real) follows
+    ``TokamakH5Dataset._process_signal`` for the signal:
+
+    * ``zero_is_missing`` signals (Thomson): valid = (raw != 0) and (nan_mask == 0).
+    * otherwise (CER / MSE): valid = (nan_mask == 0).
+
+    so the masked reconstruction never trains toward the fill value of a missing sample.
 
     Parameters
     ----------
     signal : str
         One of :data:`SLOWTS_MODALITIES`.
-    shots, cfg, data_dir, seed, lengths_cache_path, max_open_files, max_tries, t0_start :
-        as :class:`CodecPairDataset` (``cfg`` here is a :class:`SlowTSCodecConfig`). ``cfg`` is
-        NOT mutated.
+    shots, cfg, data_dir, seed, lengths_cache_path, max_open_files, max_tries, t0_start
+        As for :class:`CodecPairDataset` (``cfg`` is a :class:`SlowTSCodecConfig`, not
+        modified).
     """
 
     def __init__(
@@ -1508,8 +1363,8 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         self.codec_cfg = cfg
         self.item_seed = int(seed)
         self.max_tries = int(max_tries)
-        # activity-stratified sampling knobs (0 = OFF -> byte-identical to no stratification).
-        # For slow-TS (a MASKED modality) "activity" is the window's PRESENT-FRACTION.
+        # Activity-stratified sampling (0 = off). For slow-TS, activity is the window's
+        # present fraction.
         self.min_activity = float(getattr(cfg, "min_activity", 0.0))
         self.active_bias = float(getattr(cfg, "active_bias", 0.0))
 
@@ -1520,11 +1375,9 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
                 f"{data_dir} for the {len(list(shots))} requested shots."
             )
 
-        # A slow-TS window is a single CHUNK_S (50 ms) clip: chunk_duration_s = step_size_s =
-        # CHUNK_S (non-overlapping 50 ms windows), warmup_s = t0_start. The parent's length
-        # formula floor((duration - chunk_duration_s)/step_size_s)+1 guarantees each window
-        # fits inside the shot's real data. We request the signal by NAME so the parent's
-        # config reflects this modality.
+        # A window is one non-overlapping CHUNK_S (50 ms) clip starting after t0_start.
+        # The parent's length formula floor((duration - chunk)/step) + 1 keeps every
+        # window inside the shot's data.
         super().__init__(
             hdf5_paths=paths,
             chunk_duration_s=CHUNK_S,
@@ -1538,18 +1391,16 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         )
         self._cfg_sig = next(c for c in self.signal_configs if c.name == signal)
 
-    # -- the ONLY overridden hook: per-item window + validity-mask transform ------------ #
+    # Per-item hook: window and validity mask
     def _getitem_standard(self, idx: int):  # type: ignore[override]
         """Return one ``(signal (C,T), mask (C,T))`` for window ``idx``.
 
-        Called by the parent's ``__getitem__`` AFTER it mapped the global index to
-        ``(file_idx, chunk_idx)`` and set ``self.h5_file``. ``idx`` here is the within-shot
-        ``chunk_idx``. Reuses the parent's windowing formula + :meth:`_load_signal_raw`.
+        Called by the parent's ``__getitem__`` after it mapped the global index and set
+        ``self.h5_file``; ``idx`` is the within-shot ``chunk_idx``.
 
-        With ``cfg.active_bias > 0`` an activity-stratified re-draw biases toward windows whose
-        PRESENT-FRACTION (``mask.mean()``) is ``>= cfg.min_activity`` (ts_core_density is mostly
-        near-empty). With ``active_bias == 0`` (default) this is byte-identical to the plain
-        build+degenerate-redraw below.
+        With ``cfg.active_bias > 0`` the draw is biased toward windows whose present
+        fraction (``mask.mean()``) is at least ``cfg.min_activity`` (ts_core_density is
+        mostly empty). With ``active_bias == 0`` (default) it is the plain build below.
         """
         return _stratified_draw(
             idx, self._draw_valid_window, lambda it: float(it[1].mean()),
@@ -1559,12 +1410,12 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         )
 
     def _draw_valid_window(self, idx: int):
-        """Build the window for ``idx``, re-drawing DEGENERATE windows (the prior path)."""
+        """Build the window for ``idx``, redrawing degenerate windows."""
         item = self._build_window(idx)
         if item is not None:
             return item
-        # Degenerate window (all-missing / padded tail): re-draw from nearby chunks WITHIN
-        # this shot (alt is a within-shot index — see _chunks_in_current_file).
+        # Degenerate window (all missing / padded tail): redraw from other chunks of
+        # this shot (alt is a within-shot index, see _chunks_in_current_file).
         n_chunks = max(1, _chunks_in_current_file(self, idx))
         gen = torch.Generator().manual_seed(self.item_seed + 100_003 * int(idx) + 7)
         for _ in range(self.max_tries):
@@ -1572,27 +1423,25 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
             item = self._build_window(alt)
             if item is not None:
                 return item
-        # Last resort: a finite all-zero window + all-INVALID mask (rare; whole shot missing).
-        # Shaped to padded_channels (the tensor the encoder patchifies) so collation is uniform.
+        # Last resort (whole shot missing): an all-zero window with an all-invalid mask,
+        # shaped to padded_channels so batches collate.
         cfg = self.codec_cfg
         z = torch.zeros((cfg.padded_channels, cfg.time_steps))
         m = torch.zeros((cfg.padded_channels, cfg.time_steps), dtype=torch.float32)
         return z, m
 
-    # -- helpers (reuse parent state; no re-implementation of the index map) ------------ #
+    # Helpers
     def _build_window(self, chunk_idx: int):
-        """Build ``(signal (C,T), mask (C,T))`` for a within-shot ``chunk_idx``; None if bad.
+        """Build ``(signal (C,T), mask (C,T))`` for within-shot ``chunk_idx``, or None.
 
-        ``t_start`` reuses the parent's EXACT windowing formula; the raw window + NaN mask come
-        from the parent's ``_load_signal_raw`` (already resampled to ``target_fs`` == 100 Hz).
-        The validity mask mirrors ``_process_signal``'s missingness policy for this signal
-        (see the class docstring). A window with NO valid samples at all is rejected (None) so
-        the codec never trains on a fully-missing window.
+        Uses the parent's windowing and ``_load_signal_raw`` (100 Hz). Windows that run
+        into the padded tail, are non-finite, or have no valid sample at all are
+        rejected.
         """
         cfg = self.codec_cfg
         step = getattr(self, "step_size_s", self.chunk_duration_s)
         warmup = getattr(self, "warmup_s", 0.0)
-        t_start = warmup + chunk_idx * step          # parent windowing, reused verbatim
+        t_start = warmup + chunk_idx * step          # parent's windowing formula
         t_end = t_start + CHUNK_S
 
         raw, valid_len, nan_mask = self._load_signal_raw(
@@ -1605,23 +1454,22 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         if not torch.isfinite(signal).all():
             return None
         if float(mask.sum()) <= 0.0:
-            return None                              # whole window missing -> reject
+            return None                              # whole window missing
         return signal, mask
 
     def _fit_window(self, raw: torch.Tensor, nan_mask: torch.Tensor):
-        """Crop/pad ``raw`` to ``(cfg.padded_channels, cfg.time_steps)`` + build the validity mask.
+        """Fit ``raw`` to ``(cfg.padded_channels, cfg.time_steps)`` and build the mask.
 
-        ``_load_signal_raw`` returns ``(C, T)`` at ``target_fs`` (T == cfg.time_steps for a
-        50 ms window at 100 Hz); this guard makes the codec ``cfg`` authoritative for the whole
-        shape. The REAL ``cfg.channels`` profile positions are standardized + missingness-masked
-        first (so the mask + per-channel stats stay aligned to the real profile), THEN the profile
-        is padded up to ``cfg.padded_channels = n_zones * patch_c`` radial-zone-aligned positions
-        with the pad tail MASKED as missing. The validity mask is built from the loader's
-        missingness policy for this signal (see the class docstring).
+        ``_load_signal_raw`` gives ``(C, T)`` with T == cfg.time_steps for a 50 ms
+        window at 100 Hz; this makes ``cfg`` authoritative for the shape. The real
+        ``cfg.channels`` positions are masked and standardised first (so mask and
+        per-channel stats stay aligned), then padded to ``cfg.padded_channels = n_zones
+        * patch_c`` with the pad rows marked missing. The mask follows the class
+        docstring.
         """
         cfg = self.codec_cfg
         C, T = raw.shape
-        # time fit (usually a no-op).
+        # Time fit (usually a no-op).
         if T > cfg.time_steps:
             raw = raw[:, : cfg.time_steps]
             nan_mask = nan_mask[:, : cfg.time_steps]
@@ -1633,9 +1481,8 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
             pad_m = nan_mask[:, -1:].expand(C, cfg.time_steps - T)
             raw = torch.cat([raw, pad_r], dim=1)
             nan_mask = torch.cat([nan_mask, pad_m], dim=1)
-        # channel fit to the REAL profile count (defensive; loader already yields cfg.channels).
-        # The radial-zone padding to cfg.padded_channels happens AFTER standardization below, so
-        # the standardize stats + missingness mask stay aligned to the real cfg.channels profile.
+        # Channel fit to the real profile count (the loader already gives cfg.channels).
+        # Zone padding comes after standardisation, so stats and mask stay aligned.
         if C != cfg.channels:
             raw = raw[: cfg.channels]
             nan_mask = nan_mask[: cfg.channels]
@@ -1644,60 +1491,48 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
                 raw = torch.cat([raw, pad], dim=0)
                 nan_mask = torch.cat([nan_mask, torch.ones_like(pad)], dim=0)
 
-        # validity mask: 1 = real sample. Mirror _process_signal's missingness policy.
-        # BUILT FROM THE RAW WINDOW (before standardization) so the missingness semantics are
-        # identical to the FM's — `nan_mask` is the loader's raw-NaN mask and `raw != 0` is the
-        # zero_is_missing policy on the RAW value (standardizing would move a real 0 off zero and
-        # a missing 0 to a nonzero standardized value, so the mask MUST come from raw first).
-        valid = nan_mask < 0.5                       # NaN mask 1.0 == NaN -> invalid
-        if cfg.zero_is_missing:                      # Thomson: a 0 is a missing sample.
+        # Validity mask, 1 = real sample, following _process_signal. It is built from
+        # the raw window: standardising moves a real 0 off zero and a missing 0 to a
+        # non-zero value, so zero_is_missing must be checked on raw values.
+        valid = nan_mask < 0.5                       # nan_mask 1.0 means NaN
+        if cfg.zero_is_missing:                      # Thomson: 0 means missing
             valid = valid & (raw != 0.0)
-        # Non-finite raw is masked INVALID, exactly like a missing position: excluded from the
-        # loss (valid=0) and zeroed in the input below. mse has ~2 of 69 always-garbage channels
-        # (inf/nan raw -> inf/nan stats); previously ANY non-finite position made _getitem_standard
-        # REJECT the whole window, so mse windows touching those channels were dropped and the few
-        # that leaked through poisoned the recon -> the +0.55/-0.52 decode-corr oscillation.
+        # Non-finite raw values are masked like missing ones (excluded from the loss and
+        # zeroed in the input). mse has ~2 of 69 channels that are always inf/nan;
+        # rejecting whole windows for them dropped most mse windows and let a few
+        # through that broke the reconstruction.
         valid = valid & torch.isfinite(raw)
 
-        # SCALE FIX — standardize the codec input the SAME way the FM model does (see
-        # SlowTSCodecConfig.channel_mean/std + SLOWTS_PREPROCESS_METHOD). Applied AFTER the mask
-        # is built (mask semantics unchanged) and BEFORE the zone padding (stats are length
-        # cfg.channels). No-op / byte-identical when the cfg carries no stats (default) or method
-        # is "none"/None.
+        # Standardise as the FM does (SlowTSCodecConfig.channel_mean/std and
+        # SLOWTS_PREPROCESS_METHOD), after the mask and before zone padding (the stats
+        # have cfg.channels entries). Identity when the cfg has no stats.
         signal = self._standardize(raw)
-        # Standardizing an inf/nan raw position yields inf/nan; neutralize to 0 (== the
-        # standardized mean) so the input-zeroing `signal * valid` below can't produce inf*0 = NaN
-        # (which would trip the finite-check in _getitem_standard and drop the window). The
-        # position is already masked invalid above, so 0 is the correct neutral input + loss-excluded.
+        # Non-finite raw values standardise to inf/nan; set them to 0 (the standardised
+        # mean) so ``signal * valid`` below cannot produce inf*0 = NaN. They are already
+        # masked invalid.
         signal = torch.nan_to_num(signal, nan=0.0, posinf=0.0, neginf=0.0)
         valid = valid.to(torch.float32)
 
-        # INPUT-MASK FIX (Bug B) — after standardization a MISSING position (raw 0) maps to
-        # (pp(0) - mean)/std, a LARGE-NEGATIVE artifact (~-25 for ts_core_density). The loss is
-        # already masked (missing excluded via `valid`), but the ENCODER still processes the input
-        # — and with a ⅔-missing signal like ts_core_density the input is dominated by that -25,
-        # which collapses the codec. So zero the missing positions in the INPUT the encoder sees
-        # (0 == the standardized neutral/mean value, NOT a large artifact). The recon loss still
-        # excludes them via `valid`, so missing stays out of the loss. No-op when everything is
-        # present (valid all 1) — byte-identical for fully-present windows.
+        # After standardisation a missing position (raw 0) becomes (pp(0) - mean)/std, a
+        # large negative value (~-25 for ts_core_density). The loss already excludes it,
+        # but the encoder still sees it, and for a mostly-missing signal like
+        # ts_core_density that value dominates the input and collapses the codec. So
+        # zero the missing positions in the input (0 is the standardised mean).
         if self._standardize_active():
             signal = signal * valid
 
-        # RADIAL-ZONE PADDING — pad the real profile up to cfg.padded_channels = n_zones*patch_c
-        # so it splits into EXACTLY n_zones contiguous zones (=> n_zones tokens). The pad tail is
-        # MASKED as missing (valid=0) so it never contributes to the loss, and zero-filled in the
-        # input (0 == the standardized neutral value) so it never contributes to the encoder —
-        # the SAME treatment as a genuine missing position. No-op when channels == padded_channels.
+        # Pad the profile to cfg.padded_channels = n_zones * patch_c so it splits into
+        # exactly n_zones zones (n_zones tokens). Pad rows are masked and zero in the
+        # input, like a missing position.
         signal, valid = self._pad_zone_tail(signal, valid)
         return signal, valid
 
     def _pad_zone_tail(self, signal: torch.Tensor, valid: torch.Tensor):
-        """Pad ``(C, T) -> (padded_channels, T)`` with a missing (valid=0), zero-input tail.
+        """Pad ``(C, T)`` to ``(padded_channels, T)`` with zero, masked-invalid rows.
 
-        ``signal`` / ``valid`` are the real ``cfg.channels`` profile (already standardized +
-        missingness-masked). Appends ``padded_channels - channels`` radial-zone padding rows that
-        are input-zeroed (neutral, seen by the encoder as absent) and mask-invalid (excluded from
-        the loss) — identical to a genuine missing position. No-op when no padding is needed.
+        ``signal`` / ``valid`` are the real ``cfg.channels`` profile, already
+        standardised and masked. The added rows look like missing positions to the
+        encoder and the loss. No-op when no padding is needed.
         """
         cfg = self.codec_cfg
         pad_rows = cfg.padded_channels - signal.shape[0]
@@ -1711,13 +1546,11 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         return signal, valid
 
     def _standardize_active(self) -> bool:
-        """True iff :meth:`_standardize` actually rescales (stats present + a real method).
+        """True if :meth:`_standardize` rescales (stats present and a real method).
 
-        Gates the INPUT-mask zeroing to the standardized path ONLY: without standardization the
-        raw missing fill is already 0 (Thomson zeros) or the pre-fix path we must not perturb, so
-        multiplying by the mask would be a behaviour change for stat-less callers. With
-        standardization, missing zeros have been moved to a large-negative artifact, so re-zeroing
-        them is the fix. Byte-identical to the pre-fix path when this is False.
+        The input zeroing of missing positions only applies when standardising: without
+        it the raw fill is already 0 (Thomson) and multiplying by the mask would change
+        the input of callers without stats.
         """
         cfg = self.codec_cfg
         method = getattr(cfg, "preprocess_method", None)
@@ -1728,17 +1561,16 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
         )
 
     def _standardize(self, raw: torch.Tensor) -> torch.Tensor:
-        """Per-channel standardize ``raw`` (C,T) EXACTLY as ``data_loader._apply_preprocessing``.
+        """Standardise ``raw`` (C,T) per channel like ``data_loader._apply_preprocessing``.
 
-        Mirrors the loader's ``method="standardize"`` / ``method="log_standardize"`` branches for
-        this signal — same clip/log/(x-mean)/std math, same ``std.clamp(min=1e-3)``, same LOG-space
-        vs RAW-space stats selection — so the codec sees the O(1) input the FM model consumes. The
-        SCALE FIX for the ~1e19 Thomson density signals. GLOBAL / per-channel (broadcast over time),
-        NOT per-window, so the relative profile LEVEL is preserved.
+        Follows the loader's ``"standardize"`` / ``"log_standardize"`` branches (same
+        clip/log/(x-mean)/std, same ``std.clamp(min=1e-3)``, log- or raw-space stats),
+        so the codec sees the same O(1) input as the FM; raw Thomson density is ~1e19.
+        The stats are global per channel, not per window, so the profile level is kept.
 
-        ``cfg.channel_mean``/``cfg.channel_std`` being ``None`` OR ``preprocess_method`` in
-        ``(None, "none")`` is the IDENTITY (no-op, byte-identical to the pre-fix path). Stats of
-        length != ``C`` are rejected loud (a mis-pointed stats file must fail, not silently skip).
+        Identity when ``cfg.channel_mean`` / ``cfg.channel_std`` is None or
+        ``preprocess_method`` is None or ``"none"``. Stats whose length is not ``C``
+        raise.
         """
         cfg = self.codec_cfg
         method = getattr(cfg, "preprocess_method", None)
@@ -1759,11 +1591,11 @@ TokamakMultiFileDataset`, EXACTLY as :class:`CodecPairDataset` (spectro) and
             )
         x = raw
         if method == "log_standardize":
-            # data_loader: arr = clip(x, min=-0.99); arr += 1; log10(arr, out=arr). Then standardize
-            # with the LOG-space per-channel mean/std ('log' sub-dict of preprocessing_stats.pt).
+            # As in data_loader: clip(x, min=-0.99) + 1, then log10; standardised with
+            # the 'log' sub-dict stats.
             x = torch.log10(x.clamp(min=-0.99) + 1.0)
         mean = mean.reshape(C, 1)
-        std = std.reshape(C, 1).clamp(min=1e-3)      # matches data_loader std.clamp(min=1e-3)
+        std = std.reshape(C, 1).clamp(min=1e-3)      # as in data_loader
         return (x - mean) / std
 
 
@@ -1786,9 +1618,8 @@ def make_slowts_loader(
 ) -> DataLoader:
     """Build a slow-TS window DataLoader over a :class:`SlowTSCodecPairDataset`.
 
-    Identical sampler/plumbing choice as :func:`make_codec_loader` / :func:`make_video_loader`
-    (the file-locality ``DistributedTwoLevelSampler`` under DDP, ``TwoLevelSampler``
-    single-process), only the collate differs (``(signal, mask)``).
+    Same samplers as :func:`make_codec_loader` (``DistributedTwoLevelSampler`` under
+    DDP, ``TwoLevelSampler`` otherwise); only the collate differs (``(signal, mask)``).
     """
     if world_size > 1:
         sampler: torch.utils.data.Sampler = DistributedTwoLevelSampler(
@@ -1809,24 +1640,21 @@ def make_slowts_loader(
     )
 
 
-# ------------------------------------------------------------------------------------- #
-# slow-TS stability nuisance + gate (mirrors spike.compute_gate for slow-TS)
-# ------------------------------------------------------------------------------------- #
+# Slow-TS stability nuisance and gate (the slow-TS version of spike.compute_gate)
 def _nanmean(vals: Sequence[float]) -> float:
-    """Mean of ``vals`` ignoring NaNs (NaN if all are NaN) — no numpy import needed here."""
+    """Mean of ``vals`` ignoring NaNs (NaN if all are NaN)."""
     good = [float(v) for v in vals if float(v) == float(v)]
     return float(sum(good) / len(good)) if good else float("nan")
 
 
 def slowts_nuisance(x: torch.Tensor, *, jitter: float = 0.02, seed: int = 0) -> torch.Tensor:
-    """A realization-level nuisance transform of a slow-TS window for the STABILITY gate.
+    """Nuisance transform of a slow-TS window for the stability gate.
 
-    Slow-TS has no STFT-phase pair (like video), so the statistics-first "stability" property —
-    codes unchanged under a realization-only perturbation — is probed with a small,
-    structure-preserving augmentation: a per-window multiplicative amplitude jitter (a few %).
-    The profile SHAPE (which positions carry more/less, its smooth time trend) is preserved;
-    only the measurement-scale realization moves — so a statistics-first codec should map ``x``
-    and ``slowts_nuisance(x)`` to (nearly) the same codes. ``x`` is ``(B, C, T)``.
+    Slow-TS, like video, has no STFT-phase pair, so stability (codes unchanged under a
+    realisation-only change) is tested with a per-window multiplicative amplitude jitter
+    of a few percent. The profile shape and its time trend are kept, so a
+    statistics-first codec should give ``x`` and ``slowts_nuisance(x)`` nearly the same
+    codes. ``x`` is ``(B, C, T)``.
     """
     gen = torch.Generator(device="cpu").manual_seed(seed)
     scale = 1.0 + jitter * (2.0 * torch.rand((), generator=gen).item() - 1.0)
@@ -1841,24 +1669,26 @@ def slowts_compute_gate(
     frame_seq: torch.Tensor,
     cfg: SlowTSCodecConfig,
 ) -> Dict[str, object]:
-    """slow-TS analogue of :func:`spike.compute_gate` (§4.4 gate on codes + masked recon).
+    """Slow-TS version of :func:`spike.compute_gate` (§4.4 gate, masked recon).
 
     Parameters
     ----------
     codec : SlowTSCodec
     eval_windows : list of (B, C, T)
-        Held-out windows; used for **stability** (codes of window vs :func:`slowts_nuisance`)
-        and **slow-TS decode-fidelity** (masked recon of window vs window).
+        Held-out windows, for stability (codes of the window vs :func:`slowts_nuisance`)
+        and decode fidelity (masked reconstruction vs the window).
     eval_masks : list of (B, C, T)
-        The matching per-sample validity masks (aligned with ``eval_windows``), used to mask
-        the decode-fidelity profile statistic.
+        Validity masks matching ``eval_windows``, used to mask decode fidelity.
     frame_seq : (B, n_windows, C, T)
-        Consecutive world-model windows; used for **persistence** (window t vs t+1) and
-        **forecastability** (whole sequence of codes). Each "frame" is one 50 ms slow-TS window.
+        Consecutive 50 ms windows, for persistence (window t vs t+1) and forecastability
+        (the whole code sequence).
     cfg : SlowTSCodecConfig
 
-    Returns the same key set as :func:`spike.compute_gate`, so :func:`spike.gate_score` and the
-    trainer plumbing consume it unchanged.
+    Returns
+    -------
+    dict
+        The same keys as :func:`spike.compute_gate`, so :func:`spike.gate_score` and the
+        trainer use it unchanged.
     """
     was_training = codec.training
     codec.eval()
@@ -1878,11 +1708,10 @@ def slowts_compute_gate(
         dec_corr.append(dm["envelope_corr"])
         dec_f1.append(dm["peak_f1"])
         dec_sharp.append(dm["sharpness"])
-        # FULL-WINDOW reconstruction fidelity (nothing collapsed) + the trivial baselines in the
-        # SAME units. envelope_corr above deletes the time axis first, so it reads 1.0 for a
-        # predictor with ZERO temporal structure; slowts_nrmse does not. Recorded in every
-        # gate_*.json from 2026-09-03. It deliberately does NOT enter spike.gate_score —
-        # checkpoint selection must not shift silently under a new metric.
+        # Full-window reconstruction metrics and trivial baselines in the same units.
+        # envelope_corr drops the time axis, so it reads 1.0 for a prediction with no
+        # temporal structure; slowts_nrmse does not. Logged only: spike.gate_score does
+        # not use them, so checkpoint selection is unchanged.
         full_terms.append(gate.full_slowts_metrics(out["recon"], x, mask=m))
         full_terms[-1].update(gate.trivial_slowts_baselines(x, mask=m))
 
@@ -1919,17 +1748,13 @@ def slowts_compute_gate(
     }
 
 
-# ------------------------------------------------------------------------------------- #
-# slow-TS DDP generator-loss adapter + per-step (no δ-pair, no discriminator)
-# ------------------------------------------------------------------------------------- #
+# Slow-TS DDP generator-loss adapter and train steps (no δ-pair, no discriminator)
 class _SlowTSGenLossAdapter(torch.nn.Module):
-    """Thin wrapper whose ``forward`` dispatches to ``SlowTSCodec.generator_losses``.
+    """Wrapper whose ``forward`` calls ``SlowTSCodec.generator_losses``.
 
-    Same DDP purpose as :class:`_GenLossAdapter` / :class:`_VideoGenLossAdapter`: DDP's reducer
-    only hooks params used in ``forward``; the codec's step is ``codec.generator_losses(...)``,
-    so we DDP-wrap THIS adapter. ``self.codec`` is the underlying :class:`SlowTSCodec` (used for
-    gate + EMA + state_dict). The slow-TS signature has NO ``x_shift`` and NO ``disc`` (masked
-    reconstruction + entropy only).
+    Same purpose as :class:`_GenLossAdapter`. ``self.codec`` is the underlying
+    :class:`SlowTSCodec`. The slow-TS signature has no ``x_shift`` and no ``disc``
+    (masked reconstruction and entropy only).
     """
 
     def __init__(self, codec: SlowTSCodec) -> None:
@@ -1954,18 +1779,16 @@ def slowts_codec_train_step(
     cfg: SlowTSCodecConfig,
     step: int,
 ) -> Dict[str, torch.Tensor]:
-    """ONE codec training step on a slow-TS window (single-GPU / bare path).
+    """One codec training step on a slow-TS window (single GPU, no DDP).
 
-    There is NO GAN alternation (no discriminator): a single generator (codec) step on the
-    masked-reconstruction + entropy loss. Shared by the DDP trainer's ``world_size==1`` path
-    and the tests.
+    No discriminator: a single generator step on the masked reconstruction and entropy
+    loss. Used by tests and by single-process runs.
     """
     codec.train()
     opt_g.zero_grad(set_to_none=True)
     g_terms = codec.generator_losses(x, cfg, step=step, mask=mask)
     g_terms["total"].backward()
-    # Divergence guard (single-process path here; DDP-collective when world_size>1). Slow-TS is
-    # non-adversarial, but the guard is a cheap uniform safety net shared with the other codecs.
+    # Divergence guard, as for the other codecs.
     if spike.is_step_diverged(g_terms["total"]):
         spike.note_skipped_step()
     else:
@@ -1975,19 +1798,19 @@ def slowts_codec_train_step(
 
 def _ddp_slowts_train_step(
     gen_module: torch.nn.Module,        # DDP-wrapped _SlowTSGenLossAdapter (or bare)
-    codec: SlowTSCodec,                 # underlying raw codec (unused here; kept for symmetry)
+    codec: SlowTSCodec,                 # underlying raw codec (unused; for symmetry)
     opt_g: torch.optim.Optimizer,
     x: torch.Tensor,
     mask: Optional[torch.Tensor],
     cfg: SlowTSCodecConfig,
     step: int,
 ) -> Dict[str, torch.Tensor]:
-    """DDP-aware analogue of :func:`slowts_codec_train_step` (routes the G forward through DDP)."""
+    """DDP version of :func:`slowts_codec_train_step` (G forward goes through DDP)."""
     opt_g.zero_grad(set_to_none=True)
     g_terms = gen_module(x, cfg, step, mask)
     g_terms["total"].backward()
-    # DDP-safe divergence guard: uniform backward, then skip opt_g.step() identically on all ranks
-    # if any rank's loss is non-finite.
+    # Divergence guard: uniform backward, then skip opt_g.step() on all ranks if any
+    # rank's loss is non-finite.
     if spike.is_step_diverged(g_terms["total"]):
         spike.note_skipped_step()
     else:
@@ -1995,9 +1818,7 @@ def _ddp_slowts_train_step(
     return g_terms
 
 
-# ------------------------------------------------------------------------------------- #
-# held-out streamed SLOW-TS eval set (windows + masks + consecutive-window sequence)
-# ------------------------------------------------------------------------------------- #
+# Held-out streamed slow-TS eval set (windows, masks and a consecutive-window sequence)
 def _stream_slowts_eval_data(
     signal: str,
     eval_shots: Sequence[Union[str, int]],
@@ -2010,14 +1831,13 @@ def _stream_slowts_eval_data(
     device: torch.device,
     seed: int,
 ) -> Tuple[List[torch.Tensor], List[torch.Tensor], torch.Tensor]:
-    """Materialize a small held-out SLOW-TS gate set (mirrors :func:`_stream_video_eval_data`).
+    """Build a small held-out slow-TS gate set (like :func:`_stream_video_eval_data`).
 
     Returns ``(eval_windows, eval_masks, frame_seq)`` for :func:`slowts_compute_gate`:
-    ``eval_windows`` / ``eval_masks`` = lists of ``(B, C, T)`` window / validity-mask batches
-    (for stability + slow-TS decode-fidelity); ``frame_seq`` = ``(B, n_windows, C, T)``
-    consecutive 50 ms windows (for persistence + forecastability). Streamed on THIS rank
-    (world_size=1) so every rank has the same held-out data; the gate is computed on rank 0
-    only. ``eval_frames`` = the number of consecutive world-model WINDOWS in the sequence.
+    lists of ``(B, C, T)`` window and mask batches (stability and decode fidelity), and
+    a ``(B, n_windows, C, T)`` run of consecutive 50 ms windows (persistence and
+    forecastability), with ``eval_frames`` windows. Every rank builds the same set; only
+    rank 0 computes the gate.
     """
     ds = SlowTSCodecPairDataset(signal, eval_shots, cfg, data_dir=data_dir, seed=seed)
     n_win = eval_batches * eval_batch_size
@@ -2053,29 +1873,24 @@ def _stream_slowts_eval_data(
     return eval_windows, eval_masks, frame_seq
 
 
-# ------------------------------------------------------------------------------------- #
-# video stability nuisance + gate (mirrors spike.compute_gate for video)
-# ------------------------------------------------------------------------------------- #
+# Video stability nuisance and gate (the video version of spike.compute_gate)
 def video_nuisance(clip: torch.Tensor, *, bright: float = 0.02, offset: float = 0.02,
                    seed: int = 0) -> torch.Tensor:
-    """A realization-level nuisance transform of a video clip for the STABILITY gate.
+    """Nuisance transform of a video clip for the stability gate.
 
-    Video has no STFT-phase pair (unlike spectro), so the statistics-first "stability"
-    property — codes unchanged under a realization-only perturbation — is probed with a
-    small, structure-preserving augmentation. The divertor camera is FIXED, so a spatial
-    shift is NOT a physical nuisance; the real realization noise is a camera brightness /
-    gain fluctuation. So the nuisance is a per-clip **brightness/gain** jitter only: a
-    multiplicative gain plus a small additive offset on the (already standardized) frames.
-    The plasma *structure* (where the light sits, its relative intensity envelope) is
-    preserved; only the overall level moves — so a statistics-first codec should map
-    ``clip`` and ``video_nuisance(clip)`` to (nearly) the same codes.
+    Video has no STFT-phase pair. The divertor camera is fixed, so a spatial shift is
+    not a physical nuisance; the realisation noise is camera gain and brightness. The
+    transform is a per-clip multiplicative gain plus a small additive offset on the
+    standardised frames. Where the light sits and its relative intensity are kept, so a
+    statistics-first codec should give ``clip`` and ``video_nuisance(clip)`` nearly the
+    same codes.
 
     ``clip`` is ``(B, C, T, H, W)``; returns the same shape.
     """
     gen = torch.Generator(device="cpu").manual_seed(seed)
-    # multiplicative gain jitter (per-clip scalar) — camera-gain realization.
+    # Per-clip multiplicative gain.
     gain = 1.0 + bright * (2.0 * torch.rand((), generator=gen).item() - 1.0)
-    # small additive offset (per-clip scalar) on the standardized frames — brightness bias.
+    # Per-clip additive offset on the standardised frames.
     bias = offset * (2.0 * torch.rand((), generator=gen).item() - 1.0)
     return clip * gain + bias
 
@@ -2088,23 +1903,28 @@ def video_compute_gate(
     cfg: VideoCodecConfig,
     eval_masks: Optional[List[torch.Tensor]] = None,
 ) -> Dict[str, object]:
-    """Video analogue of :func:`spike.compute_gate` (§4.4 gate on frame codes + recon).
+    """Video version of :func:`spike.compute_gate` (§4.4 gate on frame codes and recon).
 
     Parameters
     ----------
     codec : VideoCodec
     eval_clips : list of (B, C, T, H, W)
-        Held-out clips; used for **stability** (codes of clip vs :func:`video_nuisance`) and
-        **video decode-fidelity** (recon of clip vs clip).
+        Held-out clips, for stability (codes of the clip vs :func:`video_nuisance`) and
+        decode fidelity (reconstruction vs clip).
     frame_seq : (B, n_windows, C, T, H, W)
-        Consecutive world-model windows; used for **persistence** (window t vs t+1) and
-        **forecastability** (whole sequence of codes). Each "frame" of the world model is one
-        50 ms video window (the same stepping unit as spectro).
+        Consecutive 50 ms windows (one world-model frame each), for persistence (window
+        t vs t+1) and forecastability (the whole code sequence).
     cfg : VideoCodecConfig
+    eval_masks : list of tensor, optional
+        Channel masks per clip batch, applied to the full-array metrics.
 
-    Returns the same key set as :func:`spike.compute_gate`, so :func:`spike.gate_score` and
-    the trainer plumbing consume it unchanged: ``stability`` / ``persistence`` /
-    ``forecastability`` / ``decode`` / ``utilization`` + the ``pass_*`` booleans.
+    Returns
+    -------
+    dict
+        The same keys as :func:`spike.compute_gate` (``stability``, ``persistence``,
+        ``forecastability``, ``decode``, ``utilization``, the ``pass_*`` flags), so
+        :func:`spike.gate_score` and the trainer use it unchanged, plus ``full`` and
+        ``rate``.
     """
     was_training = codec.training
     codec.eval()
@@ -2121,17 +1941,15 @@ def video_compute_gate(
         nuis = video_nuisance(clip, seed=len(stab_vals))
         _, codes_n = codec.quantize(codec.encode(nuis))
         stab_vals.append(gate.stability(out["codes"], codes_n))
-        # recon lives in the STANDARDIZED frame space (see VideoCodec.standardize_input); compare
-        # decode fidelity against the standardized input (out["x_std"]), not the raw clip.
+        # recon is in the standardised frame space (VideoCodec.standardize_input), so
+        # compare it with out["x_std"], not the raw clip.
         dm = gate.video_decode_fidelity(out["recon"], out["x_std"])
         dec_corr.append(dm["envelope_corr"])
         dec_f1.append(dm["peak_f1"])
         dec_sharp.append(dm["sharpness"])
-        # FULL-array MASKED metrics (the nRMSE floor + the AMPLITUDE ratio nRMSE cannot
-        # report) plus the patch-lattice / checkerboard scalar beside its own GT reference.
-        # ADDITIVE: spike.gate_score does not read any of these, so best-checkpoint selection
-        # is unchanged; they exist so a gate JSON records all four acceptance quantities
-        # (reconstruction, amplitude, checkerboard, bit rate) instead of just one.
+        # Full-array masked metrics (nRMSE and the amplitude ratio nRMSE cannot show)
+        # and the patch-lattice (checkerboard) ratio next to its GT value.
+        # spike.gate_score reads none of them, so checkpoint selection is unchanged.
         _vm = None if eval_masks is None else eval_masks[len(vfull_rows)]
         vfull_rows.append(gate.full_video_metrics(out["recon"], out["x_std"], mask=_vm))
         vlat_rows.append(gate.video_patch_lattice(
@@ -2144,18 +1962,13 @@ def video_compute_gate(
         "envelope_corr": float(sum(dec_corr) / len(dec_corr)),
         "peak_f1": float(sum(dec_f1) / len(dec_f1)),
         "sharpness": float(sum(dec_sharp) / len(dec_sharp)),
-        # PATCH-LATTICE (checkerboard) beside the ``sharpness`` it can masquerade as.
-        # ADDITIVE ONLY: :func:`spike.gate_score` reads exactly ``envelope_corr`` /
-        # ``peak_f1`` from this dict (plus ``forecastability`` + ``utilization``), so adding
-        # these two keys leaves every selection decision bit-identical. They live in
-        # ``decode`` rather than only in ``full`` because :func:`spike._fmt_gate` already
-        # prints ``lattice=<recon>/gt<target>`` whenever ``patch_lattice_ratio`` is present —
-        # which is what makes the artifact visible in the TRAINING LOG, not just in the gate
-        # JSON. Job 5413747 (video1kb) raised video ``sharpness`` 0.157 -> 0.378 with an
-        # adversarial term and NOTHING in the log could say whether that was texture or
-        # checkerboard; on the spectro side the same objective sustained a lattice of 26-75
-        # against a ground truth of ~1.15. Always read this as a PAIR with the GT value: a
-        # BLUR also drops the lattice, for free, by destroying real detail too.
+        # Patch lattice (checkerboard) next to the sharpness it can pass for.
+        # spike.gate_score reads only envelope_corr / peak_f1 here, so selection is
+        # unchanged. They sit in ``decode`` because spike._fmt_gate prints
+        # ``lattice=<recon>/gt<target>`` when patch_lattice_ratio is present, which puts
+        # the artifact in the training log: an adversarial term once raised video
+        # sharpness 0.157 -> 0.378 and the log could not tell texture from checkerboard.
+        # Always read it against the GT value, since a blur also lowers the lattice.
         "patch_lattice_ratio": (float(sum(vlat_rows) / len(vlat_rows))
                                 if vlat_rows else float("nan")),
         "target_patch_lattice_ratio": (float(sum(vgtlat_rows) / len(vgtlat_rows))
@@ -2191,7 +2004,7 @@ def video_compute_gate(
         "forecastability": forecast,
         "decode": decode,
         "utilization": util,
-        # ADDITIVE (2026-09-03), NOT read by spike.gate_score.
+        # Logged only; not read by spike.gate_score.
         "full": vfull,
         "rate": gate.code_rate_bits(codes_seq, cfg.codebook_size, n_tok=cfg.n_tok),
         "pass_stability": bool(stability_val >= cfg.gate_stability),
@@ -2200,23 +2013,19 @@ def video_compute_gate(
     }
 
 
-# ------------------------------------------------------------------------------------- #
-# DDP generator-loss adapter (routes generator_losses through the DDP wrapper)
-# ------------------------------------------------------------------------------------- #
-# Prefixes of parameters that are provably an EXACT IDENTITY at initialization, so grafting them
-# onto a checkpoint that predates them leaves step 0 bit-identical: the refinement head's final
-# conv is zero-init (nets.SpectroDecoder) and decoder_noise's per-channel scale is zeros.
+# Checkpoint grafting
+#
+# Prefixes of parameters that are an exact identity at initialisation, so grafting them
+# onto a checkpoint that predates them leaves step 0 unchanged: the refinement head's
+# last conv is zero-init (nets.SpectroDecoder) and decoder_noise's per-channel scale is
+# zeros.
 _GRAFTABLE_PREFIXES = ("decoder.refine.", "decoder.noise_scale", "noise_scale")
 
-# Keys whose SHAPE is a pure function of ``cfg.fsq_levels`` and therefore MUST be re-initialized
-# when --fsq_levels changes the codebook DIMENSIONALITY (len(fsq_levels)). These are the FSQ
-# bottleneck's two projections (d_model <-> fsq_dim); nothing else in the codec depends on
-# fsq_dim. Re-sizing the VOCAB (e.g. [8,5,5,5]=1000 -> [8,5,5]=200) is an explicit, deliberate
-# CLI act, so refusing it is not protecting against a silent architecture mismatch — it just
-# blocks the experiment (it killed job 5411167 outright, taking 7 healthy sibling arms with it
-# because KillOnBadExit=1). Dropping ONLY these keys keeps every other weight grafted from the
-# parent checkpoint, which is the whole point of resuming; a same-fsq_dim vocab change (e.g.
-# [8,5,5,5] -> [4,4,4,4]) still matches shapes exactly and never reaches this path.
+# Keys whose shape depends only on len(cfg.fsq_levels), re-initialised when --fsq_levels
+# changes the codebook dimensionality: the FSQ bottleneck's projections (d_model <->
+# fsq_dim). Nothing else in the codec depends on fsq_dim, so every other weight is still
+# taken from the parent checkpoint. A vocabulary change at the same fsq_dim (e.g.
+# [8,5,5,5] -> [4,4,4,4]) keeps all shapes and never reaches this path.
 _FSQ_DIM_DEPENDENT_KEYS = (
     "quantizer.fsq.project_in.weight", "quantizer.fsq.project_in.bias",
     "quantizer.fsq.project_out.weight", "quantizer.fsq.project_out.bias",
@@ -2225,12 +2034,11 @@ _FSQ_DIM_DEPENDENT_KEYS = (
 
 
 def _drop_fsq_dim_mismatches(codec, state, log_fn=None):
-    """Return ``state`` minus the FSQ projection keys whose shape disagrees with ``codec``.
+    """Return ``state`` without FSQ projection keys whose shape differs from ``codec``.
 
-    Only the keys in :data:`_FSQ_DIM_DEPENDENT_KEYS` are eligible, and only when the shape
-    actually differs — so an ordinary resume is byte-identical (nothing is dropped) and a real
-    architecture mismatch anywhere else still raises in
-    :func:`_load_codec_state_allow_graft`.
+    Only keys in :data:`_FSQ_DIM_DEPENDENT_KEYS` are dropped, and only on a real shape
+    difference, so an ordinary resume drops nothing and a mismatch anywhere else still
+    raises in :func:`_load_codec_state_allow_graft`.
     """
     own = codec.state_dict()
     dropped = []
@@ -2249,19 +2057,17 @@ def _drop_fsq_dim_mismatches(codec, state, log_fn=None):
 
 
 def _load_codec_state_allow_graft(codec, state, log_fn=None) -> None:
-    """``codec.load_state_dict(state)``, but allow ADDING an identity-at-init module.
+    """``codec.load_state_dict(state)`` that also allows adding identity-at-init modules.
 
-    Strict loading is the right default and stays the default for everything else: an
-    architecture flag that silently fails to load is how seven jobs died (see
-    feedback-persist-arch-flags-in-checkpoints). So this permits EXACTLY the keys that are
-    zero-init identities and raises on anything else, naming the offending keys.
+    Loading stays strict otherwise: an architecture flag that silently fails to load has
+    killed jobs before. Only keys under :data:`_GRAFTABLE_PREFIXES` (zero-init
+    identities) may be missing; anything else raises and names the keys.
 
-    Enables the one experiment strict loading blocks: take a healthy, high-utilization codec and
-    add the dilated refine head to it, instead of training the head from scratch (where it lands
-    at ~103/1000 codes).
+    This lets a healthy, high-utilisation codec gain the dilated refine head instead of
+    training the head from scratch (which ends at ~103/1000 codes).
     """
-    # A --fsq_levels change of DIMENSIONALITY makes the FSQ projections' shapes disagree; drop
-    # exactly those so they re-initialize instead of raising a size-mismatch RuntimeError.
+    # Changing the number of FSQ levels changes the FSQ projections' shapes; drop those
+    # so they are re-initialised instead of raising a size-mismatch error.
     state, _vocab_reinit = _drop_fsq_dim_mismatches(codec, state, log_fn=log_fn)
     missing, unexpected = codec.load_state_dict(state, strict=False)
     if unexpected:
@@ -2284,16 +2090,14 @@ def _load_codec_state_allow_graft(codec, state, log_fn=None) -> None:
 
 
 def _load_opt_state_allow_graft(opt, opt_state, model, grafted, log_fn=None) -> None:
-    """Restore Adam moments onto a model that GAINED parameters since the checkpoint.
+    """Restore Adam moments onto a model that gained parameters since the checkpoint.
 
-    ``Optimizer.load_state_dict`` matches param groups POSITIONALLY, so it raises as soon as the
-    counts differ - and grafted params are inserted in the MIDDLE of ``model.parameters()`` (the
-    refine head is registered inside the decoder), so a naive index restore would silently pair
-    old moments with the wrong tensors. Both failure modes are avoided by remapping BY NAME:
-    saved slot j belongs to the j-th non-grafted parameter. Grafted params start with fresh
-    (zero) moments, which is correct - they are zero-init identities with no history.
-
-    Exact-restore path (nothing grafted) is untouched, so ordinary resumes are unchanged.
+    ``Optimizer.load_state_dict`` matches parameters by position, so it raises when the
+    counts differ, and grafted parameters sit in the middle of ``model.parameters()``
+    (the refine head is registered inside the decoder), so restoring by index would pair
+    moments with the wrong tensors. Instead remap by name: saved slot j belongs to the
+    j-th non-grafted parameter. Grafted parameters start with zero moments, which is
+    right for zero-init identities. With nothing grafted the state is loaded as is.
     """
     names = [n for n, _ in model.named_parameters()]
     saved_groups = opt_state.get("param_groups") or []
@@ -2321,17 +2125,11 @@ def _load_opt_state_allow_graft(opt, opt_state, model, grafted, log_fn=None) -> 
 
 
 def _repin_lr_after_resume(opts, lrs, resumed: bool, log_fn=None, tag: str = "") -> None:
-    """Re-pin the REQUESTED --lr over the one ``opt.load_state_dict`` restored.
+    """Set the requested --lr again after ``opt.load_state_dict`` restored the old one.
 
-    ``torch.optim.Optimizer.load_state_dict`` restores ``param_groups`` wholesale, INCLUDING
-    ``lr``. A resumed run that asks for a different learning rate therefore trains silently at
-    the PARENT checkpoint's rate. train_dynamics.py already guards this (measured 2026-08-26:
-    prod_nfullhilr requested 2e-3 and logged 1.00e-03 every step); the codec trainer did not.
-    Detected 2026-09-02 as an accidental A/A: mhr_cont arms `c_ctl` (lr 1e-3) and `c_lr3e4`
-    (lr 3e-4) produced BIT-IDENTICAL gate metrics across 15 consecutive gates.
-
-    No-op when the rate is unchanged (every ordinary chained resume), so existing chains are
-    byte-identical.
+    ``Optimizer.load_state_dict`` restores ``param_groups`` including ``lr``, so a
+    resumed run asking for another learning rate would silently keep the checkpoint's
+    rate (``train_dynamics.py`` has the same guard). No-op when the rate is unchanged.
     """
     if not resumed:
         return
@@ -2349,16 +2147,16 @@ def _repin_lr_after_resume(opts, lrs, resumed: bool, log_fn=None, tag: str = "")
 
 
 def _apply_lr_decay(opts, base_lrs, step: int, cfg) -> float:
-    """Exponential LR decay, NVIDIA Spectral Codec style (arXiv 2406.05298 section 4).
+    """Exponential LR decay as in the spectral-codec paper (arXiv 2406.05298 section 4).
 
-    ``lr(step) = base_lr * gamma ** (step / every)`` with ``gamma = cfg.lr_decay_gamma`` and
-    ``every = cfg.lr_decay_every`` (paper: gamma 0.998 per 1,000 steps). Computed from the
-    ABSOLUTE global step rather than accumulated per-step, so a chained resume lands on
-    exactly the rate an uninterrupted run would have had — and so it composes correctly with
-    :func:`_repin_lr_after_resume`, which re-pins ``base_lr`` before the loop starts.
+    ``lr(step) = base_lr * gamma ** (step / every)`` with ``gamma = cfg.lr_decay_gamma``
+    and ``every = cfg.lr_decay_every`` (paper: 0.998 per 1,000 steps). It uses the
+    absolute global step, so a resumed run gets the same rate as an uninterrupted one
+    and it works with :func:`_repin_lr_after_resume`, which resets ``base_lr`` before
+    the loop.
 
-    ``gamma == 1.0`` (the default) is a no-op: nothing is written to ``param_groups`` at all,
-    so existing runs are byte-identical. Returns the generator LR in force this step.
+    ``gamma == 1.0`` (the default) writes nothing. Returns the generator LR for this
+    step.
     """
     gamma = float(getattr(cfg, "lr_decay_gamma", 1.0))
     if gamma == 1.0:
@@ -2378,18 +2176,16 @@ def _apply_lr_decay(opts, base_lrs, step: int, cfg) -> float:
 
 
 class _GenLossAdapter(torch.nn.Module):
-    """Thin wrapper whose ``forward`` dispatches to ``SpectroCodec.generator_losses``.
+    """Wrapper whose ``forward`` calls ``SpectroCodec.generator_losses``.
 
-    DDP's autograd reducer only hooks the parameters used in the module's ``forward``. The
-    codec's generator step is ``codec.generator_losses(...)``, not ``codec.forward(x)``, so
-    to make DDP correctly all-reduce the generator gradients we wrap the codec in this
-    adapter and DDP-wrap the ADAPTER. The training step then calls the DDP-wrapped adapter,
-    whose ``forward`` runs ``generator_losses`` — so every codec parameter touched there is
-    seen by the reducer.
+    DDP only hooks the parameters used in the wrapped module's ``forward``, but the
+    generator step is ``codec.generator_losses(...)``, not ``codec.forward``. Wrapping
+    this adapter in DDP makes every codec parameter used there part of the gradient
+    all-reduce.
 
-    ``self.codec`` is a registered submodule, so ``adapter.codec`` is the underlying
-    :class:`SpectroCodec` (used for the detached discriminator recon + gate eval + EMA +
-    state_dict, which must NOT go through the DDP graph).
+    ``self.codec`` is the underlying :class:`SpectroCodec`, used directly (outside the
+    DDP graph) for the detached discriminator reconstruction, the gate, EMA and
+    ``state_dict``.
     """
 
     def __init__(self, codec: SpectroCodec) -> None:
@@ -2423,43 +2219,37 @@ def _ddp_codec_train_step(
     step: int,
     frame_mask: Optional[torch.Tensor] = None,
 ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
-    """DDP-aware analogue of :func:`spike.codec_train_step`.
+    """DDP version of :func:`spike.codec_train_step`.
 
-    Same math as :func:`spike.codec_train_step` but routes the GENERATOR forward through the
-    DDP-wrapped adapter (so the codec-gradient all-reduce is hooked) and the DISCRIMINATOR
-    forward through its DDP wrapper. The discriminator inside ``generator_losses`` is called
-    with ``disc_raw`` (no grad on D during the G step, matching the spike). ``codec.forward``
-    for the detached D-step recon uses the raw codec (no DDP graph needed — it's under
-    ``no_grad``).
+    Same math, but the generator forward goes through the DDP-wrapped adapter (so codec
+    gradients are all-reduced) and the discriminator forward through its DDP wrapper.
+    Inside ``generator_losses`` the discriminator is ``disc_raw`` (no D gradient during
+    the G step, as in the spike). The detached reconstruction for the D step runs on the
+    raw codec under ``no_grad``.
     """
     codec.train()
     disc_raw.train()
 
-    # ---- generator (codec) step: forward through the DDP-wrapped adapter ----
+    # Generator (codec) step through the DDP-wrapped adapter
     opt_g.zero_grad(set_to_none=True)
     g_terms = gen_module(spec_a, spec_b, disc_raw, cfg, step, frame_mask)
     g_terms["total"].backward()
-    # DDP-safe divergence guard: backward (+ its grad all-reduce) ran uniformly on every rank;
-    # opt_g.step() is skipped IDENTICALLY on all ranks if any rank's loss is non-finite.
+    # Divergence guard: backward and its all-reduce ran on every rank, and opt_g.step()
+    # is skipped on all ranks if any rank's loss is non-finite.
     if spike.is_step_diverged(g_terms["total"]):
         spike.note_skipped_step()
     else:
         opt_g.step()
 
-    # ---- discriminator step (fresh detached recon; forward through DDP-wrapped disc) ----
-    # CADENCE (NVIDIA Spectral Codec, arXiv 2406.05298 section 4: "we update the discriminators
-    # only once every two steps"). cfg.disc_update_every defaults to 1 = every step, which is
-    # the prior behaviour EXACTLY. The predicate uses the GLOBAL step so the cadence is
-    # identical on every DDP rank and stable across chained resumes; skipping is uniform
-    # across ranks, so no rank desyncs on the disc gradient all-reduce.
+    # Discriminator step on a fresh detached reconstruction. The paper updates D once
+    # every two steps; cfg.disc_update_every defaults to 1 (every step). The check uses
+    # the global step, so it agrees across ranks and across resumes and no rank skips
+    # the all-reduce alone.
     every = int(getattr(cfg, "disc_update_every", 1))
     if every > 1 and (step % every) != 0:
-        # Still report the (cheap, no-grad) discriminator loss so the gate line has a number,
-        # but take no optimizer step and build no graph.
-        # IMPORTANT: score with ``disc_raw``, NOT the DDP wrapper. A DDP forward arms the
-        # reducer to expect a matching backward; skipping that backward makes the NEXT
-        # iteration raise "Expected to have finished reduction in the prior iteration". The
-        # raw module is the same weights with no reducer bookkeeping.
+        # Still report the discriminator loss (no grad), but take no step. Use disc_raw,
+        # not the DDP wrapper: a DDP forward without a matching backward makes the next
+        # iteration raise "Expected to have finished reduction in the prior iteration".
         with torch.no_grad():
             recon = codec.forward(spec_a)["recon"]
             d_loss = _spectro_discriminator_loss(disc_raw, spec_a, recon, cfg, frame_mask)
@@ -2485,26 +2275,20 @@ def _spectro_discriminator_loss(
     cfg: SpectroCodecConfig,
     frame_mask: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    """:func:`losses.discriminator_loss`, with the missing windows removed from BOTH sides.
+    """:func:`losses.discriminator_loss` with the missing windows removed on both sides.
 
-    2026-09-03. The spectro discriminator step was the LAST unmasked consumer: with no mask
-    anywhere on the spectro path, D was trained to call a constant log-eps plate (a shot whose
-    HDF5 group is an empty stub) and a zero-slab channel "real". That is a direct reward for a
-    mean-collapsed generator, which is the failure mode this whole family fights.
-
-    Uses EXACTLY the selector the generator uses (``SpectroCodec._valid_windows``), so the two
-    halves of the GAN alternation never disagree about what data is real. ``frame_mask`` None,
-    or a mask that selects every window, keeps the ORIGINAL tensors and calls
-    ``losses.discriminator_loss`` unchanged — bit-identical to the pre-fix path.
+    Without a mask, D learns to call a constant log-eps plate (a shot whose HDF5 group
+    is an empty stub) or a zero channel "real", which rewards a mean-collapsed
+    generator. The selector is the generator's own (``SpectroCodec._valid_windows``), so
+    both halves of the GAN agree on what is real. With ``frame_mask`` None, or a mask
+    that keeps every window, the tensors are passed through unchanged.
     """
     from .losses import discriminator_loss, time_smooth
 
-    # The discriminator's REAL sample must be the SAME target the generator is asked to
-    # produce (cfg.target_time_smooth). Showing D the raw window while the generator optimises
-    # a smoothed target would teach D that the speckle is the discriminator between real and
-    # fake -- a gradient the generator cannot satisfy from 192 codes, and the one thing that
-    # would make the smoothed target actively harmful. ``time_smooth`` returns ``real`` ITSELF
-    # at K <= 1, so the default path is bit-identical.
+    # D's real sample must be the target the generator is trained on
+    # (cfg.target_time_smooth). Showing D the raw window against a smoothed target would
+    # make the speckle the cue that separates real from fake, which the generator cannot
+    # reproduce from 192 codes. time_smooth returns ``real`` itself for K <= 1.
     real = time_smooth(real, int(getattr(cfg, "target_time_smooth", 0) or 0))
     win = SpectroCodec._valid_windows(frame_mask, real.shape)
     if win is not None:
@@ -2512,16 +2296,12 @@ def _spectro_discriminator_loss(
     return discriminator_loss(disc, real, fake, cfg)
 
 
-# ------------------------------------------------------------------------------------- #
-# video DDP generator-loss adapter + per-step (mirrors the spectro pair above, no x_shift)
-# ------------------------------------------------------------------------------------- #
+# Video DDP generator-loss adapter and train steps (as for spectro, without x_shift)
 class _VideoGenLossAdapter(torch.nn.Module):
-    """Thin wrapper whose ``forward`` dispatches to ``VideoCodec.generator_losses``.
+    """Wrapper whose ``forward`` calls ``VideoCodec.generator_losses``.
 
-    Same DDP purpose as :class:`_GenLossAdapter`: DDP's reducer only hooks params used in
-    ``forward``; the codec's generator step is ``codec.generator_losses(...)``, so we DDP-wrap
-    THIS adapter. ``self.codec`` is the underlying :class:`VideoCodec` (used for the detached
-    D-recon + gate + EMA + state_dict). The video signature has NO ``x_shift`` (no δ-pair).
+    Same purpose as :class:`_GenLossAdapter`. ``self.codec`` is the underlying
+    :class:`VideoCodec`. The video signature has no ``x_shift`` (no δ-pair).
     """
 
     def __init__(self, codec: VideoCodec) -> None:
@@ -2549,18 +2329,18 @@ def video_codec_train_step(
     cfg: VideoCodecConfig,
     step: int,
 ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
-    """ONE generator+discriminator alternation step on a video clip (single-GPU / bare path).
+    """One generator + discriminator step on a video clip (single GPU, no DDP).
 
-    The video analogue of :func:`spike.codec_train_step` — same alternation (generator step
-    on the codec's ``generator_losses``, then a fresh DETACHED-recon discriminator step) but
-    with no δ-shift pair. Shared by the DDP trainer's ``world_size==1`` path and the tests.
+    The video version of :func:`spike.codec_train_step`: a generator step on
+    ``generator_losses``, then a discriminator step on a detached reconstruction, with
+    no δ-shift pair. Used by tests and by single-process runs.
     """
     codec.train()
 
     opt_g.zero_grad(set_to_none=True)
     g_terms = codec.generator_losses(frames, disc, cfg, step=step, frame_mask=frame_mask)
     g_terms["total"].backward()
-    # Divergence guard (single-process path here; DDP-collective when world_size>1).
+    # Divergence guard.
     if spike.is_step_diverged(g_terms["total"]):
         spike.note_skipped_step()
     else:
@@ -2569,7 +2349,7 @@ def video_codec_train_step(
     opt_d.zero_grad(set_to_none=True)
     with torch.no_grad():
         out = codec.forward(frames)
-        recon, real = out["recon"], out["x_std"]     # both in the STANDARDIZED frame space
+        recon, real = out["recon"], out["x_std"]     # both in standardised frame space
     if _disc_step_due(cfg, step):
         d_loss = _video_discriminator_loss(disc, real, recon, cfg, frame_mask)
         d_loss.backward()
@@ -2585,12 +2365,11 @@ def video_codec_train_step(
 
 
 def _disc_step_due(cfg: VideoCodecConfig, step: int) -> bool:
-    """True when the DISCRIMINATOR should be updated on ``step`` (paper: every 2 steps).
+    """True when the discriminator should be updated on ``step``.
 
-    ``cfg.disc_update_every`` defaults to 1 = update every step = the pre-2026-09-03 behaviour,
-    so this is byte-identical unless a run asks for the NVIDIA Spectral Codec cadence
-    (arXiv 2406.05298 section 4 uses 2). The d_loss VALUE is still computed and logged every
-    step, only the backward+step is skipped, so the logs stay comparable across arms.
+    ``cfg.disc_update_every`` defaults to 1 (every step); the paper uses 2. The d_loss
+    value is still computed and logged on skipped steps; only backward and step are
+    skipped.
     """
     every = int(getattr(cfg, "disc_update_every", 1) or 1)
     return every <= 1 or (int(step) % every == 0)
@@ -2608,15 +2387,15 @@ def _ddp_video_train_step(
     cfg: VideoCodecConfig,
     step: int,
 ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
-    """DDP-aware analogue of :func:`video_codec_train_step` (routes the G forward through DDP)."""
+    """DDP version of :func:`video_codec_train_step` (G forward goes through DDP)."""
     codec.train()
     disc_raw.train()
 
     opt_g.zero_grad(set_to_none=True)
     g_terms = gen_module(frames, disc_raw, cfg, step, frame_mask)
     g_terms["total"].backward()
-    # DDP-safe divergence guard: uniform backward, then skip opt_g.step() identically on all ranks
-    # if any rank's loss is non-finite (video codec collapse was one of the 2026-07 crash triggers).
+    # Divergence guard: uniform backward, then skip opt_g.step() on all ranks if any
+    # rank's loss is non-finite.
     if spike.is_step_diverged(g_terms["total"]):
         spike.note_skipped_step()
     else:
@@ -2625,7 +2404,7 @@ def _ddp_video_train_step(
     opt_d.zero_grad(set_to_none=True)
     with torch.no_grad():
         out = codec.forward(frames)
-        recon, real = out["recon"], out["x_std"]     # both in the STANDARDIZED frame space
+        recon, real = out["recon"], out["x_std"]     # both in standardised frame space
     if _disc_step_due(cfg, step):
         d_loss = _video_discriminator_loss(disc, real, recon, cfg, frame_mask)
         d_loss.backward()
@@ -2634,9 +2413,8 @@ def _ddp_video_train_step(
         else:
             opt_d.step()
     else:
-        # SKIPPED D step. The value is still logged, but it must go through the RAW module
-        # under no_grad: a DDP-wrapped forward with no matching backward leaves the reducer
-        # armed and corrupts (or hangs) the next iteration.
+        # Skipped D step: log the value through the raw module under no_grad. A DDP
+        # forward without a matching backward breaks (or hangs) the next iteration.
         with torch.no_grad():
             d_loss = _video_discriminator_loss(disc_raw, real, recon, cfg, frame_mask)
 
@@ -2650,19 +2428,16 @@ def _video_discriminator_loss(
     cfg: VideoCodecConfig,
     frame_mask: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    """Hinge GAN discriminator loss for the frame PatchGAN (reuses the shared hinge helpers).
+    """Hinge discriminator loss for the frame PatchGAN.
 
-    Identical math to :func:`losses.discriminator_loss` (``E[relu(1-D(real))] +
-    E[relu(1+D(fake))]`` over the per-frame score maps); factored here only because
-    ``losses.discriminator_loss`` is typed to ``SpectroCodecConfig`` (it reads no cfg field,
-    but keeping a video-typed entry point is clearer and avoids any future cfg-field coupling).
+    Same math as :func:`losses.discriminator_loss` (``E[relu(1-D(real))] +
+    E[relu(1+D(fake))]`` over the per-frame score maps), kept separate because that one
+    is typed to ``SpectroCodecConfig``.
 
-    ``frame_mask`` (2026-09-03) drops the frames whose cameras were OFF from BOTH the real and
-    the fake side, using the SAME selector the generator uses
-    (:meth:`VideoCodec._disc_frame_selector`). Without it the discriminator is trained to call a
-    constant-zero plate "real" -- and 51.3% (lower) / 68.6% (upper) of the streamed windows are
-    exactly that. ``None`` / an all-valid mask keeps the ORIGINAL tensors, so the default path
-    is bit-identical.
+    ``frame_mask`` drops frames whose cameras were off from both the real and fake side,
+    with the generator's selector (:meth:`VideoCodec._disc_frame_selector`). Without it
+    D learns to call a constant-zero plate real, and 51.3% (lower) / 68.6% (upper) of
+    streamed windows are exactly that. ``None`` or an all-valid mask changes nothing.
     """
     from .losses import _as_score_list, _hinge_fake, _hinge_real
 
@@ -2675,9 +2450,7 @@ def _video_discriminator_loss(
     return _hinge_real(real_maps) + _hinge_fake(fake_maps)
 
 
-# ------------------------------------------------------------------------------------- #
-# held-out streamed eval set (disjoint shots) for the gate
-# ------------------------------------------------------------------------------------- #
+# Held-out streamed eval set (disjoint shots) for the gate
 def _stream_eval_data(
     modality: str,
     eval_shots: Sequence[Union[str, int]],
@@ -2690,38 +2463,23 @@ def _stream_eval_data(
     device: torch.device,
     seed: int,
 ) -> Tuple[List[Tuple[torch.Tensor, torch.Tensor]], torch.Tensor]:
-    """Materialize a small held-out gate set by streaming ``eval_shots`` on THIS rank only.
+    """Build a small held-out gate set by streaming ``eval_shots`` on this rank.
 
-    Returns ``(eval_pairs, frame_seq)`` matching :func:`spike.compute_gate`'s contract:
-    ``eval_pairs`` = list of ``(spec_a, spec_b)`` batches; ``frame_seq`` =
-    ``(B, n_frames, C, F, T)`` consecutive-frame sequence. The eval set is small + fixed
-    (materialized once) so gate scores are comparable across evals. Runs single-process here
-    (world_size=1) so every rank has the SAME held-out data — the gate is computed on rank 0
-    only, but building it uniformly keeps the code rank-agnostic.
+    Returns ``(eval_pairs, frame_seq)`` as :func:`spike.compute_gate` expects:
+    ``eval_pairs`` is a list of ``(spec_a, spec_b)`` batches (plus a mask when
+    ``cfg.mask_missing``), ``frame_seq`` a ``(B, n_frames, C, F, T)`` sequence of
+    consecutive frames. The set is built once, so gate scores are comparable across
+    evals, and every rank builds the same one (only rank 0 computes the gate).
     """
-    # δ-pairs via the SAME production dataset (single-process, deterministic draw). Iterate
-    # its map-style windows in order and materialize the first ``eval_batches*eval_batch_size``.
+    # δ-pairs from the training dataset class, single process, taken in index order.
     ds = CodecPairDataset(modality, eval_shots, cfg, data_dir=data_dir, seed=seed,
                           emit_mask=bool(getattr(cfg, "mask_missing", False)))
-    # THE HELD-OUT SET MUST NOT BE ACTIVITY-STRATIFIED (2026-09-04).
-    #
-    # `cfg.min_activity` / `cfg.active_bias` are a TRAINING-time sampling choice (bias the
-    # batch toward active windows without dropping quiet ones). Letting them reach the gate
-    # set is wrong twice over:
-    #
-    #  * CORRECTNESS -- the gate would be measured on a sample deliberately biased toward
-    #    high-activity windows, so it does not describe held-out data. Only co2 and mirnov
-    #    carry the knobs, which is exactly where the gate was least trustworthy.
-    #  * COST -- `_stratified_draw` re-draws up to `max_tries` times per item, each a full
-    #    `_build_pair`, and this loop is SINGLE-PROCESS over `eval_batches * eval_batch_size`
-    #    items. Measured on mirnov (job 5416298): 29 channels x ~29 Lustre seeks per build x
-    #    up to 8 re-draws x 128 items consumed the ENTIRE 2 h leg -- all four mirnov arms
-    #    wrote zero gates and zero checkpoints while the bes arms beside them reached step
-    #    14000-29999. It is paid again on every resume because the eval set is never cached.
-    #
-    # Zeroing the two knobs on the DATASET INSTANCE (not the cfg, which the codec and the
-    # checkpoint share) makes `_stratified_draw` return its base draw immediately, which is
-    # its documented byte-identical path. Training sampling is untouched.
+    # The held-out set must not be activity-stratified. min_activity / active_bias are a
+    # training-time sampling choice; on the gate set they would bias the metrics toward
+    # active windows (only co2 and mirnov use them), and _stratified_draw's redraws make
+    # this single-process loop slow enough to use up a whole 2 h leg on mirnov. Zero
+    # them on this dataset instance only (not on the cfg, which the codec and checkpoint
+    # share), so _stratified_draw returns its first draw.
     ds.min_activity, ds.active_bias = 0.0, 0.0
     n_pairs = eval_batches * eval_batch_size
     n_avail = len(ds)
@@ -2737,9 +2495,8 @@ def _stream_eval_data(
         chunk = flat_pairs[bi * eval_batch_size : (bi + 1) * eval_batch_size]
         a = torch.stack([p[0] for p in chunk], dim=0).to(device)
         b = torch.stack([p[1] for p in chunk], dim=0).to(device)
-        # 3rd element ONLY when the dataset carries cfg.mask_missing; spike.compute_gate
-        # forwards it to gate.decode_fidelity so the held-out metrics are computed on real
-        # data only. Without it the tuple is the same 2-tuple as before (byte-identical).
+        # A mask is present only with cfg.mask_missing; spike.compute_gate passes it to
+        # gate.decode_fidelity so the held-out metrics use real data only.
         if len(chunk[0]) > 2:
             eval_pairs.append(
                 (a, b, torch.stack([p[2] for p in chunk], dim=0).to(device))
@@ -2747,7 +2504,7 @@ def _stream_eval_data(
         else:
             eval_pairs.append((a, b))
 
-    # consecutive-frame sequence for persistence / forecastability, streamed from eval shots.
+    # Consecutive-frame sequence for persistence / forecastability.
     frame_seq = _stream_frame_sequence(
         modality, eval_shots, cfg,
         data_dir=data_dir, batch_size=max(2, eval_batch_size // 2),
@@ -2769,10 +2526,10 @@ def _stream_frame_sequence(
     t0_start: float = 1.0,
     min_std: float = 1e-3,
 ) -> torch.Tensor:
-    """Consecutive-frame ece/co2/... sequence for the gate (mirrors spike.real_frame_sequence).
+    """Consecutive-frame sequence for the gate (like spike.real_frame_sequence).
 
-    Scans ``shots`` for blocks of ``n_frames`` consecutive valid 50 ms windows; STFTs each to
-    log-power. Reuses the read-only loader access + ``data.log_power_stft``. Single-process.
+    Scans ``shots`` for runs of ``n_frames`` consecutive valid 50 ms windows and turns
+    each into log-power with ``data.log_power_stft``. Single process.
     """
     seq_span_s = n_frames * CHUNK_S
     gen = torch.Generator().manual_seed(seed)
@@ -2785,7 +2542,7 @@ def _stream_frame_sequence(
         path = Path(data_dir) / f"{shot}_processed.h5"
         if not path.exists():
             continue
-        # open via the generic per-modality path (spike._open_ece_dataset is ece-only).
+        # Generic per-modality open (spike._open_ece_dataset is ece-only).
         from tokamak_foundation_model.data.data_loader import TokamakH5Dataset
 
         ds = TokamakH5Dataset(path, input_signals=[modality], target_signals=[modality])
@@ -2819,9 +2576,7 @@ def _stream_frame_sequence(
     return torch.stack(seqs, dim=0).to(device)
 
 
-# ------------------------------------------------------------------------------------- #
-# held-out streamed VIDEO eval set (clips + consecutive-window sequence)
-# ------------------------------------------------------------------------------------- #
+# Held-out streamed video eval set (clips and a consecutive-window sequence)
 def _stream_video_eval_data(
     modality: str,
     eval_shots: Sequence[Union[str, int]],
@@ -2834,14 +2589,14 @@ def _stream_video_eval_data(
     device: torch.device,
     seed: int,
 ) -> Tuple[List[torch.Tensor], torch.Tensor, List[torch.Tensor]]:
-    """Materialize a small held-out VIDEO gate set (mirrors :func:`_stream_eval_data`).
+    """Build a small held-out video gate set (like :func:`_stream_eval_data`).
 
-    Returns ``(eval_clips, frame_seq)`` for :func:`video_compute_gate`: ``eval_clips`` = list
-    of ``(B, C, T, H, W)`` clip batches (for stability + video decode-fidelity); ``frame_seq``
-    = ``(B, n_windows, C, T, H, W)`` consecutive 50 ms windows (for persistence +
-    forecastability). Streamed on THIS rank (world_size=1) so every rank has the same held-out
-    data; the gate is computed on rank 0 only. ``eval_frames`` here is the number of
-    consecutive world-model WINDOWS in the sequence (each window is one 50 ms video clip).
+    Returns ``(eval_clips, frame_seq, eval_masks)`` for :func:`video_compute_gate`:
+    ``eval_clips`` is a list of ``(B, C, T, H, W)`` clip batches (stability and decode
+    fidelity), ``frame_seq`` a ``(B, n_windows, C, T, H, W)`` run of consecutive 50 ms
+    windows (persistence and forecastability), ``eval_masks`` the per-batch channel
+    masks. ``eval_frames`` is the number of consecutive windows (one 50 ms clip each).
+    Every rank builds the same set; only rank 0 computes the gate.
     """
     ds = VideoCodecPairDataset(modality, eval_shots, cfg, data_dir=data_dir, seed=seed)
     n_clips = eval_batches * eval_batch_size
@@ -2851,11 +2606,9 @@ def _stream_video_eval_data(
             f"{len(list(eval_shots))} eval shots; need {n_clips} "
             f"(eval_batches={eval_batches} * eval_batch_size={eval_batch_size})."
         )
-    # 2026-09-03: the MASK is materialized too. It used to be dropped here ("mask unused in
-    # the gate"), so every gate number was computed over zero-filled dead cameras -- and on
-    # tangtv that is 51.3% (lower) / 68.6% (upper) of shots. The mask is only NON-trivial when
-    # cfg.mask_missing is on; otherwise it is the same all-ones vector as before, so the gate
-    # is byte-identical for a run that does not ask for masking.
+    # Keep the masks too, so the gate is not computed over zero-filled dead cameras
+    # (51.3% of lower / 68.6% of upper tangtv shots). They are all ones unless
+    # cfg.mask_missing is on.
     items = [ds[i] for i in range(n_clips)]
     flat = [it[0] for it in items]
     flat_m = [it[1] for it in items]
@@ -2868,13 +2621,13 @@ def _stream_video_eval_data(
             torch.stack(flat_m[bi * eval_batch_size : (bi + 1) * eval_batch_size], dim=0)
             .to(device))
 
-    # consecutive-window sequence: for each sample, ``eval_frames`` back-to-back 50 ms clips.
+    # Consecutive-window sequence: eval_frames back-to-back 50 ms clips per sample.
     bsz = max(2, eval_batch_size // 2)
     n_windows = eval_frames
     n_avail = len(ds)
     seqs: List[torch.Tensor] = []
-    # stride blocks of n_windows consecutive dataset indices (dataset windows are already the
-    # non-overlapping 50 ms cores, in shot order per the parent's cumulative-length layout).
+    # Take blocks of n_windows consecutive dataset indices (windows are the
+    # non-overlapping 50 ms cores, in shot order).
     b = 0
     while len(seqs) < bsz and (b + 1) * n_windows <= n_avail:
         block = [ds[b * n_windows + k][0] for k in range(n_windows)]
@@ -2889,18 +2642,16 @@ def _stream_video_eval_data(
     return eval_clips, frame_seq, eval_masks
 
 
-# ------------------------------------------------------------------------------------- #
-# DDP init (env-based; matches utils.distributed / _srun_rank_wrapper.sh contract)
-# ------------------------------------------------------------------------------------- #
+# DDP init from env vars (same contract as utils.distributed / _srun_rank_wrapper.sh)
 class _DDPState:
-    """Minimal DDP context read from the env vars set by ``_srun_rank_wrapper.sh``.
+    """Minimal DDP context from the env vars set by ``_srun_rank_wrapper.sh``.
 
-    ``RANK`` / ``LOCAL_RANK`` / ``WORLD_SIZE`` (torchrun / srun), NCCL backend, one GPU per
-    rank (Frontier ``--gpus-per-task=1`` masks each rank to a single visible GCD → device
-    index 0). Single-process when ``WORLD_SIZE`` is unset or 1 (the CPU smoke path).
+    Reads ``RANK`` / ``LOCAL_RANK`` / ``WORLD_SIZE``, uses NCCL and one GPU per rank
+    (when each task sees a single GPU, the device index is 0). Single process when
+    ``WORLD_SIZE`` is unset or 1 (the CPU smoke path).
     """
 
-    def __init__(self, backend: str = "nccl") -> None:
+    def __init__(self, backend: str = "nccl", timeout_minutes: Optional[float] = None) -> None:
         ws = int(os.environ.get("WORLD_SIZE", "1"))
         if ws > 1:
             self.rank = int(os.environ.get("RANK", os.environ.get("SLURM_PROCID", 0)))
@@ -2908,9 +2659,23 @@ class _DDPState:
             self.world_size = ws
             visible = torch.cuda.device_count()
             self.device_index = self.local_rank if visible > 1 else 0
+            if visible > 1 and self.device_index >= visible:
+                raise RuntimeError(
+                    f"rank {self.rank}: LOCAL_RANK={self.local_rank} but only {visible} GPUs "
+                    f"visible (CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}); "
+                    "bind one GPU per task (srun --gpu-bind, see SRUN_GPU_BIND)"
+                )
             self.distributed = True
             if not dist.is_initialized():
-                dist.init_process_group(backend, rank=self.rank, world_size=self.world_size)
+                # timeout_minutes: how long a collective may wait for a lagging rank
+                # (torch's NCCL default is 10 min); None keeps the default.
+                timeout = (
+                    None if timeout_minutes is None
+                    else datetime.timedelta(minutes=timeout_minutes)
+                )
+                dist.init_process_group(
+                    backend, rank=self.rank, world_size=self.world_size, timeout=timeout
+                )
             if torch.cuda.is_available():
                 torch.cuda.set_device(self.device_index)
         else:
@@ -2948,9 +2713,7 @@ class _DDPState:
             dist.destroy_process_group()
 
 
-# ------------------------------------------------------------------------------------- #
-# the streaming trainer
-# ------------------------------------------------------------------------------------- #
+# Spectro trainer
 def train_codec(
     cfg: SpectroCodecConfig,
     modality: str,
@@ -2976,15 +2739,16 @@ def train_codec(
     lengths_cache_path: Optional[Union[str, Path]] = None,
     log_fn=print,
 ) -> Dict[str, object]:
-    """Streaming, DDP-capable codec training loop (reuses spike's per-step + gate logic).
+    """Streaming DDP codec training loop for one spectro modality.
 
-    Wires the streaming DataLoader → :func:`_ddp_codec_train_step` (== spike's per-step math,
-    DDP-hooked) → periodic gate on a held-out streamed eval set → best-ckpt by
-    :func:`spike.gate_score`. Rank-0 only logs + writes ``codec_last.pt`` / ``codec_best.pt``
-    / (optional) ``codec_ema.pt`` / ``gate_<step>.json``.
+    Streams batches through :func:`_ddp_codec_train_step` (the spike's per-step math),
+    runs the gate on a held-out streamed eval set every ``eval_every`` steps and keeps
+    the best checkpoint by :func:`spike.gate_score`. Rank 0 logs and writes
+    ``codec_last.pt``, ``codec_best.pt``, optionally ``codec_ema.pt``, and
+    ``gate_<step>.json``.
 
-    Returns the final gate dict (with ``steps`` / ``global_step`` / ``best_score`` /
-    ``best_step`` keys), like :func:`spike.run_spike`.
+    Returns the final gate dict with ``steps`` / ``global_step`` / ``best_score`` /
+    ``best_step`` added, like :func:`spike.run_spike`.
     """
     if steps < 1:
         raise ValueError("train_codec: steps must be >= 1")
@@ -2996,9 +2760,9 @@ def train_codec(
     if out_path is not None and ddp.is_main:
         out_path.mkdir(parents=True, exist_ok=True)
 
-    # --- models ---
+    # Models
     codec = SpectroCodec(cfg).to(device)
-    # DISCRIMINATOR FAMILY. Default "patch" is FreqAwarePatchGAN, exactly as before.
+    # Discriminator family; the default "patch" is FreqAwarePatchGAN.
     if str(getattr(cfg, "discriminator", "patch")) == "multiscale":
         from .discriminator import MultiScaleSpectroGAN
         disc_raw = MultiScaleSpectroGAN(cfg).to(device)
@@ -3013,9 +2777,8 @@ def train_codec(
             disc_raw.load_state_dict(resume_state["disc"])
         start_step = int(resume_state.get("step", 0))
 
-    # Adam betas from the cfg (defaults 0.9/0.999 == torch's, so untouched runs are identical).
-    # Paper (arXiv 2406.05298 section 4): "Adam optimizer with learning rate 2e-4,
-    # beta1 = 0.8, beta2 = 0.99".
+    # Adam betas from the cfg (defaults 0.9/0.999, as in torch). The spectral-codec
+    # paper (arXiv 2406.05298 section 4) uses LR 2e-4, beta1 0.8, beta2 0.99.
     _betas = (float(getattr(cfg, "adam_beta1", 0.9)), float(getattr(cfg, "adam_beta2", 0.999)))
     opt_g = torch.optim.Adam(codec.parameters(), lr=lr, betas=_betas)
     opt_d = torch.optim.Adam(
@@ -3037,14 +2800,14 @@ def train_codec(
 
     ema_shadow = spike._EMA(codec, ema_decay) if ema else None
 
-    # --- held-out gate set (same on every rank; gate computed on rank 0) ---
+    # Held-out gate set (same on every rank; the gate runs on rank 0)
     eval_pairs, frame_seq = _stream_eval_data(
         modality, eval_shots, cfg,
         data_dir=data_dir, eval_batches=eval_batches, eval_batch_size=eval_batch_size,
         eval_frames=eval_frames, device=device, seed=seed + 777,
     )
 
-    # --- train loader over the production TokamakMultiFileDataset subclass ---
+    # Train loader
     train_ds = CodecPairDataset(
         modality, train_shots, cfg,
         data_dir=data_dir, seed=seed, lengths_cache_path=lengths_cache_path,
@@ -3055,12 +2818,11 @@ def train_codec(
         batch_size=batch_size, num_workers=num_workers,
         rank=ddp.rank, world_size=ddp.world_size, seed=seed, shuffle=True,
     )
-    # The loader is a FINITE map-style epoch (unlike the old infinite IterableDataset). Wrap
-    # it so the trainer's fixed ``steps`` budget cycles through epochs transparently.
+    # The loader is a finite map-style epoch; cycle it to cover the fixed step budget.
     stream = _epoch_cycler(loader)
 
-    # CHAIN-RESUME FIX (2026-08-05): seed best-tracking from an existing codec_best.pt
-    # so a resume leg cannot clobber the global best with a worse leg-local one.
+    # Start best-tracking from an existing codec_best.pt, so a resumed leg cannot
+    # overwrite the overall best with a worse one of its own.
     best_score = spike.resume_best_score(out_path)
     best_step: Optional[int] = None
     final_gate: Dict[str, object] = {}
@@ -3069,12 +2831,11 @@ def train_codec(
     _base_lrs = [lr, disc_lr if disc_lr is not None else lr]
     for local_step in range(steps):
         step = start_step + local_step
-        # Exponential LR decay on the ABSOLUTE step (no-op at the default gamma 1.0).
+        # Exponential LR decay on the absolute step (no-op at the default gamma 1.0).
         _apply_lr_decay([opt_g, opt_d], _base_lrs, step, cfg)
         batch = next(stream)
-        # The loader yields (a, b) by default and (a, b, mask) when cfg.mask_missing is set;
-        # `frame_mask` stays None in the default case so every downstream term takes the
-        # ORIGINAL (bit-identical) branch.
+        # The loader yields (a, b), or (a, b, mask) when cfg.mask_missing is set;
+        # frame_mask is None otherwise and every loss term runs unmasked.
         spec_a, spec_b = batch[0], batch[1]
         frame_mask = batch[2].to(device, non_blocking=True) if len(batch) > 2 else None
         spec_a = spec_a.to(device, non_blocking=True)
@@ -3133,9 +2894,7 @@ def train_codec(
     return final_gate
 
 
-# ------------------------------------------------------------------------------------- #
-# the streaming VIDEO trainer (mirrors train_codec; reuses the SAME DDP + best-ckpt + gate)
-# ------------------------------------------------------------------------------------- #
+# Video trainer (same DDP, gate and best-checkpoint handling as train_codec)
 def train_video_codec(
     cfg: VideoCodecConfig,
     modality: str,
@@ -3161,16 +2920,13 @@ def train_video_codec(
     lengths_cache_path: Optional[Union[str, Path]] = None,
     log_fn=print,
 ) -> Dict[str, object]:
-    """Streaming, DDP-capable VIDEO codec training loop.
+    """Streaming DDP video codec training loop.
 
-    The video analogue of :func:`train_codec` — it reuses the SAME infrastructure (the
-    ``_DDPState`` init/wrap, ``spike._EMA``, ``spike.gate_score``, ``spike._fmt_gate``,
-    ``spike._write_gate_json`` / ``spike._save_checkpoint`` / ``spike._save_best_checkpoint``
-    / ``spike._save_ema_checkpoint`` best-ckpt+EMA+gate path) and differs only where video
-    differs: a :class:`VideoCodec` + :class:`FramePatchGAN`, the ``(frames, frame_mask)``
-    loader, the no-δ-pair :func:`_ddp_video_train_step`, and :func:`video_compute_gate`.
-    Rank-0 only logs + writes ``codec_last.pt`` / ``codec_best.pt`` / (optional)
-    ``codec_ema.pt`` / ``gate_<step>.json`` (identical filenames + score contract as spectro).
+    Same structure as :func:`train_codec` (``_DDPState``, ``spike._EMA``,
+    ``spike.gate_score`` and the ``spike._save_*`` checkpoint helpers). The differences:
+    a :class:`VideoCodec` with :class:`FramePatchGAN`, the ``(frames, frame_mask)``
+    loader, :func:`_ddp_video_train_step` (no δ-pair) and :func:`video_compute_gate`.
+    Rank 0 logs and writes the same files with the same score contract as spectro.
     """
     if steps < 1:
         raise ValueError("train_video_codec: steps must be >= 1")
@@ -3193,8 +2949,8 @@ def train_video_codec(
             disc_raw.load_state_dict(resume_state["disc"])
         start_step = int(resume_state.get("step", 0))
 
-    # Adam betas from the cfg (defaults 0.9/0.999 == torch's, so untouched runs are identical).
-    # Paper (arXiv 2406.05298 section 4): beta1 = 0.8, beta2 = 0.99.
+    # Adam betas from the cfg (defaults 0.9/0.999, as in torch; the paper uses
+    # 0.8/0.99).
     _betas = (float(getattr(cfg, "adam_beta1", 0.9)), float(getattr(cfg, "adam_beta2", 0.999)))
     opt_g = torch.optim.Adam(codec.parameters(), lr=lr, betas=_betas)
     opt_d = torch.optim.Adam(
@@ -3232,8 +2988,8 @@ def train_video_codec(
     )
     stream = _epoch_cycler(loader)
 
-    # CHAIN-RESUME FIX (2026-08-05): seed best-tracking from an existing codec_best.pt
-    # so a resume leg cannot clobber the global best with a worse leg-local one.
+    # Start best-tracking from an existing codec_best.pt, so a resumed leg cannot
+    # overwrite the overall best with a worse one of its own.
     best_score = spike.resume_best_score(out_path)
     best_step: Optional[int] = None
     final_gate: Dict[str, object] = {}
@@ -3242,7 +2998,7 @@ def train_video_codec(
     _base_lrs = [lr, disc_lr if disc_lr is not None else lr]
     for local_step in range(steps):
         step = start_step + local_step
-        # Exponential LR decay on the ABSOLUTE step (no-op at the default gamma 1.0).
+        # Exponential LR decay on the absolute step (no-op at the default gamma 1.0).
         _apply_lr_decay([opt_g, opt_d], _base_lrs, step, cfg)
         frames, frame_mask = next(stream)
         frames = frames.to(device, non_blocking=True)
@@ -3301,10 +3057,8 @@ def train_video_codec(
     return final_gate
 
 
-# ------------------------------------------------------------------------------------- #
-# the streaming SLOW-TS trainer (mirrors train_codec / train_video_codec; SAME DDP +
-# best-ckpt + gate infra; no discriminator, no δ-pair)
-# ------------------------------------------------------------------------------------- #
+# Slow-TS trainer (same DDP, gate and best-checkpoint handling; no discriminator,
+# no δ-pair)
 def train_slowts_codec(
     cfg: SlowTSCodecConfig,
     signal: str,
@@ -3317,7 +3071,7 @@ def train_slowts_codec(
     num_workers: int,
     data_dir: Union[str, Path] = DEFAULT_DATA_DIR,
     lr: float = 1e-3,
-    disc_lr: Optional[float] = None,   # accepted + ignored (no discriminator); uniform signature
+    disc_lr: Optional[float] = None,   # ignored (no discriminator); uniform signature
     ema: bool = False,
     ema_decay: float = 0.999,
     eval_batches: int = 8,
@@ -3331,21 +3085,14 @@ def train_slowts_codec(
     freeze_encoder: bool = False,
     log_fn=print,
 ) -> Dict[str, object]:
-    """Streaming, DDP-capable SLOW-TS codec training loop.
+    """Streaming DDP slow-TS codec training loop.
 
-    The slow-TS analogue of :func:`train_codec` / :func:`train_video_codec` — it reuses the
-    SAME infrastructure (the ``_DDPState`` init/wrap, ``spike._EMA``, ``spike.gate_score``,
-    ``spike._fmt_gate``, ``spike._write_gate_json`` / ``spike._save_checkpoint`` /
-    ``spike._save_best_checkpoint`` / ``spike._save_ema_checkpoint`` best-ckpt+EMA+gate path)
-    and differs only where slow-TS differs: a :class:`SlowTSCodec` with **no discriminator**,
-    the ``(signal, mask)`` loader, the no-δ-pair / no-GAN :func:`_ddp_slowts_train_step`, and
-    :func:`slowts_compute_gate`. Rank-0 only logs + writes ``codec_last.pt`` /
-    ``codec_best.pt`` / (optional) ``codec_ema.pt`` / ``gate_<step>.json`` (identical filenames
-    + score contract as the other codecs).
-
-    NOTE: the ``_save_*`` helpers persist a discriminator; the slow-TS codec has none, so a
-    tiny zero-parameter :class:`_NullDisc` stand-in is passed (its ``state_dict`` is empty),
-    keeping the checkpoint schema uniform without a real GAN.
+    Same structure as :func:`train_codec` and :func:`train_video_codec`. The
+    differences: a :class:`SlowTSCodec` with no discriminator, the ``(signal, mask)``
+    loader, :func:`_ddp_slowts_train_step` (no δ-pair, no GAN) and
+    :func:`slowts_compute_gate`. Rank 0 logs and writes the same files with the same
+    score contract as the other codecs. The ``_save_*`` helpers expect a discriminator,
+    so the empty :class:`_NullDisc` is passed.
     """
     if steps < 1:
         raise ValueError("train_slowts_codec: steps must be >= 1")
@@ -3358,7 +3105,7 @@ def train_slowts_codec(
         out_path.mkdir(parents=True, exist_ok=True)
 
     codec = SlowTSCodec(cfg).to(device)
-    disc_raw = _NullDisc().to(device)  # no discriminator; empty-state stand-in for _save_*
+    disc_raw = _NullDisc().to(device)  # empty stand-in for the _save_* helpers
 
     start_step = 0
     if resume_state is not None:
@@ -3366,23 +3113,20 @@ def train_slowts_codec(
             codec, resume_state["codec"], log_fn=(print if ddp.is_main else None)) or []
         start_step = int(resume_state.get("step", 0))
 
-    # DECODER-ONLY TRAINING (2026-09-03). Motivation, measured on the retrained slow-TS
-    # codecs: an out-of-sample 93-parameter LINEAR read-out of the codec's OWN FROZEN codes
-    # BEATS its trained 4-layer transformer decoder by 0.16-0.36 pooled nRMSE (cer_rot
-    # 0.5788 vs 0.7349, cer_ti 0.5874 vs 0.8841, mse 0.6536 vs 0.7840) and recovers 8x more
-    # temporal amplitude (slowts_std_ratio_t 0.34-0.38 vs 0.04). The decoder's final map is
-    # already Linear(d_model=128 -> patch_c*patch_t=60), i.e. over-complete, and the probe
-    # that beats it is STRICTLY less expressive than the decoder — so this is an
-    # OPTIMIZATION failure, not a capacity one. The most likely cause is that encoder and
-    # decoder train jointly, so the decoder chases a moving code distribution.
+    # Decoder-only training. On the retrained slow-TS codecs, an out-of-sample
+    # 93-parameter linear read-out of the codec's own frozen codes beats its trained
+    # 4-layer decoder by 0.16-0.36 pooled nRMSE (cer_rot 0.5788 vs 0.7349, cer_ti 0.5874
+    # vs 0.8841, mse 0.6536 vs 0.7840) and recovers 8x more temporal amplitude
+    # (slowts_std_ratio_t 0.34-0.38 vs 0.04). The decoder's last layer is already
+    # Linear(128 -> 60) and the probe is strictly less expressive, so this is an
+    # optimisation failure, most likely because the decoder chases a code distribution
+    # that moves during joint training.
     #
-    # With `freeze_encoder` the encoder + quantizer are frozen at the resumed checkpoint's
-    # weights (so the CODES ARE FIXED, exactly the setting the read-out measured) and only
-    # the decoder trains. If the decoder then reaches the read-out's score, joint-training
-    # non-stationarity is the cause; if it does not, the objective itself is.
-    #
-    # The entropy/utilization terms depend only on the frozen encoder, so they become
-    # constants with no gradient path — harmless, and their logged values simply stop moving.
+    # With freeze_encoder the encoder and quantizer keep the resumed weights (fixed
+    # codes, as in the read-out) and only the decoder trains. If it then matches the
+    # read-out, joint training was the cause; if not, the objective is. The entropy
+    # terms depend only on the frozen encoder, so they become constants without
+    # gradient.
     if freeze_encoder:
         for _p in codec.encoder.parameters():
             _p.requires_grad_(False)
@@ -3404,7 +3148,7 @@ def train_slowts_codec(
             log_fn=(print if ddp.is_main else None))
     _repin_lr_after_resume([opt_g], [lr], resume_state is not None,
                            log_fn=(print if ddp.is_main else None))
-    # dummy optimizer over the null disc's (empty) params so _save_checkpoint has an opt_d.
+    # Optimizer over the null disc's (empty) params, so _save_checkpoint has an opt_d.
     opt_d = torch.optim.Adam([torch.zeros(1, requires_grad=True)], lr=lr)
 
     gen_module = ddp.wrap(_SlowTSGenLossAdapter(codec))
@@ -3427,8 +3171,8 @@ def train_slowts_codec(
     )
     stream = _epoch_cycler(loader)
 
-    # CHAIN-RESUME FIX (2026-08-05): seed best-tracking from an existing codec_best.pt
-    # so a resume leg cannot clobber the global best with a worse leg-local one.
+    # Start best-tracking from an existing codec_best.pt, so a resumed leg cannot
+    # overwrite the overall best with a worse one of its own.
     best_score = spike.resume_best_score(out_path)
     best_step: Optional[int] = None
     final_gate: Dict[str, object] = {}
@@ -3492,468 +3236,501 @@ def train_slowts_codec(
 
 
 class _NullDisc(torch.nn.Module):
-    """A zero-parameter discriminator stand-in for the slow-TS codec (which has no GAN).
+    """Zero-parameter discriminator stand-in for the slow-TS codec, which has no GAN.
 
-    The shared ``spike._save_checkpoint`` / ``_save_best_checkpoint`` helpers persist a
-    discriminator ``state_dict`` to keep the checkpoint schema uniform across codecs. The
-    slow-TS codec is a reconstruction + entropy codec with no discriminator (§4.3), so we
-    pass this empty module — ``state_dict()`` is ``{}`` — instead of a real one. It is never
-    called in a forward pass.
+    ``spike._save_checkpoint`` / ``_save_best_checkpoint`` save a discriminator
+    ``state_dict`` so every codec has the same checkpoint schema; this one is empty
+    (§4.3). It is never called.
     """
 
     def state_dict(self, *args, **kwargs):  # noqa: D401 (empty state)
         return {}
 
 
-# ------------------------------------------------------------------------------------- #
 # CLI
-# ------------------------------------------------------------------------------------- #
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m tokamak_foundation_model.ignite.train_codec",
-        description="IGNITE Phase-A STREAMING, DDP codec trainer (scales past the spike's "
-                    "~40-shot pre-built pool to thousands of shots on the fly).",
+        description="IGNITE Phase-A streaming DDP codec trainer (streams thousands of "
+                    "shots instead of the spike's fixed ~40-shot pool).",
     )
     p.add_argument("--modality", type=str, default="ece",
                    choices=list(SPECTRO_MODALITIES) + list(VIDEO_MODALITIES)
                            + list(SLOWTS_MODALITIES) + [FASTTS_MODALITY],
-                   help="Codec modality: a spectro signal (ece/co2/bes/mhr), a tangtv "
-                        "divertor video (tangtv_lower/tangtv_upper), a slow-TS signal "
-                        "(ts_core_density/ts_core_temp/ts_tangential_density/"
-                        "ts_tangential_temp/cer_ti/cer_rot/mse), or the fast-TS ELM-envelope "
-                        "codec (filterscopes).")
+                   help="Codec modality: a spectro signal (ece/co2/bes/mhr/mirnov), a "
+                        "tangtv divertor video (tangtv_lower/tangtv_upper), a slow-TS "
+                        "signal (ts_core_density/ts_core_temp/ts_tangential_density/"
+                        "ts_tangential_temp/cer_ti/cer_rot/mse), or the fast-TS codec "
+                        "(filterscopes).")
     p.add_argument("--shots", type=str, default=None,
-                   help="Explicit comma-separated train shot list (overrides --n_shots).")
+                   help="Explicit comma-separated train shot list (overrides "
+                        "--n_shots).")
     p.add_argument("--n_shots", type=int, default=1000,
                    help="Number of shots to auto-discover for the train stream.")
     p.add_argument("--eval_n_shots", type=int, default=16,
                    help="Held-out shots for the gate eval set (disjoint from train).")
     p.add_argument("--steps", type=int, default=20000, help="Training/gate steps.")
-    p.add_argument("--eval_every", type=int, default=1000, help="Gate/checkpoint cadence.")
-    p.add_argument("--batch_size", type=int, default=8, help="Pairs per batch per rank.")
+    p.add_argument("--eval_every", type=int, default=1000,
+                   help="Gate/checkpoint cadence.")
+    p.add_argument("--batch_size", type=int, default=8,
+                   help="Pairs per batch per rank.")
     p.add_argument("--num_workers", type=int, default=6,
                    help="DataLoader parallel workers per rank (streaming).")
     p.add_argument("--lr", type=float, default=1e-3, help="Codec (generator) Adam LR.")
-    p.add_argument("--disc_lr", type=float, default=None, help="Discriminator LR (default lr).")
-    p.add_argument("--ema", action="store_true", help="Maintain + write an EMA codec shadow.")
+    p.add_argument("--disc_lr", type=float, default=None,
+                   help="Discriminator LR (default lr).")
+    p.add_argument("--ema", action="store_true",
+                   help="Keep and save an EMA copy of the codec.")
     p.add_argument("--ema_decay", type=float, default=0.999, help="EMA decay in [0,1).")
-    p.add_argument("--eval_batches", type=int, default=8, help="Held-out gate δ-pair batches.")
-    p.add_argument("--eval_batch_size", type=int, default=4, help="Pairs per eval batch.")
+    p.add_argument("--eval_batches", type=int, default=8,
+                   help="Held-out gate δ-pair batches.")
+    p.add_argument("--eval_batch_size", type=int, default=4,
+                   help="Pairs per eval batch.")
     p.add_argument("--eval_frames", type=int, default=6,
                    help="Consecutive frames per persistence/forecastability sequence.")
     p.add_argument("--out_dir", type=str, required=True,
-                   help="Output dir for gate_<step>.json / codec_{last,best,ema}.pt / summary.")
+                   help="Output dir for gate_<step>.json / codec_{last,best,ema}.pt / "
+                        "summary.")
     p.add_argument("--data_dir", type=str, default=DEFAULT_DATA_DIR,
                    help="Directory of {shot}_processed.h5 files.")
     p.add_argument("--stats_path", type=str, default=None,
-                   help="preprocessing_stats.pt for the fast-TS (filterscopes) envelope + slow-TS "
-                        "(Thomson/CER/MSE) input SCALE FIX (per-channel mean/std used to "
-                        "standardize the codec input the SAME way the FM model does; slow-TS also "
-                        "picks log_standardize vs standardize per signal). None => "
-                        "fastts_train.DEFAULT_STATS_PATH; '' => DISABLE (raw path, input will "
-                        "collapse; debugging only). Ignored for spectro / video modalities.")
+                   help="preprocessing_stats.pt for fast-TS (filterscopes) and slow-TS "
+                        "(Thomson/CER/MSE) input scaling: per-channel mean/std, "
+                        "applied the same way as in the FM; slow-TS also takes "
+                        "log_standardize or standardize per signal from it. None uses "
+                        "fastts_train.DEFAULT_STATS_PATH; '' disables it (raw input, "
+                        "which collapses; debugging only). Ignored for spectro and "
+                        "video.")
     p.add_argument("--lengths_cache_dir", type=str, default=None,
-                   help="Directory for the per-file chunk-length sidecar cache "
-                        "(codec_<modality>_lengths.pt); reuses the parent dataset's cache to "
-                        "skip re-scanning shot lengths at startup. None disables caching.")
+                   help="Directory for the per-file chunk-length cache "
+                        "(codec_<modality>_lengths.pt), which avoids rescanning shot "
+                        "lengths at startup. None disables caching.")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--resume", type=str, default=None,
-                   help="Optional codec_last.pt to warm-start codec/disc/opt/step from.")
+                   help="Optional codec_last.pt to resume codec, discriminator, "
+                        "optimizer and step from.")
     p.add_argument("--slowts_d_model", type=int, default=None,
-                   help="Override SlowTSCodecConfig.d_model (slow-TS only; default 128). Changes "
-                        "EVERY weight shape, so it is only usable from scratch (no --resume).")
+                   help="Override SlowTSCodecConfig.d_model (slow-TS only; default "
+                        "128). Changes every weight shape, so it only works from "
+                        "scratch (no --resume).")
     p.add_argument("--slowts_enc_depth", type=int, default=None,
-                   help="Override SlowTSCodecConfig.enc_depth (slow-TS only; default 4).")
+                   help="Override SlowTSCodecConfig.enc_depth (slow-TS only; default "
+                        "4).")
     p.add_argument("--slowts_freeze_encoder", action="store_true",
-                   help="SLOW-TS ONLY: freeze the encoder + quantizer at the RESUMED "
-                        "checkpoint's weights (the CODES become fixed) and train ONLY the "
-                        "decoder. Diagnostic for the measured decoder-limitation: a linear "
-                        "read-out of the frozen codes beats the trained decoder by 0.16-0.36 "
-                        "pooled nRMSE, so this asks whether joint-training non-stationarity "
-                        "is why. Requires --resume (freezing a random encoder is meaningless).")
+                   help="Slow-TS only: freeze the encoder and quantizer at the resumed "
+                        "checkpoint's weights (so the codes are fixed) and train only "
+                        "the decoder. A diagnostic: a linear read-out of the frozen "
+                        "codes beats the trained decoder by 0.16-0.36 pooled nRMSE, "
+                        "and this tests whether joint training is the reason. Requires "
+                        "--resume.")
     p.add_argument("--slowts_dec_depth", type=int, default=None,
-                   help="Override SlowTSCodecConfig.dec_depth (slow-TS only; default 4). MEASURED "
-                        "2026-09-03: an out-of-sample LINEAR read-out of the codec's OWN frozen "
-                        "quantized codes BEATS the trained 4-layer decoder on cer_rot "
-                        "(0.5794 vs 0.7380 pooled nRMSE), cer_ti (0.6044 vs 0.8892) and mse "
-                        "(0.6581 vs 0.7840) - i.e. for those three the information is already in "
-                        "the codes and the decoder is what fails to extract it.")
+                   help="Override SlowTSCodecConfig.dec_depth (slow-TS only; default "
+                        "4). A linear read-out of the codec's own frozen codes, fitted "
+                        "out of sample, beats the trained 4-layer decoder on cer_rot "
+                        "(0.5794 vs 0.7380 pooled nRMSE), cer_ti (0.6044 vs 0.8892) "
+                        "and mse (0.6581 vs 0.7840), so for those the information is "
+                        "in the codes and the decoder fails to extract it.")
     p.add_argument("--recon_weight", type=float, default=None,
-                   help="Override cfg.recon_weight — the L1 (MAE) reconstruction weight. On the "
-                        "slow-TS codec this ships at 1.0 against entropy_weight 1.0, i.e. the "
-                        "reconstruction term is weighted at PARITY with the anti-collapse "
-                        "regularizer (measured: the combined loss goes NEGATIVE, so diversity can "
-                        "outbid reconstruction). The NVIDIA Spectral Codec reference weights "
-                        "reconstruction 20 against its 1.0 regulariser.")
+                   help="Override cfg.recon_weight, the L1 (MAE) reconstruction "
+                        "weight. The slow-TS codec uses 1.0 against entropy_weight "
+                        "1.0, so reconstruction and the anti-collapse term are "
+                        "weighted equally (the combined loss goes negative, so "
+                        "diversity can outweigh reconstruction). The spectral-codec "
+                        "paper weights reconstruction 20 against a regulariser of 1.0.")
     p.add_argument("--recon_mse_weight", type=float, default=None,
-                   help="Override cfg.recon_mse_weight (slow-TS; default 0 = OFF): weight of a "
-                        "MASKED SQUARED-error term alongside the L1. The gate metric "
-                        "(slowts_nrmse = RMSE/std) is a squared error, so an L1-only objective "
-                        "optimises the conditional median of a metric that wants the mean. Pair "
-                        "with --recon_weight 0 for pure L2.")
+                   help="Override cfg.recon_mse_weight (slow-TS; default 0 = off): "
+                        "weight of a masked squared-error term next to the L1. The "
+                        "gate metric (slowts_nrmse = RMSE/std) is a squared error, so "
+                        "L1 alone optimises the conditional median of a metric that "
+                        "wants the mean. Use with --recon_weight 0 for pure L2.")
     p.add_argument("--entropy_weight", type=float, default=None,
-                   help="Override cfg.entropy_weight (anti-collapse strength). NOTE this scales "
-                        "the WHOLE entropy_loss return value, including the two joint terms "
-                        "below, so the effective joint weights are entropy_weight * <flag>.")
+                   help="Override cfg.entropy_weight (anti-collapse strength). It "
+                        "scales the whole entropy_loss value, including the two joint "
+                        "terms below, so their effective weights are entropy_weight "
+                        "times their flag.")
     p.add_argument("--joint_entropy_weight", type=float, default=None,
-                   help="Override cfg.joint_entropy_weight (default 0 = off): reward on the "
-                        "entropy of the batch-mean JOINT code distribution over all "
-                        "prod(fsq_levels) codes (MagViT-2/LFQ codebook entropy). The existing "
-                        "per-dim diversity reward is MARGINAL and a rank-1 encoder saturates it "
-                        "while using ~nothing of the codebook (measured on prod mhr: "
-                        "min_dim_entropy 0.921 with 42/32768 codes, per-dim level positions "
-                        "|r|>=0.997). Max value log(codebook_size) = 6.908 nats at cb=1000; "
-                        "spectro only, and refused above 4096 codes (memory).")
+                   help="Override cfg.joint_entropy_weight (default 0 = off): reward "
+                        "on the entropy of the batch-mean joint code distribution over "
+                        "all prod(fsq_levels) codes (MagViT-2/LFQ codebook entropy). "
+                        "The per-dim diversity reward is marginal, and a rank-1 "
+                        "encoder saturates it while using almost none of the codebook "
+                        "(prod mhr: min_dim_entropy 0.921 with 42/32768 codes, per-dim "
+                        "level positions |r|>=0.997). Maximum log(codebook_size) = "
+                        "6.908 nats at 1000 codes. Spectro only; refused above 4096 "
+                        "codes (memory).")
     p.add_argument("--joint_entropy_ramp_steps", type=int, default=None,
-                   help="Override cfg.joint_entropy_ramp_steps (default 0 = off): linearly ramp "
-                        "the joint-entropy weight from 0 to --joint_entropy_weight over the "
-                        "first N generator steps. The encoder starts SATURATED on real spectro "
-                        "input (every mhr arm read 1 distinct code at step 0), and a large "
-                        "constant joint weight cannot climb out (measured: weight 5.0 stayed at "
-                        "1 code / pre-quant level std 0.0000 through step 2000, while 1.0/2.0 "
-                        "reached joint entropies of 5.00/5.69 nats). Spectro only.")
-    p.add_argument("--decorrelation_weight", type=float, default=None,
-                   help="Override cfg.decorrelation_weight (default 0 = off): penalty on the "
-                        "mean squared OFF-DIAGONAL correlation of the per-dim continuous "
-                        "pre-quant level positions. Direct attack on the rank-1 FSQ collapse "
-                        "(0 = independent dims, ~1 = one scalar replicated). Spectro only.")
-    p.add_argument("--fsq_noise_dropout", type=float, default=None,
-                   help="Override cfg.fsq_noise_dropout (default 0 = off): FSQ's OWN "
-                        "`noise_dropout` constructor arg. With this probability per element, "
-                        "FSQ.maybe_apply_noise adds a uniform +/-0.5 offset to the BOUNDED code "
-                        "and re-clamps to [-1,1], TRAINING ONLY. It runs AFTER codes_to_indices, "
-                        "so the emitted indices stay clean and only the decoder-facing latent is "
-                        "jittered. The +/-0.5 is in the NORMALIZED [-1,1] space where the bin "
-                        "spacing is 2/(L-1), so for [8,5,5] it is +/-1.75 bins on the 8-level dim "
-                        "and +/-1.0 on the 5-level dims. REQUIRES --fsq_preserve_symmetry. "
+                   help="Override cfg.joint_entropy_ramp_steps (default 0 = off): ramp "
+                        "the joint-entropy weight linearly from 0 to "
+                        "--joint_entropy_weight over the first N generator steps. On "
+                        "real spectro input the encoder starts saturated (one distinct "
+                        "code at step 0), and a large constant weight does not escape "
+                        "it: weight 5.0 stayed at one code through step 2000, while "
+                        "1.0 and 2.0 reached joint entropies of 5.00 and 5.69 nats. "
                         "Spectro only.")
+    p.add_argument("--decorrelation_weight", type=float, default=None,
+                   help="Override cfg.decorrelation_weight (default 0 = off): penalty "
+                        "on the mean squared off-diagonal correlation of the per-dim "
+                        "continuous pre-quant level positions, aimed at the rank-1 FSQ "
+                        "collapse (0 = independent dims, ~1 = one scalar copied). "
+                        "Spectro only.")
+    p.add_argument("--fsq_noise_dropout", type=float, default=None,
+                   help="Override cfg.fsq_noise_dropout (default 0 = off): FSQ's own "
+                        "`noise_dropout` argument. With this probability per element, "
+                        "FSQ.maybe_apply_noise adds a uniform +/-0.5 offset to the "
+                        "bounded code and clamps to [-1,1], in training only. It runs "
+                        "after codes_to_indices, so the indices stay clean and only "
+                        "the decoder input is jittered. The offset is in the "
+                        "normalised [-1,1] space where bins are 2/(L-1) apart, so for "
+                        "[8,5,5] it is +/-1.75 bins on the 8-level dim and +/-1.0 on "
+                        "the 5-level dims. Requires --fsq_preserve_symmetry. Spectro "
+                        "only.")
     p.add_argument("--fsq_preserve_symmetry", action="store_true",
-                   help="Set cfg.fsq_preserve_symmetry (default off): FSQ's OWN "
-                        "`preserve_symmetry` constructor arg, which swaps in "
-                        "symmetry_preserving_bound (arXiv 2411.19842 s3.2) and the matching "
-                        "_scale_and_shift. MANDATORY with --fsq_noise_dropout (the library "
-                        "asserts it), but NOT a free rider: it changes the emitted codes even at "
-                        "noise_dropout 0, so always run a preserve_symmetry-only CONTROL arm or "
-                        "the noise-dropout effect is unattributable. Spectro only.")
+                   help="Set cfg.fsq_preserve_symmetry (default off): FSQ's own "
+                        "`preserve_symmetry` argument, which uses "
+                        "symmetry_preserving_bound (arXiv 2411.19842 s3.2) and the "
+                        "matching _scale_and_shift. Required by --fsq_noise_dropout "
+                        "(the library asserts it), but it changes the codes by itself "
+                        "even at noise_dropout 0, so compare against a "
+                        "preserve_symmetry-only run. Spectro only.")
     p.add_argument("--pixel_anchor_weight", type=float, default=None,
-                   help="Override cfg.pixel_anchor_weight (L1 RECONSTRUCTION strength). Default 0.05 "
-                        "was an anchor meant to work WITH the adversarial; raise it (~1-5) when "
-                        "adversarial is off so the decode actually reconstructs the spectrogram.")
+                   help="Override cfg.pixel_anchor_weight (L1 reconstruction "
+                        "strength). The default 0.05 is an anchor meant to work with "
+                        "the adversarial term; raise it (~1-5) when the adversarial "
+                        "term is off.")
     p.add_argument("--multiscale_recon_weight", type=float, default=None,
-                   help="Override cfg.multiscale_recon_weight — multi-resolution L1 (NeMo-style) that "
-                        "sharpens turbulent detail plain pixel-L1 blurs. ~1-5 recommended.")
+                   help="Override cfg.multiscale_recon_weight: multi-resolution L1 "
+                        "(NeMo-style), which keeps turbulent detail that plain pixel "
+                        "L1 blurs. ~1-5.")
     p.add_argument("--freq_grad_weight", type=float, default=None,
-                   help="Override cfg.freq_grad_weight — L1 on the frequency-derivative; directly "
-                        "penalizes a smooth envelope. ~1-5 recommended.")
+                   help="Override cfg.freq_grad_weight: L1 on the frequency "
+                        "derivative, which penalises a smooth envelope. ~1-5.")
     p.add_argument("--gate_hard_min_codes", type=int, default=None,
-                   help="Override cfg.gate_hard_min_codes (hard best-ckpt floor on ABSOLUTE "
-                        "distinct codes; below it gate_score=-inf). Default 8 was calibrated on "
-                        "SPECTRO (192-768 tok/window); the low-token families (slow-TS 4 tok, "
-                        "fast-TS 5 tok) have no historical n_distinct_codes record — calibrate "
-                        "at launch rather than trusting the spectro default.")
+                   help="Override cfg.gate_hard_min_codes, a hard floor on distinct "
+                        "codes for best-checkpoint selection (below it "
+                        "gate_score=-inf). The default 8 was set on spectro (192-768 "
+                        "tokens per window); for the low-token families (slow-TS 4, "
+                        "fast-TS 5 tokens) set it at launch.")
     p.add_argument("--fm_weight", type=float, default=None,
-                   help="Override cfg.fm_weight (disc feature-matching folded into the "
-                        "generator's recon reference on the adaptive path). 0 = fully "
-                        "GAN-free — v5 lesson (2026-08-04): fm at its 1.0 default kept "
-                        "dragging the generator toward a SATURATED discriminator's "
+                   help="Override cfg.fm_weight (discriminator feature matching in the "
+                        "generator's reconstruction reference on the adaptive path). 0 "
+                        "makes the codec fully GAN-free; at the default 1.0, FM keeps "
+                        "pulling the generator toward a saturated discriminator's "
                         "speckle features even with adversarial_weight 0.")
     p.add_argument("--consistency_weight", type=float, default=None,
                    help="Override cfg.consistency_weight (shift-invariance strength).")
-    # --- fast-TS (filterscopes) RAW-SAMPLE codec knobs (2026-09-03 redesign) ---------- #
+    # Fast-TS (filterscopes) raw-sample codec
     p.add_argument("--patch_w", type=int, default=None,
-                   help="FAST-TS: raw samples per token. n_tok = window(500) // patch_w, so the "
-                        "TOKEN COUNT and hence the frame size is set here. Divisors of 500 -> "
-                        "patch_w 100/50/20/10/5 = 5/10/25/50/100 tokens = 0.0125/0.0249/0.0623/"
-                        "0.1246/0.2491 bits per raw value (1000-code FSQ, 8x500 = 4000 values). "
-                        "Default 20 (25 tokens; world-model frame 1017 - 5 + 25 = 1037, +2.0%%).")
+                   help="Fast-TS: raw samples per token. n_tok = window (500) // "
+                        "patch_w, so this sets the token count and the frame size. "
+                        "patch_w 100/50/20/10/5 gives 5/10/25/50/100 tokens = "
+                        "0.0125/0.0249/0.0623/0.1246/0.2491 bits per raw value "
+                        "(1000-code FSQ, 8x500 = 4000 values). Default 20 (25 tokens; "
+                        "world-model frame 1017 - 5 + 25 = 1037, +2.0%%).")
     p.add_argument("--stem_layers", type=int, default=None,
-                   help="FAST-TS: number of stride-1 pre-patch conv-stem layers (default 2; "
-                        "0 = plain linear patches, the control arm). The stem is the recorded "
-                        "alternative to spike-weighted losses: it gives every patch a receptive "
-                        "field that OVERLAPS its neighbours so a spike on a patch seam is seen "
-                        "whole.")
+                   help="Fast-TS: number of stride-1 conv-stem layers before patching "
+                        "(default 2; 0 = plain linear patches). Used instead of "
+                        "spike-weighted losses: each patch's receptive field overlaps "
+                        "its neighbours, so a spike on a patch boundary is seen whole.")
     p.add_argument("--stem_channels", type=int, default=None,
-                   help="FAST-TS: conv-stem width (default 64).")
+                   help="Fast-TS: conv-stem width (default 64).")
     p.add_argument("--stem_kernel", type=int, default=None,
-                   help="FAST-TS: conv-stem kernel, must be ODD (default 15 = +-0.7 ms at "
-                        "10 kHz). Larger = more cross-patch overlap.")
+                   help="Fast-TS: conv-stem kernel, odd (default 15 = +-0.7 ms at 10 "
+                        "kHz). Larger means more overlap across patches.")
     p.add_argument("--fastts_target", type=str, default=None, choices=["envelope", "raw"],
-                   help="FAST-TS codec target. DEFAULT 'envelope' = the ORIGINAL ELM-activity-"
-                        "envelope codec, byte-identical to the pre-2026-09-03 build so every "
-                        "existing checkpoint still loads. 'raw' = the SAMPLE-WISE 10 kHz "
-                        "waveform codec (implied by any of --patch_w / --stem_* / "
-                        "--recon_loss / --ssim_*).")
+                   help="Fast-TS codec target. 'envelope' (default) is the original "
+                        "ELM-activity-envelope codec, so existing checkpoints still "
+                        "load. 'raw' is the sample-wise 10 kHz waveform codec (implied "
+                        "by any of --patch_w / --stem_* / --recon_loss / --ssim_*).")
     p.add_argument("--ssim_weight", type=float, default=None,
-                   help="FAST-TS: weight on the 1-D structural term (1 - contrast*structure "
-                        "of the SSIM along the SAMPLE axis). DEFAULT 0 = OFF (the control "
-                        "arm). This is the guard against variance collapse: nRMSE's minimiser "
-                        "is the conditional mean, so it REWARDS shrinking the output amplitude "
-                        "(measured: a 0.4x-shrunk target scores nRMSE 0.6000 with std_ratio "
-                        "0.4000), and only the SSIM contrast factor sees that.")
+                   help="Fast-TS: weight on the 1-D structural term (1 - "
+                        "contrast*structure of the SSIM along the sample axis). "
+                        "Default 0 = off. It guards against variance collapse: nRMSE "
+                        "is minimised by the conditional mean, so it rewards shrinking "
+                        "the output (a target shrunk 0.4x scores nRMSE 0.6000 with "
+                        "std_ratio 0.4000), and only the SSIM contrast factor sees "
+                        "that.")
     p.add_argument("--ssim_win", type=int, default=None,
-                   help="FAST-TS: box-window length in SAMPLES for the 1-D SSIM (default 17 "
-                        "= 1.7 ms at 10 kHz, about one ELM burst period). Must match "
-                        "gate._FASTTS_SSIM_WIN for loss and metric to be the same quantity.")
+                   help="Fast-TS: box-window length in samples for the 1-D SSIM "
+                        "(default 17 = 1.7 ms at 10 kHz, about one ELM burst). Must "
+                        "match gate._FASTTS_SSIM_WIN so loss and metric measure the "
+                        "same thing.")
     p.add_argument("--recon_loss", type=str, default=None,
                    choices=["nrmse", "nmse", "mse", "l1", "huber"],
-                   help="FAST-TS: sample-wise reconstruction loss. DEFAULT 'nrmse' IS the "
-                        "reported metric (per-(window, channel) RMSE / std(target)). Plain "
-                        "'mse' is NOT a surrogate for it: the RMS window-mean offset is ~25x "
-                        "the ~0.0073 within-window std, so an MSE optimum emits a FLAT "
-                        "window, which reads mse 5e-05 but nRMSE exactly 1.0000. 'nmse' is "
-                        "the un-rooted form (worse conditioned); 'mse'/'l1'/'huber' are the "
-                        "un-normalized controls.")
-    # --- FAST-TS GAIN-SHAPE decomposition (2026-09-03) ------------------------------- #
+                   help="Fast-TS: sample-wise reconstruction loss. The default 'nrmse' "
+                        "is the reported metric (per-(window, channel) RMSE / "
+                        "std(target)). 'mse' is not a substitute: the RMS window-mean "
+                        "offset is ~25x the ~0.0073 within-window std, so the MSE "
+                        "optimum is a flat window (mse 5e-05 but nRMSE 1.0000). 'nmse' "
+                        "is the unrooted form (worse conditioned); 'mse'/'l1'/'huber' "
+                        "are unnormalised controls.")
+    # Fast-TS gain-shape decomposition
     p.add_argument("--gain_shape", action="store_true",
-                   help="FAST-TS ENVELOPE: code the window as level + sigma * unit-shape "
-                        "instead of coding the raw envelope directly. 96.2%% of the "
-                        "ELM-envelope variance is the per-(window, channel) DC LEVEL, and a "
-                        "trivial encoder that transmits ONLY that level at the codec's own "
-                        "49.83-bit budget scores pooled nRMSE 0.1935 against the shipped "
-                        "codec's 0.5252. With --gain_shape the leading --gain_tokens tokens "
-                        "carry the level (+sigma) through a dedicated MLP->FSQ path and the "
-                        "decoder's shape branch is MEAN-REMOVED, so the per-window-mean "
-                        "anchor becomes a FLOOR the codec cannot fall below rather than a bar "
-                        "it fails. DEFAULT OFF (bit-identical control arm).")
+                   help="Fast-TS envelope: code each window as level + sigma * unit "
+                        "shape instead of the envelope directly. 96.2%% of the "
+                        "ELM-envelope variance is the per-(window, channel) level, and "
+                        "an encoder sending only that level at the codec's 49.83-bit "
+                        "budget scores pooled nRMSE 0.1935, against 0.5252 for the "
+                        "shipped codec. With --gain_shape the first --gain_tokens "
+                        "tokens carry the level (and sigma) through an MLP->FSQ path "
+                        "and the decoder's shape branch has its mean removed, so the "
+                        "per-window mean becomes a floor the codec cannot fall below. "
+                        "Default off.")
     p.add_argument("--gain_tokens", type=int, default=None,
-                   help="FAST-TS: tokens (of 5) reserved for the GAIN code; the rest carry "
-                        "shape. TOKEN COUNT AND VOCAB ARE UNCHANGED (5 x 1000), so the "
-                        "world-model frame layout is untouched. --gain_tokens 5 = LEVEL ONLY "
-                        "(no shape path), the learned-VQ analogue of the rate-matched "
-                        "baseline. Default 1.")
+                   help="Fast-TS: tokens (of 5) reserved for the gain code; the rest "
+                        "carry shape. Token count and vocabulary stay 5 x 1000, so the "
+                        "world-model frame is unchanged. --gain_tokens 5 = level only "
+                        "(no shape path). Default 1.")
     p.add_argument("--gain_scale", dest="gain_scale", action="store_true", default=None,
-                   help="FAST-TS: transmit the per-(window, channel) AC scale sigma with the "
-                        "level and normalize the decoded shape to unit std, so sigma ALONE "
-                        "sets the within-window amplitude (textbook gain-shape VQ). This is "
-                        "the structural attack on the measured 36%% burst-height retention. "
-                        "ON by default when --gain_shape is set.")
+                   help="Fast-TS: also send the per-(window, channel) AC scale sigma "
+                        "and normalise the decoded shape to unit std, so sigma alone "
+                        "sets the within-window amplitude (standard gain-shape VQ). "
+                        "Targets the measured 36%% retention of burst height. On by "
+                        "default with --gain_shape.")
     p.add_argument("--no_gain_scale", dest="gain_scale", action="store_false",
-                   help="FAST-TS: level-only gain; the shape path's amplitude is free (and "
-                        "may shrink toward the nRMSE-minimising conditional mean).")
+                   help="Fast-TS: level-only gain; the shape path's amplitude is free "
+                        "(and may shrink toward the nRMSE-minimising conditional "
+                        "mean).")
     p.add_argument("--gain_weight", type=float, default=None,
-                   help="FAST-TS: weight on the direct |pred - (level, log1p sigma)| "
+                   help="Fast-TS: weight on the direct |pred - (level, log1p sigma)| "
                         "supervision of the gain head (part of the reconstruction "
-                        "reference). Default 1.0; 0 = train the gain path through the "
+                        "reference). Default 1.0; 0 trains the gain path through the "
                         "reconstruction term only.")
-    # --- NVIDIA Spectral Codec port (arXiv 2406.05298): STFT geometry + recipe knobs ---
+    # Spectral-codec recipe (arXiv 2406.05298): STFT geometry and training knobs
     p.add_argument("--stft_n_fft", type=int, default=None,
-                   help="SPECTRO: per-codec STFT n_fft (default 1024 = config.STFT_N_FFT). "
-                        "512 halves the freq resolution to the canonical 50%%-overlap Hann COLA "
-                        "grid (freq_bins 256, bin width 977 Hz); the 0-250 kHz band is "
-                        "UNCHANGED (Nyquist is set by STFT_FS). Requires --freq_bins to match "
+                   help="Spectro: STFT n_fft (default 1024 = config.STFT_N_FFT). 512 "
+                        "halves the frequency resolution, giving the 50%%-overlap Hann "
+                        "COLA grid (freq_bins 256, 977 Hz per bin); the band stays "
+                        "0-250 kHz (Nyquist is set by STFT_FS). Needs --freq_bins = "
                         "n_fft//2 and --patch_f halved to keep n_tok at 192.")
     p.add_argument("--stft_hop", type=int, default=None,
-                   help="SPECTRO: per-codec STFT hop (default 256 = config.STFT_HOP).")
+                   help="Spectro: STFT hop (default 256 = config.STFT_HOP).")
     p.add_argument("--freq_bins", type=int, default=None,
-                   help="SPECTRO: codec input freq bins (default 512). Set to n_fft//2 "
-                        "(DC dropped) to cover the full band with no crop.")
+                   help="Spectro: codec input frequency bins (default 512). Set to "
+                        "n_fft//2 (DC dropped) to cover the full band without "
+                        "cropping.")
     p.add_argument("--time_frames", type=int, default=None,
-                   help="SPECTRO: codec input time frames (default 96).")
+                   help="Spectro: codec input time frames (default 96).")
     p.add_argument("--ms_ssim_weight", type=float, default=None,
-                   help="Weight on the 1-MS-SSIM reconstruction term (losses.ms_ssim_loss), the "
-                        "DIFFERENTIABLE twin of the gate.ms_ssim ranking metric. 0 = OFF "
-                        "(default, byte-identical). SSIM's contrast factor collapses on a blur, "
-                        "which no L-p term penalises.")
+                   help="Weight on the 1-MS-SSIM reconstruction term "
+                        "(losses.ms_ssim_loss), the differentiable version of the "
+                        "gate.ms_ssim metric. 0 = off (default). SSIM's contrast "
+                        "factor drops on a blur, which no L-p term penalises.")
     p.add_argument("--ms_ssim_win", type=int, default=None,
                    help="Local window (bins) for the MS-SSIM term (default 7).")
     p.add_argument("--discriminator", type=str, default=None, choices=["patch", "multiscale"],
-                   help="SPECTRO discriminator family. 'patch' = FreqAwarePatchGAN (default). "
-                        "'multiscale' = MultiScaleSpectroGAN: judges the WHOLE spectrogram at "
-                        "1x/2x/4x with a single score per scale, so a decoder cannot satisfy it "
-                        "by tiling one fixed patch texture (the measured patch lattice, recon "
-                        "61.02 vs GT 1.14). The paper pairs a multi-period with a multi-scale "
-                        "complex-STFT discriminator, i.e. global + multi-resolution, not patch.")
+                   help="Spectro discriminator. 'patch' = FreqAwarePatchGAN (default). "
+                        "'multiscale' = MultiScaleSpectroGAN, which scores the whole "
+                        "spectrogram at 1x/2x/4x with one score per scale, so the "
+                        "decoder cannot satisfy it by tiling one patch texture (the "
+                        "measured patch lattice: recon 61.02 vs GT 1.14). The paper "
+                        "uses multi-period and multi-scale complex-STFT "
+                        "discriminators, i.e. global and multi-resolution, not patch.")
     p.add_argument("--multiscale_recon_scales", type=str, default=None,
-                   help="Comma list of avg-pool kernel sizes for the multi-resolution recon L1 "
-                        "(default 2,4). Include 1 to score FULL resolution: at the default every "
-                        "term is a low-passed copy, so a large --multiscale_recon_weight rewards "
-                        "matching the blur. The paper varies STFT window length instead.")
+                   help="Comma list of avg-pool kernel sizes for the multi-resolution "
+                        "reconstruction L1 (default 2,4). Include 1 to score full "
+                        "resolution: by default every term is low-passed, so a large "
+                        "--multiscale_recon_weight rewards matching the blur. The "
+                        "paper varies the STFT window instead.")
     p.add_argument("--conv_dec_base_ch", type=int, default=None,
-                   help="SPECTRO conv decoder: proj_in channel width (default 128). The paper "
-                        "uses 1024 initial channels for a 55M decoder vs a 10M encoder (5.5:1).")
+                   help="Spectro conv decoder: proj_in channel width (default 128). "
+                        "The paper uses 1024 initial channels (a 55M decoder against a "
+                        "10M encoder).")
     p.add_argument("--conv_dec_res_blocks", type=int, default=None,
-                   help="SPECTRO conv decoder: residual conv blocks per upsample stage (2).")
+                   help="SPECTRO conv decoder: residual conv blocks per upsample stage "
+                        "(2).")
     p.add_argument("--conv_dec_min_ch", type=int, default=None,
-                   help="SPECTRO conv decoder: channel floor for the halving schedule (64).")
+                   help="SPECTRO conv decoder: channel floor for the halving schedule "
+                        "(64).")
     p.add_argument("--disc_update_every", type=int, default=None,
-                   help="Run the discriminator step once every N generator steps (default 1 = "
-                        "every step). Paper: 2.")
+                   help="Run the discriminator step once every N generator steps "
+                        "(default 1). Paper: 2.")
     p.add_argument("--adam_beta1", type=float, default=None,
-                   help="Adam beta1 for BOTH optimizers (default 0.9). Paper: 0.8.")
+                   help="Adam beta1 for both optimizers (default 0.9). Paper: 0.8.")
     p.add_argument("--adam_beta2", type=float, default=None,
-                   help="Adam beta2 for BOTH optimizers (default 0.999). Paper: 0.99.")
+                   help="Adam beta2 for both optimizers (default 0.999). Paper: 0.99.")
     p.add_argument("--lr_decay_gamma", type=float, default=None,
-                   help="Exponential LR decay factor applied every --lr_decay_every steps: "
-                        "lr = lr0 * gamma**(step/every). 1.0 = OFF (default). Paper: 0.998.")
+                   help="Exponential LR decay factor applied every --lr_decay_every "
+                        "steps: lr = lr0 * gamma**(step/every). 1.0 = off (default). "
+                        "Paper: 0.998.")
     p.add_argument("--lr_decay_every", type=int, default=None,
-                   help="Step period for --lr_decay_gamma (default 1000, the paper's period).")
+                   help="Step period for --lr_decay_gamma (default 1000, the paper's "
+                        "period).")
     p.add_argument("--patch_f", type=int, default=None,
-                   help="override SpectroCodecConfig patch_f/patch_t (24-tok = 64/32; "
-                        "192-tok = 16/16).")
+                   help="Override SpectroCodecConfig patch_f (24 tokens = 64/32; "
+                        "192 tokens = 16/16).")
     p.add_argument("--patch_t", type=int, default=None,
-                   help="override SpectroCodecConfig patch_f/patch_t (24-tok = 64/32; "
-                        "192-tok = 16/16).")
+                   help="Override SpectroCodecConfig patch_t (24 tokens = 64/32; "
+                        "192 tokens = 16/16).")
     p.add_argument("--decoder", type=str, default=None, choices=["linear", "conv"],
-                   help="Spectro decoder family: 'linear' (default; transformer + nn.Linear "
-                        "to_pixels, SMOOTH patches) or 'conv' (HiFi-GAN/VQGAN 2D transposed-conv "
-                        "upsampler, SpectroConvDecoder — synthesizes turbulent texture). "
-                        "Spectro modalities only.")
+                   help="Spectro decoder: 'linear' (default; transformer + nn.Linear "
+                        "to_pixels, smooth patches) or 'conv' (2D transposed-conv "
+                        "upsampler, SpectroConvDecoder).")
     p.add_argument("--refine_depth", type=int, default=None,
-                   help="VIDEO or SPECTRO: depth of the decoder's residual conv refinement head "
-                        "(stride-1 kernel-3, zero-init final conv, so it starts as an exact "
-                        "identity). Gives the decoder full-resolution CROSS-PATCH context so its "
-                        "texture is no longer one shared basis tiled on the patch lattice — the "
-                        "measured checkerboard (gate.patch_lattice_metrics; mhr recon 61.6 vs GT "
-                        "1.15). 0/unset = off (byte-identical decoder).")
+                   help="Video or spectro: depth of the decoder's residual conv "
+                        "refinement head (stride 1, kernel 3, zero-init last conv, so "
+                        "it starts as the identity). It gives the decoder "
+                        "full-resolution context across patches, so the texture is no "
+                        "longer one basis tiled on the patch lattice (the measured "
+                        "checkerboard, gate.patch_lattice_metrics: mhr recon 61.6 vs "
+                        "GT 1.15). 0/unset = off.")
     p.add_argument("--band_pool", type=int, default=None,
-                   help="BAND-POWER input: mean-pool freq_bins into this many equal bands as the "
-                        "LAST step of log_power_stft (0/unset = raw STFT bins, byte-identical). "
-                        "Changes what the codec REPRESENTS, not how many tokens it uses: n_tok "
-                        "stays (eff_freq_bins//patch_f)*(time_frames//patch_t), so patch_f must be "
-                        "chosen per pool to keep it at 192. Measured 2026-09-05: ece's rank-192 "
-                        "linear floor goes 1.0063 (raw, ABOVE the 1.0 anchor) -> 0.9274 (16 bands) "
-                        "-> 0.8826 (8 bands). Read with care -- the floor tracks bits/value, since "
-                        "pooling shrinks the target, so re-derive every calibration in-space.")
+                   help="Band-power input: mean-pool freq_bins into this many equal "
+                        "bands as the last step of log_power_stft (0/unset = raw STFT "
+                        "bins). This changes what the codec represents, not its token "
+                        "count: n_tok stays "
+                        "(eff_freq_bins//patch_f)*(time_frames//patch_t), so choose "
+                        "patch_f per pool to keep 192. ece's rank-192 linear floor "
+                        "goes from 1.0063 (raw, above the 1.0 anchor) to 0.9274 (16 "
+                        "bands) and 0.8826 (8 bands); pooling also shrinks the target, "
+                        "so recalibrate every threshold in the pooled space.")
     p.add_argument("--std_weight", type=float, default=None,
-                   help="Weight on the AMPLITUDE-RATIO term |log std(recon) - log std(target)| "
-                        "per (window, channel) -- the quantity the audit reports as std_ratio "
-                        "(ideal 1.0). 0.0 = off and byte-identical. Added 2026-09-05 because "
-                        "ece's std_r is pinned at 0.232-0.267 across six arms spanning two patch "
-                        "geometries, two learning rates and EMA: no existing knob moves it, and "
-                        "pixel_anchor_weight matches PIXELS, not amplitude. nRMSE is blind to it "
-                        "by construction (its minimiser is the conditional mean).")
+                   help="Weight on the amplitude-ratio term |log std(recon) - log "
+                        "std(target)| per (window, channel), i.e. the audit's "
+                        "std_ratio (ideal 1.0). 0.0 = off. ece's std_ratio stays at "
+                        "0.232-0.267 across patch geometries, learning rates and EMA, "
+                        "and pixel_anchor_weight matches pixels, not amplitude. nRMSE "
+                        "cannot see it (its minimiser is the conditional mean).")
     p.add_argument("--peak_weight", type=float, default=None,
-                   help="SPECTRO: weight on losses.peak_l1_loss -- L1 reweighted by each "
-                        "frequency bin's prominence over its own column mean, so the "
-                        "target's spectral PEAKS carry most of the loss. 0 = OFF. This is "
-                        "the surrogate for peak_f1, the TRACK metric: measured on 320 "
-                        "held-out co2 windows the coherent oracle scores peak_f1 0.9936, the "
-                        "free patch-mean oracle 0.6537, and the shipped ms5 arm 0.6116 -- "
-                        "i.e. the codecs place peaks WORSE than free patch means, and "
-                        "adversarial pressure that took hf from 15% to 82% of ceiling moved "
-                        "peak_f1 by +0.008.")
+                   help="Spectro: weight on losses.peak_l1_loss, an L1 weighted by "
+                        "each frequency bin's prominence over its column mean, so the "
+                        "target's spectral peaks carry most of the loss. 0 = off. A "
+                        "surrogate for the track metric peak_f1: on 320 held-out co2 "
+                        "windows the coherent oracle scores 0.9936, free patch means "
+                        "0.6537 and the shipped ms5 codec 0.6116, so the codecs place "
+                        "peaks worse than patch means, and adversarial training that "
+                        "raised hf from 15%% to 82%% of ceiling moved peak_f1 by only "
+                        "+0.008.")
     p.add_argument("--target_time_smooth", type=int, default=None,
-                   help="SPECTRO: reconstruct a K-frame time-boxcar of the window instead of "
-                        "the window itself (0/1 = OFF, the default). The encoder still sees "
-                        "the RAW window and every reported metric is still measured against "
-                        "RAW GT -- only the decoder's target changes. Measured motivation: GT "
-                        "lag-1 autocorrelation along the STFT-frame axis is 0.61-0.68 (co2), "
-                        "0.42-0.48 (mirnov), 0.29-0.37 (ece), so a raw target asks the "
-                        "decoder for ~60-70% unpredictable speckle and every L-p term's exact "
-                        "minimiser is a low-amplitude blur -- the flat plate. The tsmooth5 "
-                        "oracle (GT smoothed over 5 frames, scored against RAW GT) beats every "
-                        "trained arm on BOTH the ranking key and the nRMSE floor: co2 hf 0.250 "
-                        "/ nRMSE 0.3842 vs ms5's 0.037 / 0.6812; mirnov 0.290 / 0.6299 vs "
-                        "ctl_s1's 0.022 / 1.1086.")
+                   help="Spectro: reconstruct a K-frame time boxcar of the window "
+                        "instead of the window (0/1 = off, the default). The encoder "
+                        "still sees the raw window and every metric is still measured "
+                        "against raw GT; only the decoder target changes. GT lag-1 "
+                        "autocorrelation along the STFT-frame axis is 0.61-0.68 (co2), "
+                        "0.42-0.48 (mirnov) and 0.29-0.37 (ece), so a raw target is "
+                        "~60-70%% unpredictable speckle and every L-p term is "
+                        "minimised by a low-amplitude blur. GT smoothed over 5 frames, "
+                        "scored against raw GT, beats every trained codec on both hf "
+                        "and nRMSE: co2 0.250 / 0.3842 vs ms5's 0.037 / 0.6812; mirnov "
+                        "0.290 / 0.6299 vs ctl_s1's 0.022 / 1.1086.")
     p.add_argument("--codec_d_model", type=int, default=None,
-                   help="Codec transformer width (cfg.d_model). CODEC-INTERNAL: it is "
-                        "orthogonal to the Phase-B backbone dim and does NOT touch n_tok, "
-                        "the vocab or FRAME_LAYOUT, so it is a legal capacity lever. It DOES "
-                        "change every weight shape, so an arm that sets it cannot resume a "
-                        "checkpoint trained at another width. Motivated by ece: its decoder "
-                        "to_pixels maps ONE 256-column basis to channels*patch_f*patch_t = "
-                        "10240 outputs, and its measured patch_lattice_ratio is 127-282 "
-                        "against a GT control of 1.04, i.e. the reconstruction is dominated "
-                        "by that one basis tiled on the patch lattice.")
+                   help="Codec transformer width (cfg.d_model). Internal to the codec: "
+                        "independent of the Phase-B backbone width and does not change "
+                        "n_tok, the vocabulary or the frame layout. It changes every "
+                        "weight shape, so such a run cannot resume a checkpoint of "
+                        "another width. For ece the decoder's to_pixels maps one "
+                        "256-wide basis to channels*patch_f*patch_t = 10240 outputs, "
+                        "and its patch_lattice_ratio is 127-282 against 1.04 for GT, "
+                        "i.e. the reconstruction is dominated by that basis tiled on "
+                        "the patch lattice.")
     p.add_argument("--codec_enc_depth", type=int, default=None,
-                   help="Codec encoder depth (cfg.enc_depth). Same scope as --codec_d_model.")
+                   help="Codec encoder depth (cfg.enc_depth). Same scope as "
+                        "--codec_d_model.")
     p.add_argument("--codec_dec_depth", type=int, default=None,
-                   help="Codec decoder depth (cfg.dec_depth). Same scope as --codec_d_model.")
+                   help="Codec decoder depth (cfg.dec_depth). Same scope as "
+                        "--codec_d_model.")
     p.add_argument("--codec_heads", type=int, default=None,
-                   help="Codec attention heads (cfg.heads). Same scope as --codec_d_model.")
+                   help="Codec attention heads (cfg.heads). Same scope as "
+                        "--codec_d_model.")
     p.add_argument("--refine_hidden", type=int, default=None,
-                   help="Channel width of the refinement head's hidden convs (default 64). "
-                        "Only meaningful with --refine_depth > 1.")
+                   help="Channel width of the refinement head's hidden convs (default "
+                        "64). Only meaningful with --refine_depth > 1.")
     p.add_argument("--decoder_noise", action="store_true",
-                   help="SPECTRO: StyleGAN-style per-pixel Gaussian noise with a learned "
-                        "per-channel scale (ZERO-INIT, so a fresh decoder is an exact "
-                        "identity) added at full resolution. Gives the decoder an APERIODIC "
-                        "source of the high-frequency texture the adversarial + FM terms "
-                        "reward, which a deterministic decoder can only supply as a tiled "
-                        "(lattice) basis. OFF = byte-identical.")
+                   help="Spectro: per-pixel Gaussian noise (StyleGAN-style) with a "
+                        "learned per-channel scale (zero-init, so a fresh decoder is "
+                        "unchanged), added at full resolution. Gives the decoder an "
+                        "aperiodic source for the high-frequency texture the "
+                        "adversarial and FM terms reward, which a deterministic "
+                        "decoder can only produce as a tiled basis. Default off.")
     p.add_argument("--refine_dilated", action="store_true",
-                   help="SPECTRO: use dilations 1,2,4,8,... in the refinement head so depth D "
-                        "reaches a receptive field of 2^(D+1)-1 (D=4 -> 31 >= patch_f=16, i.e. a "
-                        "whole patch plus its neighbours) instead of 2D+1.")
-    # ---- prod-recipe knobs (the ONLY spectro recipe that survives the multi-shot collapse
-    # test: prod_ece = fsq_levels [8,8,8,8,8]/cb=32768, entropy 0.1, adv_clamp 10000,
-    # adv_warmup 0, adversarial_weight 1.0). The current SpectroCodecConfig defaults drifted to
-    # the collapsing d2 values (cb=1000, entropy 1.0, clamp 50); these let a launch reproduce the
-    # prod recipe WITHOUT editing the defaults. Applied AFTER apply_activity_overrides so the CLI
-    # always wins (co2/mhr _activity_overrides would otherwise force warm=1500/advw=0.5). ----
+                   help="Spectro: dilations 1,2,4,8,... in the refinement head, so "
+                        "depth D has a receptive field of 2^(D+1)-1 instead of 2D+1 "
+                        "(D=4 gives 31 >= patch_f=16, a whole patch plus its "
+                        "neighbours).")
+    # Production-recipe knobs. The recipe that survived the multi-shot collapse test
+    # (prod_ece) is fsq_levels [8,8,8,8,8] (32768 codes), entropy 0.1, adv_clamp 10000,
+    # adv_warmup 0, adversarial_weight 1.0; the SpectroCodecConfig defaults are now the
+    # collapsing values (1000 codes, entropy 1.0, clamp 50). These flags reproduce it
+    # without editing the defaults, and are applied after apply_activity_overrides so
+    # the CLI wins.
     p.add_argument("--channel_groups", type=int, default=None,
-                   help="CHANNEL-FACTORIZED tokens (config.py:79, the ece capacity lever). G>1 "
-                        "splits channels into G groups so a token carries C/G channels instead "
-                        "of all C: patch_dim=(C/G)*patch_f*patch_t, n_tok=G*nf*nt. ece C=40 at "
-                        "g=2: 10240->5120 numbers per token, 192->384 tokens. Must divide C.")
+                   help="Channel-factorised tokens (config.py:79). G>1 splits the "
+                        "channels into G groups so each token carries C/G channels: "
+                        "patch_dim = (C/G)*patch_f*patch_t, n_tok = G*nf*nt. ece "
+                        "(C=40) at G=2: 10240 -> 5120 values per token, 192 -> 384 "
+                        "tokens. Must divide C.")
     p.add_argument("--fsq_levels", type=str, default=None,
-                   help="Comma-separated FSQ levels, e.g. '8,8,8,8,8' (cb=32768, prod recipe) "
-                        "vs the collapsing d2 default '8,5,5,5' (cb=1000). Applied before codec build.")
+                   help="Comma-separated FSQ levels, e.g. '8,8,8,8,8' (32768 codes, "
+                        "production recipe) or the default '8,5,5,5' (1000 codes). Set "
+                        "before the codec is built.")
     p.add_argument("--adaptive_adv_clamp", type=float, default=None,
-                   help="Override cfg.adaptive_adv_clamp (prod=10000; drifted default=50).")
+                   help="Override cfg.adaptive_adv_clamp (production recipe 10000; "
+                        "default 50).")
     p.add_argument("--adv_warmup_steps", type=int, default=None,
-                   help="Override cfg.adv_warmup_steps (prod=0).")
+                   help="Override cfg.adv_warmup_steps (production recipe 0).")
     p.add_argument("--adversarial_weight", type=float, default=None,
-                   help="Override cfg.adversarial_weight (prod=1.0).")
+                   help="Override cfg.adversarial_weight (production recipe 1.0).")
     p.add_argument("--skip_activity_override", action="store_true",
-                   help="Skip the per-modality _activity_overrides entirely (needed to reproduce "
-                        "the clean prod recipe for co2/mhr, whose overrides force warm/advw/bias).")
+                   help="Skip the per-modality _activity_overrides (needed to "
+                        "reproduce the plain production recipe for co2/mhr, whose "
+                        "overrides change warmup, weight and bias).")
     p.add_argument("--build_presence_lengths", action="store_true",
-                   help="Write codec_<modality>_presence_lengths.pt for the RESOLVED train "
-                        "shots by subsetting codec_<modality>_lengths.pt, then exit. No "
-                        "HDF5 scan and no training. Run this ONCE per modality before the "
-                        "first --spectro_presence leg: without the sidecar every arm "
-                        "cold-scans every shot (~0.77 s/file) and burns the whole leg. "
-                        "Needs --spectro_presence/--video_presence set so the resolved shot "
-                        "list is the filtered one.")
+                   help="Write codec_<modality>_presence_lengths.pt for the resolved "
+                        "train shots by subsetting codec_<modality>_lengths.pt, then "
+                        "exit (no HDF5 scan, no training). Run once per modality "
+                        "before the first --spectro_presence run: without the sidecar "
+                        "every run cold-scans every shot (~0.77 s per file) and uses "
+                        "up its whole leg. Needs --spectro_presence or "
+                        "--video_presence so the resolved list is the filtered one.")
     p.add_argument("--compute_logpow_stats", type=str, default=None,
-                   help="Compute dataset-level per-freq log-power stats (COMPOSE space, i.e. "
-                        "after the raw z-score for co2) over the resolved train shots, write "
-                        "them to this path, and exit without training. Spectro only.")
+                   help="Compute dataset-level per-freq log-power stats over the "
+                        "resolved train shots (after the raw z-score for co2), write "
+                        "them to this path and exit without training. Spectro only.")
     p.add_argument("--logpow_stats_path", type=str, default=None,
-                   help="Path to codec_<mod>_perfreq_stats.pt; enables per-freq log-power "
-                        "z-standardization (the thin-modality mean-collapse fix) and DISABLES "
-                        "raw-std since the stats are in raw-clipped space.")
+                   help="Path to codec_<mod>_perfreq_stats.pt; enables per-freq "
+                        "log-power z-standardisation (the thin-modality mean-collapse "
+                        "fix). Composes with raw-std; the stats must come from "
+                        "--compute_logpow_stats.")
     p.add_argument("--instance_norm_quantize", type=float, default=None,
-                   help="Shift-robust instance norm: quantization step for the window "
-                        "stats (sd on a log2 grid, mu in units of q*sd). 0.5 recommended; "
-                        "unset keeps plain instance norm. Only active with "
+                   help="Shift-robust instance norm: quantisation step for the window "
+                        "stats (sd on a log2 grid, mu in units of q*sd). 0.5 "
+                        "recommended; unset keeps plain instance norm. Only used with "
                         "--input_instance_norm.")
-    # --- VIDEO + SPECTRO missing-data exclusion; all default OFF = byte-identical.
+    # Video and spectro missing-data exclusion (all off by default)
     p.add_argument("--mask_missing", action="store_true",
-                   help="VIDEO/SPECTRO: emit a REAL per-channel validity mask and honour it in "
-                        "EVERY loss term. VIDEO: per-(channel, frame) from the loader's "
-                        "channel_valid. SPECTRO: per-(channel, STFT-frame) from "
-                        "data.spectro_frame_mask (NaN projected exactly like the production "
-                        "data_loader._raw_to_frame_mask, PLUS all-zero supports, which is how "
-                        "the loader represents an absent channel). Masked terms: pixel anchor, "
-                        "ADVERSARIAL + FEATURE-MATCHING (missing windows are dropped from the "
-                        "discriminator instead of being shown to it as 'real'), multiscale / "
-                        "freq-grad / MS-SSIM, the FSQ entropy statistic, shift-consistency and "
-                        "the discriminator's own step. Default OFF = no mask anywhere, which "
-                        "is precisely the 2026-09-03 audit finding on BOTH families.")
+                   help="Video/spectro: build a per-channel validity mask and apply it "
+                        "in every loss term. Video: per (channel, frame) from the "
+                        "loader's channel_valid. Spectro: per (channel, STFT frame) "
+                        "from data.spectro_frame_mask (NaN projected as in "
+                        "data_loader._raw_to_frame_mask, plus all-zero supports, which "
+                        "is how the loader stores an absent channel). Masked: pixel "
+                        "anchor, adversarial and feature matching (missing windows are "
+                        "dropped from the discriminator instead of shown as real), "
+                        "multiscale / freq-grad / MS-SSIM, the FSQ entropy statistic, "
+                        "shift consistency and the discriminator step. Default off (no "
+                        "mask anywhere).")
     p.add_argument("--require_live_channels", action="store_true",
-                   help="VIDEO/SPECTRO: re-draw any window in which a channel was dead, so the "
-                        "codec only sees fully-populated windows (video: 19.0%% of lower / "
-                        "16.9%% of upper channel-slots are dead even among shots that have SOME "
-                        "video).")
+                   help="Video/spectro: redraw any window with a dead channel, so the "
+                        "codec only sees fully populated windows (video: 19.0%% of "
+                        "lower and 16.9%% of upper channel slots are dead even in "
+                        "shots that have some video).")
     p.add_argument("--spectro_presence", type=str, default=None, choices=["off", "any", "all"],
-                   help="SPECTRO whole-shot presence filter from the precomputed per-channel "
-                        "liveness cache (no HDF5 scan): 'any' keeps shots with >=1 live channel "
-                        "for this modality, 'all' keeps only fully-populated shots, 'off' "
-                        "(default) keeps every shot -- including the ones whose HDF5 group is an "
-                        "empty (C, 1) stub, which can only ever yield the eps-floor constant "
-                        "last-resort pair.")
+                   help="Spectro whole-shot presence filter from the per-channel "
+                        "liveness cache (no HDF5 scan): 'any' keeps shots with at "
+                        "least one live channel, 'all' only fully populated shots, "
+                        "'off' (default) every shot, including those whose HDF5 group "
+                        "is an empty (C, 1) stub, which only yield the eps-floor "
+                        "fallback pair.")
     p.add_argument("--video_presence", type=str, default=None, choices=["off", "any", "all"],
-                   help="VIDEO whole-shot presence filter from the precomputed liveness cache "
-                        "(no HDF5 scan): 'any' keeps shots with >=1 live camera for this "
-                        "divertor, 'all' keeps only fully-populated shots, 'off' (default) "
-                        "keeps every shot -- which means 51.3%% (lower) / 68.6%% (upper) of the "
-                        "stream is an ALL-ZERO clip.")
+                   help="Video whole-shot presence filter from the liveness cache (no "
+                        "HDF5 scan): 'any' keeps shots with at least one live camera "
+                        "for this divertor, 'all' only fully populated shots, 'off' "
+                        "(default) every shot, in which case 51.3%% (lower) / 68.6%% "
+                        "(upper) of the stream is all-zero clips.")
     p.add_argument("--input_instance_norm", action="store_true",
-                   help="Per-window instance z-score (mean~0/std~1) on the log-power encoder input. "
-                        "ROOT-CAUSE fix for the co2 encoder death: strips the large DC offset that "
-                        "saturates the FSQ tanh bound. Composes with raw-std (which un-clips first).")
+                   help="Per-window instance z-score (mean ~0, std ~1) on the "
+                        "log-power encoder input. Removes the large DC offset that "
+                        "saturated co2's FSQ tanh bound. Composes with raw-std, which "
+                        "runs first.")
     return p
 
 
@@ -3968,19 +3745,18 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     is_fastts = args.modality == FASTTS_MODALITY
     is_spectro = args.modality in SPECTRO_MODALITIES
 
-    # cfg with the modality's real channel count baked in (all ranks agree).
+    # Config with the modality's real channel count (identical on every rank).
     channels = modality_channels(args.modality)
     if is_video:
         cfg = VideoCodecConfig(channels=channels, divertor=video_divertor(args.modality))
     elif is_slowts:
         cfg = slowts_codec_cfg(args.modality, channels)
     elif is_fastts:
-        # fast-TS (filterscopes) ELM-envelope codec — built + trained by the fastts_train
-        # module (lazy import: it imports FROM this module, so a top-level import is circular).
-        # DEFAULT = the ORIGINAL envelope codec (so old checkpoints/pickles keep loading).
-        # The 2026-09-03 SAMPLE-WISE codec is OPT-IN via --fastts_target raw, which also flips
-        # the objective defaults (see config.fastts_raw_config). Passing any raw-only geometry
-        # flag implies it, so --patch_w alone does the right thing.
+        # Fast-TS (filterscopes) is trained by fastts_train, imported lazily because it
+        # imports from this module. The default is the envelope codec, so old
+        # checkpoints still load. --fastts_target raw selects the sample-wise codec and
+        # its objective defaults (config.fastts_raw_config); any raw-only geometry flag
+        # implies it.
         from .config import FastTSCodecConfig, fastts_raw_config
         _raw_implied = any(getattr(args, k, None) is not None
                            for k in ("patch_w", "stem_layers", "stem_channels", "stem_kernel",
@@ -3991,29 +3767,26 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             cfg = FastTSCodecConfig(channels=channels)
     else:
         cfg = SpectroCodecConfig(channels=channels)
-        # --- STFT GEOMETRY first (it determines freq_bins, hence every later shape) ------
-        # Defaults leave cfg.stft_n_fft / cfg.stft_hop at the module globals (1024 / 256), so
-        # omitting these flags reproduces every existing codec bit-for-bit.
+        # STFT geometry first, since it sets freq_bins and every later shape. Without
+        # these flags the defaults (1024 / 256) are used.
         for _g in ("stft_n_fft", "stft_hop", "freq_bins", "time_frames"):
             _v = getattr(args, _g, None)
             if _v is not None:
                 setattr(cfg, _g, int(_v))
-        # Optional patch-size override (spectro only). 24-tok = patch_f 64 / patch_t 32 (survives
-        # the 192-tok mean-collapse); 192-tok = 16/16 (the collapsing default). Applied BEFORE the
-        # standardization / activity overrides / codec are built so n_tok is fixed up front.
+        # Patch size (spectro only): 24 tokens = patch 64x32, 192 tokens = 16x16 (the
+        # default). Set before standardization, overrides and the codec so n_tok is
+        # fixed.
         if args.patch_f is not None:
             cfg.patch_f = args.patch_f
         if args.patch_t is not None:
             cfg.patch_t = args.patch_t
-        # GEOMETRY CONTRACT. freq_bins must be exactly the DC-dropped bin count of the chosen
-        # n_fft, else the crop in data._crop_pad_freq_time silently throws away the top of the
-        # band (or eps-pads a band that does not exist) — the user requires the FULL 0-250 kHz
-        # range. n_tok is printed because the Phase-B frame layout budgets 192 tokens/spectro
-        # modality: halving n_fft (512 -> 256 bins) and halving patch_f (16 -> 8) keeps it at
-        # 32 x 6 = 192, so the world-model frame stays 1017 tokens.
-        # __post_init__ ran at CONSTRUCTION with the defaults, so the divisibility contract has
-        # to be re-checked after the overrides — otherwise a bad combination only surfaces as an
-        # opaque einops rearrange error deep in the encoder.
+        # freq_bins should equal n_fft // 2 (DC dropped); otherwise
+        # data._crop_pad_freq_time crops the top of the 0-250 kHz band or eps-pads a
+        # band that does not exist. n_tok is logged because the Phase-B frame budgets
+        # 192 tokens per spectro modality: halving n_fft (512 -> 256 bins) together with
+        # patch_f (16 -> 8) keeps 32 x 6 = 192, so the frame stays at 1017 tokens.
+        # __post_init__ only checked the defaults, so recheck divisibility here; a bad
+        # combination otherwise fails as an opaque einops error in the encoder.
         if cfg.freq_bins % cfg.patch_f or cfg.time_frames % cfg.patch_t:
             raise SystemExit(
                 f"geometry: freq_bins={cfg.freq_bins} must divide by patch_f={cfg.patch_f} and "
@@ -4034,14 +3807,11 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                   f"({cfg.channels * cfg.patch_f * cfg.patch_t} values/token, "
                   f"{cfg.n_tok * math.log2(cfg.codebook_size) / (cfg.channels * cfg.freq_bins * cfg.time_frames):.4f} "
                   f"bits/value)", flush=True)
-        # DECODER family override (spectro only): 'conv' swaps the linear to_pixels unpatchify for
-        # the HiFi-GAN/VQGAN 2D transposed-conv upsampler (SpectroConvDecoder). Default 'linear'
-        # is byte-identical. Applied before the codec is built so the right decoder is constructed.
+        # Decoder family (spectro only): 'conv' replaces the linear to_pixels unpatchify
+        # with the transposed-conv upsampler (SpectroConvDecoder). Default 'linear'.
         if args.decoder is not None:
             cfg.decoder = args.decoder
-            # size the conv decoder BEFORE the print below, so the logged base_ch/res_blocks
-            # are the ones actually used (they were previously applied later, and the log line
-            # advertised the stale defaults).
+            # Size the conv decoder before logging, so the log shows the values used.
             for _c in ("conv_dec_base_ch", "conv_dec_res_blocks", "conv_dec_min_ch"):
                 _cv = getattr(args, _c, None)
                 if _cv is not None:
@@ -4050,7 +3820,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                 print(f"[train_codec] decoder={cfg.decoder} "
                       f"(base_ch={cfg.conv_dec_base_ch}, res_blocks={cfg.conv_dec_res_blocks})"
                       if cfg.decoder == "conv" else f"[train_codec] decoder={cfg.decoder}")
-        # StyleGAN-style decoder noise input (spectro only; zero-init => exact no-op at step 0).
+        # Decoder noise input (spectro only; zero-init, so a no-op at step 0).
         if getattr(args, "decoder_noise", False):
             if cfg.decoder == "conv":
                 raise SystemExit(
@@ -4060,9 +3830,9 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             cfg.decoder_noise = True
             if ddp.is_main:
                 print("[train_codec] decoder_noise=ON (per-channel learned scale, zero-init)")
-        # global per-freq input standardization for THIN spectro modalities (co2); lifts the
-        # sparse activity out of the large near-constant log-power mean so the codec stops
-        # collapsing to one code. No-op for ece/bes/mhr (rich, naturally O(1)).
+        # Raw per-channel standardization for thin spectro modalities (co2), which lifts
+        # the sparse activity off the large near-constant mean so the codec does not
+        # collapse to one code. No-op for ece/bes/mhr.
         apply_spectro_standardization(cfg, args.modality, args.stats_path,
                                       log_fn=(print if ddp.is_main else None))
     for _k, _f in (("slowts_d_model", "d_model"), ("slowts_enc_depth", "enc_depth"),
@@ -4097,9 +3867,9 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             "--decoder {linear,conv} is a SPECTRO-only override (the conv decoder is "
             "nets.SpectroConvDecoder); it is not valid for a video / slow-TS / fast-TS modality."
         )
-    # ARCHITECTURE overrides (codec-internal; see --codec_d_model). Applied BEFORE the codec
-    # is built and before any resume, and recorded on the cfg the checkpoint pickles, so the
-    # four consumers that rebuild a codec from its checkpoint infer the width automatically.
+    # Codec architecture overrides (see --codec_d_model). Set before the codec is built
+    # and before resume, and stored in the pickled cfg, so code that rebuilds a codec
+    # from its checkpoint picks up the width.
     for _a, _f in (("codec_d_model", "d_model"), ("codec_enc_depth", "enc_depth"),
                    ("codec_dec_depth", "dec_depth"), ("codec_heads", "heads")):
         _v = getattr(args, _a, None)
@@ -4112,7 +3882,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             print(f"[train_codec] {_f} override -> {_v}")
     if getattr(args, "refine_depth", None) is not None or getattr(args, "refine_hidden", None) \
             is not None or getattr(args, "refine_dilated", False):
-        # VIDEO + SPECTRO: only those two configs carry the refinement-head fields.
+        # Only the video and spectro configs have the refinement-head fields.
         if not hasattr(cfg, "refine_depth"):
             raise SystemExit(
                 "--refine_depth/--refine_hidden/--refine_dilated are VIDEO + SPECTRO overrides "
@@ -4138,8 +3908,8 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             print(f"[train_codec] decoder refine_depth={cfg.refine_depth} "
                   f"(hidden={cfg.refine_hidden}, dilated={_dil}, receptive_field={_rf}, "
                   f"residual zero-init conv head)")
-    # VIDEO missing-data knobs. Guarded so a typo on a non-video modality fails LOUD rather
-    # than silently doing nothing (the persist-arch-flags lesson).
+    # Video missing-data knobs. A video-only flag on another modality is an error rather
+    # than silently ignored.
     for _vk, _flag in (("mask_missing", "mask_missing"),
                        ("require_live_channels", "require_live_channels")):
         if getattr(args, _flag, False):
@@ -4171,11 +3941,9 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             )
         cfg.consistency_weight = float(args.consistency_weight)
 
-    # anti-collapse overrides for the 4 collapsing codecs (co2 / tangtv_lower / ts_core_density /
-    # filterscopes). No-op for every other (already-working) modality — see _activity_overrides.
-    # --skip_activity_override bypasses them entirely so the clean prod recipe can be reproduced
-    # for co2/mhr (whose overrides otherwise force adv_warmup=1500 / adversarial_weight=0.5 / bias
-    # that FIGHT the prod recipe — the multi-shot survivor uses warm=0 / advw=1.0 / no bias).
+    # Anti-collapse overrides (see _activity_overrides; no-op for unlisted modalities).
+    # --skip_activity_override bypasses them, which reproduces the plain production
+    # recipe for co2/mhr (warmup 0, adversarial_weight 1.0, no activity bias).
     if args.skip_activity_override:
         if ddp.is_main:
             print(f"[train_codec] _activity_overrides SKIPPED for {args.modality} "
@@ -4183,10 +3951,10 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     else:
         apply_activity_overrides(cfg, args.modality, log_fn=(print if ddp.is_main else None))
 
-    # prod-recipe CLI overrides — applied LAST so they win over both the config defaults AND
-    # _activity_overrides. fsq_levels changes the codebook, so it must land before the codec is
-    # built (it is: construction happens after this block). No-op if the flag is None / cfg lacks
-    # the field (video / slow-TS families).
+    # Production-recipe CLI overrides, applied last so they win over the config defaults
+    # and _activity_overrides. fsq_levels changes the codebook, so it must be set before
+    # the codec is built (it is). Skipped when the flag is None or the cfg lacks the
+    # field.
     if getattr(args, "channel_groups", None) is not None and hasattr(cfg, "channel_groups"):
         cfg.channel_groups = int(args.channel_groups)
         _nt = cfg.n_tok
@@ -4204,9 +3972,9 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         if ddp.is_main:
             print("[train_codec] fsq_preserve_symmetry -> True "
                   "(FSQ symmetry_preserving_bound; changes the codes on its own)")
-    # NVIDIA Spectral Codec recipe knobs. All defaults are today's values, so omitting every
-    # flag is byte-identical. (adam_* / lr_decay_* / disc_update_every live on the cfg so the
-    # checkpoint records the recipe it was trained under — see the persist-arch-flags lesson.)
+    # Spectral-codec recipe knobs (arXiv 2406.05298); the defaults are the current
+    # values. adam_* / lr_decay_* / disc_update_every live on the cfg so the checkpoint
+    # records the recipe it was trained with.
     for _knob in ("conv_dec_base_ch", "conv_dec_res_blocks", "conv_dec_min_ch",
                   "disc_update_every", "lr_decay_every", "target_time_smooth", "band_pool"):
         _v = getattr(args, _knob, None)
@@ -4262,11 +4030,10 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                 f"--{_knob} is a FAST-TS-only knob (it lives on FastTSCodecConfig); "
                 f"{args.modality} is not the fast-TS modality."
             )
-    # --gain_shape and its knobs are shared by the FAST-TS envelope codec and (since
-    # 2026-09-04) the SPECTRO codec. The two decompositions differ in WHAT statistic is
-    # split off -- fast-TS takes the per-channel mean over envelope bins, spectro takes the
-    # per-(channel, FREQUENCY) mean and std over TIME -- but the flag surface, the structural
-    # guarantees and the direct gain supervision are the same, so one flag set drives both.
+    # --gain_shape and its knobs drive both the fast-TS envelope codec and the spectro
+    # codec. Fast-TS splits off the per-channel mean over envelope bins, spectro the
+    # per-(channel, frequency) mean and std over time; the flags and the direct gain
+    # supervision are the same.
     _gs_knobs = ("gain_tokens", "gain_scale", "gain_weight")
     _gs_family = is_fastts or is_spectro
     for _knob in _gs_knobs:
@@ -4287,8 +4054,9 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             "(they configure the envelope/shape decomposition, which is OFF by default)."
         )
     if is_spectro and getattr(args, "gain_shape", False):
-        # SPECTRO geometry: gain_tokens must divide freq_bins and stay < n_tok, both asserted
-        # in SpectroCodecConfig.__post_init__, so rebuild the dataclass rather than mutate.
+        # gain_tokens must divide freq_bins and stay below n_tok (both checked in
+        # SpectroCodecConfig.__post_init__), so rebuild the dataclass instead of
+        # mutating it.
         _gs = {"gain_shape": True}
         if args.gain_tokens is not None:
             _gs["gain_tokens"] = int(args.gain_tokens)
@@ -4296,10 +4064,9 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             _gs["gain_scale"] = bool(args.gain_scale)
         if args.gain_weight is not None:
             _gs["gain_weight"] = float(args.gain_weight)
-        # LOCAL import: `from dataclasses import replace as _dc_replace` also appears in the
-        # fast-TS branch further down, which makes _dc_replace a FUNCTION-LOCAL name -- so
-        # referring to it here, before that line executes, raised UnboundLocalError and killed
-        # all 8 arms of job 5419372 in 18 s. Importing it here binds it on this path too.
+        # Local alias: the fast-TS branch below also imports ``replace as _dc_replace``,
+        # which makes that name function-local, so using it here would raise
+        # UnboundLocalError.
         from dataclasses import replace as _dc_replace_local
         cfg = _dc_replace_local(cfg, **_gs)
         if ddp.is_main:
@@ -4314,33 +4081,24 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                 flush=True,
             )
 
-    # per-freq LOG-POWER z-standardization (the THIN-modality mean-collapse fix; spectro ONLY).
-    # Applied AFTER apply_spectro_standardization + the fsq/prod-recipe overrides. The per-freq z
-    # COMPOSES with the raw z-score (raw-std stays as apply_spectro_standardization set it): the
-    # stats MUST be computed in the space the codec actually SEES, i.e. AFTER raw-std for the
-    # modalities in _SPECTRO_STANDARDIZE_SIGNALS (co2). The old REPLACE convention (disable
-    # raw-std, stats in raw-clipped space) is BROKEN for co2 — measured 2026-07-31: without
-    # raw-z, co2 log-power is 100% clipped at data._LOG_CEIL=20 (mean 20.00, per-freq std med
-    # 0.0000), so replace-convention stats are degenerate and zero the signal. No-op unless
-    # --logpow_stats_path is given. Guarded to the spectro branch (video/slow-TS/fast-TS lack
-    # the log-power fields).
+    # Per-frequency log-power z-score (spectro only; no-op without --logpow_stats_path).
+    # It composes with the raw z-score from apply_spectro_standardization, so the stats
+    # must be computed in the space the codec sees, i.e. after raw-std for co2. Without
+    # the raw z-score co2's log-power is all clipped at data._LOG_CEIL=20, and stats
+    # computed there are degenerate (mean 20, std 0).
     if (not (is_video or is_slowts or is_fastts)) and getattr(args, "logpow_stats_path", None):
         import torch as _t
         _st = _t.load(args.logpow_stats_path, map_location="cpu", weights_only=False)
-        # NOTE the stats files are NOT uniform: the legacy ones store torch TENSORS, the ones
-        # compute_logpow_stats writes today store nested LISTS. `if _st.get("mean")` on a
-        # tensor raises "Boolean value of Tensor with more than one value is ambiguous", so
-        # normalise through torch first and read the trailing (frequency) axis.
+        # Legacy stats files store tensors, newer ones nested lists, and truthiness of a
+        # tensor raises, so go through torch.as_tensor and read the trailing (freq)
+        # axis.
         _sf = int(_t.as_tensor(_st["mean"]).shape[-1]) if "mean" in _st else -1
-        # BAND RESTRICTION: freq_bins < the stats width means the spectrogram is CROPPED to the
-        # low band (data._crop_pad_freq_time keeps the first freq_bins, ordered low->high), so
-        # the stats are still valid on exactly those bins and are sliced to match. A stats file
-        # NARROWER than freq_bins is still an error -- there is nothing to slice.
-        # WHY CROP AT ALL (measured 2026-09-05): ece's mode tracks sit below ~20 kHz, the bottom
-        # 8% of 0-250 kHz, visible as a thin 15->8 kHz line in the raw 512-bin render. Band-POWER
-        # pooling smears them away (at 3.91 kHz/band the track is gone from the GROUND TRUTH
-        # itself); cropping keeps 0.49 kHz resolution where the modes are and drops the broadband
-        # range that consumes most of the token budget.
+        # If freq_bins is smaller than the stats width, the spectrogram is cropped to
+        # the low band (data._crop_pad_freq_time keeps the first freq_bins), so the
+        # stats are sliced to match. Stats narrower than freq_bins are an error. The
+        # crop exists for ece, whose mode tracks sit below ~20 kHz: band-power pooling
+        # would smear them out, while cropping keeps the 0.49 kHz resolution there and
+        # drops the broadband range that would use most of the tokens.
         if _sf < cfg.freq_bins:
             raise SystemExit(
                 f"--logpow_stats_path {args.logpow_stats_path} has F={_sf}, NARROWER than this "
@@ -4363,9 +4121,9 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                   f"COMPOSED with raw-std (raw z {'ON' if cfg.input_standardize else 'off'})",
                   flush=True)
 
-    # Per-window instance z-score (root-cause fix for the co2 DC-offset -> FSQ-saturation collapse).
-    # Applied LAST in log_power_stft (after raw-std un-clips), so it centers + unit-scales every
-    # window to ece-like stats (mean~0/std~1) and the encoder no longer saturates the tanh bound.
+    # Per-window instance z-score (fix for co2's DC offset saturating the FSQ). Applied
+    # last in log_power_stft, after raw-std, so each window has mean ~0 and std ~1 and
+    # the encoder stays off the tanh bound.
     if (not (is_video or is_slowts or is_fastts)) and getattr(args, "input_instance_norm", False):
         cfg.input_instance_norm = True
         if getattr(args, "instance_norm_quantize", None) is not None:
@@ -4375,34 +4133,30 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                   f"DC-offset / FSQ-saturation fix; quantize={cfg.instance_norm_quantize} "
                   "(>0 = shift-robust piecewise-constant stats)", flush=True)
 
-    # fast-TS geometry + SCALE FIX. patch_w/stem_* set the RAW-SAMPLE codec's token count and
-    # receptive field; the per-channel raw mean/std put the ~1e15 raw signal on the ~O(1) scale
-    # the network is sized for (--stats_path='' disables; None => canonical DEFAULT_STATS_PATH).
-    # No-op for every other modality.
+    # Fast-TS geometry and scaling. patch_w/stem_* set the raw-sample codec's token
+    # count and receptive field; the per-channel raw mean/std bring the ~1e15 raw signal
+    # to O(1) (--stats_path='' disables, None uses DEFAULT_STATS_PATH).
     if is_fastts:
         from dataclasses import replace as _dc_replace
 
         from .fastts_train import DEFAULT_STATS_PATH, load_fastts_channel_stats
-        # GEOMETRY FIRST: patch_w sets n_tok (and therefore the world-model frame size), and
-        # __post_init__ validates the divisibility, so rebuild the dataclass rather than
-        # mutating a field the invariants depend on.
+        # patch_w sets n_tok (and so the world-model frame size) and __post_init__
+        # checks divisibility, so rebuild the dataclass instead of mutating it.
         _geom = {k: v for k, v in (
             ("patch_w", args.patch_w),
             ("stem_layers", args.stem_layers),
             ("stem_channels", args.stem_channels),
             ("stem_kernel", args.stem_kernel),
         ) if v is not None}
-        # GAIN-SHAPE is part of the geometry (it re-partitions the SAME 5 tokens into a gain
-        # group and a shape group), so it goes through the same dataclass rebuild -> its
-        # __post_init__ validates gain_tokens against n_env_patch.
+        # Gain-shape splits the same 5 tokens into gain and shape groups, so it goes
+        # through the same rebuild, whose __post_init__ checks gain_tokens.
         _gs = {k: v for k, v in (
             ("gain_shape", True if getattr(args, "gain_shape", False) else None),
             ("gain_tokens", args.gain_tokens),
             ("gain_scale", args.gain_scale),
             ("gain_weight", args.gain_weight),
         ) if v is not None}
-        # (the "these knobs require --gain_shape" guard is now shared with the spectro path
-        # and runs earlier, before the family split.)
+        # (The "requires --gain_shape" check is shared with spectro and runs earlier.)
         _geom.update(_gs)
         if _geom:
             cfg = _dc_replace(cfg, **{
@@ -4450,11 +4204,10 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             print("[train_codec] WARNING: --stats_path='' -> fast-TS raw standardization "
                   "OFF (unstandardized ~1e15 input). Debugging only.", flush=True)
 
-    # slow-TS SCALE FIX — inject the per-signal preprocessing (log_standardize / standardize) +
-    # per-channel mean/std so the codec input is standardized to ~O(1) (like the FM model sees)
-    # instead of the unstandardized raw that collapses the high-magnitude Thomson density signals
-    # (ts_core_density ~1e19 -> 1 code, env_corr=NaN). --stats_path='' disables (raw path,
-    # debugging only); None => the canonical DEFAULT_STATS_PATH. No-op for every other codec.
+    # Slow-TS scaling: set the per-signal preprocessing (log_standardize / standardize)
+    # and per-channel mean/std so the input is O(1), as the FM sees it. Raw Thomson
+    # density (~1e19) collapses the codec to one code. --stats_path='' disables
+    # (debugging only), None uses DEFAULT_STATS_PATH.
     if is_slowts:
         stats_path = None if args.stats_path == "" else args.stats_path
         if args.stats_path != "":
@@ -4477,17 +4230,16 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                   "(raw path; high-magnitude density signals will collapse). Debugging only.",
                   flush=True)
 
-    # resolve the train + disjoint eval shot lists (rank 0 discovers; the list is
-    # deterministic from data_dir + sort so every rank derives the same split).
+    # Train and disjoint eval shot lists. Discovery is sorted, so every rank derives the
+    # same split.
     if args.shots is not None:
         all_shots = [s.strip() for s in args.shots.split(",") if s.strip()]
     else:
         all_shots = spike.discover_shots(args.data_dir)
 
-    # Fix (a): drop whole shots that carry no data for this modality (co2 only; no-op for
-    # every other modality — see _PRESENCE_FILTER_SIGNALS). Runs BEFORE the eval/train split
-    # so both draw from present shots. rank-0 scans + caches + broadcasts (DDP-safe); the
-    # cache is keyed by (paths, signal) so a pre-warmed sidecar avoids any job-time scan.
+    # Drop whole shots without data for this modality (co2 only, see
+    # _PRESENCE_FILTER_SIGNALS), before the split so both sides draw from present shots.
+    # Rank 0 scans, caches and broadcasts; the cache is keyed by (paths, signal).
     if args.modality in _PRESENCE_FILTER_SIGNALS:
         from ..data.multi_file_dataset import filter_signal_present_files
 
@@ -4516,8 +4268,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                 f"presence filter left 0 shots for {args.modality} under {args.data_dir}"
             )
 
-    # SPECTRO per-channel presence filter (precomputed liveness cache). Runs BEFORE the
-    # eval/train split so BOTH draw from shots that actually recorded this diagnostic.
+    # Spectro presence filter from the liveness cache, before the split.
     if args.modality in SPECTRO_MODALITIES and \
             getattr(args, "spectro_presence", None) not in (None, "off"):
         _before = len(all_shots)
@@ -4531,8 +4282,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
                 f"spectro presence filter left 0 shots for {args.modality} "
                 f"(started from {_before})")
 
-    # VIDEO presence filter (per divertor, from the precomputed liveness cache). Runs BEFORE
-    # the eval/train split so BOTH draw from shots that actually have this divertor's cameras.
+    # Video presence filter (per divertor, from the liveness cache), before the split.
     if is_video and getattr(args, "video_presence", None) not in (None, "off"):
         _before = len(all_shots)
         all_shots = video_live_shots(
@@ -4554,9 +4304,8 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
             f"no train shots (discovered {len(all_shots)}, eval_n_shots={args.eval_n_shots})"
         )
 
-    # SIDECAR-DERIVATION mode: write the presence-filtered lengths cache and exit. Placed
-    # BEFORE the stats mode (both are single-process data-prep exits) and after the shot
-    # resolution above, so `train_shots` is already the filtered list the arms will use.
+    # Write the presence-filtered lengths sidecar and exit. Runs after shot resolution,
+    # so train_shots is the filtered list the training runs will use.
     if getattr(args, "build_presence_lengths", False):
         if not args.lengths_cache_dir:
             raise SystemExit("--build_presence_lengths needs --lengths_cache_dir")
@@ -4574,16 +4323,13 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         ddp.shutdown()
         return
 
-    # STATS-GENERATION mode (per-freq log-z promotion prep): compute dataset-level stats
-    # in the COMPOSE space over the resolved train shots (presence-filtered for co2),
-    # write, and exit — no training, no DDP collectives (run single-process).
+    # Write dataset-level per-freq stats over the train shots (in the composed space)
+    # and exit. Single process, no DDP collectives.
     if getattr(args, "compute_logpow_stats", None):
         if is_video or is_slowts or is_fastts:
             raise SystemExit("--compute_logpow_stats is spectro-only")
-        # The stats are (C, F) in the codec's OWN log-power space, so they MUST be computed on
-        # the SAME STFT grid the codec will use. A 512-bin file is silently wrong for a 256-bin
-        # codec (broadcast error at best, wrong per-freq normalisation at worst), hence the
-        # geometry passthrough.
+        # The (C, F) stats are only valid on the STFT grid they were computed on, so
+        # pass the codec's geometry through.
         compute_logpow_stats(
             args.modality, train_shots, args.compute_logpow_stats,
             data_dir=args.data_dir, log_fn=(print if ddp.is_main else None),
@@ -4607,22 +4353,11 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         )
 
     t0 = time.time()
-    # LENGTHS-CACHE KEY MUST TRACK THE SHOT LIST (2026-09-04).
-    #
-    # TokamakMultiFileDataset._load_or_compute_lengths only reuses the sidecar when its STORED
-    # PATH LIST MATCHES the current hdf5_paths. A presence filter changes that list, so the
-    # shared `codec_<mod>_lengths.pt` MISSES and every arm cold-scans every shot -- the exact
-    # cold-scan hazard the N_SHOTS=9000 rule exists to avoid, arriving through a new door.
-    #
-    # MEASURED (job 5416298, 2026-09-04): with --spectro_presence any, mirnov resolved 8693
-    # shots (cache has 8737) and all four mirnov arms spent the ENTIRE 2 h leg scanning --
-    # zero gates, zero checkpoints. The three masked bes arms (3279 shots) reached step 14000
-    # while bes_nomask, whose 8737-shot list HITS the cache, ran the full 29999. The apparent
-    # "masking is slow" and "nomask is fast" effects were this cache miss, not the mask.
-    #
-    # Giving the filtered list its OWN sidecar makes the scan a one-off: it is cold once, then
-    # warm for every later leg. It never writes the shared file, so unfiltered runs are
-    # byte-identical and the production cache cannot be clobbered.
+    # The lengths cache is reused only when its stored path list matches hdf5_paths. A
+    # presence filter changes that list, so the shared codec_<mod>_lengths.pt would miss
+    # and every run would cold-scan all shots (a 2 h leg once spent its whole time doing
+    # that). Filtered lists get their own sidecar: cold once, warm afterwards, and the
+    # shared file is never written.
     _presence_on = (
         getattr(args, "spectro_presence", None) not in (None, "off")
         or getattr(args, "video_presence", None) not in (None, "off")
@@ -4632,8 +4367,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         Path(args.lengths_cache_dir) / f"codec_{args.modality}{_suffix}_lengths.pt"
     )
     if is_fastts:
-        # fast-TS trainer has a distinct signature (modality is keyword-only; no positional
-        # modality). Reuse its train function verbatim — do NOT duplicate the training logic.
+        # The fast-TS trainer takes modality as keyword-only; reuse it as is.
         from .fastts_train import train_fastts_codec
         final_gate = train_fastts_codec(
             cfg,

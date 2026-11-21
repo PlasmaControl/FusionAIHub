@@ -12,171 +12,122 @@
 #SBATCH --gpu-bind=closest
 #SBATCH --cpus-per-task=7
 #SBATCH --mem=0
-# IGNITE Phase-B (MaskGIT dynamics) trainer — DDP over the pre-encoded frame-code cache.
-# PRODUCTION layout: 16 nodes x 8 GCDs, BATCH_SIZE=1 x ACCUM_STEPS=2 -> effective batch 256.
+# IGNITE Phase-B (MaskGIT dynamics) trainer: DDP over the pre-encoded frame-code cache.
+# Frontier layout: 16 nodes x 8 GCDs, BATCH_SIZE=1 x ACCUM_STEPS=2 -> effective batch 256.
 #   sbatch -N 16 --ntasks-per-node=8 --gres=gpu:8 -t 12:00:00 -p extended
 # Env overrides: CACHE_DIR, OUT_DIR, DEPTH, D_MODEL, N_HEADS, K0, N_PREDICT, STEPS, BATCH_SIZE,
 # ACCUM_STEPS, GRAD_CKPT, LR, WARMUP_STEPS, MIN_LR_RATIO, BETA2, WEIGHT_DECAY, GEN_MASK_P,
-# SS_FINAL_FRAC, SS_RAMP_STEPS, NUM_WORKERS, MASK_ABSENT, TEST_FRAC, PIN_VAL, PIN_TRAIN,
-# SPLIT_SEED, DATA_DIR, PRECOMPUTE, CODEC_TMPL,
-# TEXT_EMBED_PATH, TEXT_EMBED_DIM, TEXT_DROPOUT_P, TEXT_KEY (TEXT_EMBED_DIM 0/empty
-# = no text conditioning at all, the default).
-# Resumes from OUT_DIR/dynamics_latest.pt. Chain with --dependency=afterany:<prev>; multi-partition
-# each job (scontrol update Partition=extended,batch,g1), keep -t <=2h for g1 eligibility.
+# SS_FINAL_FRAC, SS_RAMP_STEPS, NUM_WORKERS, MASK_ABSENT, TEST_FRAC, PIN_VAL, SPLIT_SEED,
+# DATA_DIR, PRECOMPUTE, CODEC_TMPL.
+# Resumes from OUT_DIR/dynamics_latest.pt. Chain with --dependency=afterany:<prev>. On
+# Frontier, set each job to several partitions (scontrol update Partition=extended,batch,g1)
+# and keep -t <=2h for g1.
 set -euo pipefail
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "${PROJECT_DIR}"
 # CLUSTER_ENV: environment hook of the cluster (default Frontier/ROCm; StellarAI sets
 # scripts/slurm_stellarai/_stellarai_common.sh).
-source "${CLUSTER_ENV:-scripts/slurm_frontier/_frontier_settings.sh}"
+source "${CLUSTER_ENV:-scripts/slurm_frontier/_frontier_common.sh}"
 
-# ============================================================================================
-# LOCKED PRODUCTION CONFIGURATION (user decision, 2026-08-19). Every value below stays env-
-# overridable; what changed is which value you get when you override NOTHING. The rationale for
-# each is recorded here because a default with no reason attached is the one that silently drifts.
-#
-#  * OBJECTIVE = GENIE (GEN_MASK_P=0.0). The plain cosine-prior-on-every-frame MaskGIT objective
-#    beat the split-point / generation-mode objective at a COMMON condition: 0.1563 vs 0.1693 CE,
-#    and it got there in 14k steps instead of 51k. gen_mask_p > 0 is therefore OFF in production.
-#  * Scheduled sampling 0.75 over 2000 steps is DynamicsConfig's default (the reason is recorded
-#    there) and is not restated here; SS_FINAL_FRAC / SS_RAMP_STEPS override it when set.
-#  * LR=1e-3 with MIN_LR_RATIO=1.0 (flat, no cosine decay), WEIGHT_DECAY=0, BETA2=0.9,
-#    WARMUP_STEPS=100. 1e-3 is the rate EVERY converged arm used. 2e-3 bought 27% fewer epochs at
-#    d512xL16/N=8 but has NOT been validated at d1024 scale, so it is not the production default.
-#  * d_model 1024 x depth 16 x 16 heads. DEPTH BEATS WIDTH at matched params: d512xL16 beat
-#    d1024xL4 on rollout with HALF the parameters. 16 heads = d_model/64, the standard ratio.
-#  * BATCH_SIZE=1 (+ ACCUM_STEPS=2 => effective 256 on 16 nodes x 8 GCDs). bs2 is a MEASURED OOM
-#    at d1024xL16 on the 1593-token frame (62.7 of 64 GiB reserved; killed jobs 5233441 and
-#    5234381), and accumulation costs nothing here — step time scales linearly with batch at this
-#    sequence length. NOTE the rebuilt cache is a 1017-token frame (see CACHE below), so bs1 is
-#    if anything MORE headroom than the condition the OOM was measured at; it stays at 1 because
-#    nothing has been measured at bs2 on the new shape.
-#  * GRAD_CKPT=1 is MANDATORY, not an optimisation: d_model x depth = 1024 x 16 = 16384, far above
-#    the 4096 threshold where the un-checkpointed activation stack stops fitting a 64 GiB GCD.
-#  * 14 modalities, mirnov EXCLUDED; actuators 88 channels WITH i_coil.
+# Defaults. Every value stays env-overridable; the reasons are noted so they do not drift.
+#  * GEN_MASK_P=0.0: the plain MaskGIT objective (cosine mask prior on every frame) beat
+#    the split-point generation objective, 0.1563 vs 0.1693 CE, in 14k steps instead of 51k.
+#  * SS_FINAL_FRAC=0.75 / SS_RAMP_STEPS=2000. 0.75 was the best scheduled-sampling value
+#    measured (CE 0.1053, token acc 0.9792); 1.0 collapses (no teacher signal left), so do
+#    not round it up. The short ramp reaches the target early; the config default ramp
+#    (40k) reaches only half of it on a short leg.
+#  * LR=1e-3 flat (MIN_LR_RATIO=1.0, no cosine decay), WEIGHT_DECAY=0, BETA2=0.9,
+#    WARMUP_STEPS=100. Every converged run used 1e-3; 2e-3 was faster at d512xL16 but is
+#    untested at d1024.
+#  * d_model 1024 x depth 16 x 16 heads. Depth beats width at matched parameters: d512xL16
+#    beat d1024xL4 on rollout with half the parameters. 16 heads = d_model/64.
+#  * BATCH_SIZE=1 with accumulation: bs2 ran out of memory at d1024xL16 on a 64 GiB GCD
+#    (62.7 GiB reserved on the 1593-token frame), and accumulation costs nothing since
+#    step time scales linearly with batch at this sequence length.
+#  * GRAD_CKPT=1 is required: above d_model x depth = 4096 the activations without
+#    recompute do not fit a 64 GiB GCD, and 1024 x 16 = 16384.
 #  * K0=20 seed frames (1.0 s) -> N_PREDICT=80 predicted frames (4.0 s).
 #
-# CACHE: this config REQUIRES the rebuilt cache. Both the codec set (co2/mhr/ece are the
-# instance-norm-OFF retrains, pinned under ignite_codecs_prod_noinorm) and the actuator width
-# (70 -> 88 with i_coil) changed, so the pre-2026-08-19 frame_codes cache is NOT compatible and
-# NO existing checkpoint can resume against the new layout. The default points at the REBUILT
-# cache on purpose: if it does not exist yet the job fails immediately with "no cached shots"
-# instead of silently training on the stale one. (The 7264-shot ignite_frame_codes was superseded
-# the same way — a run that fell back to it trained on the wrong data without erroring.)
-# FRAME WIDTH CHANGES with the rebuild: the pinned noinorm ece codec patches at 16x16 where the
-# old one patched at 8x8, so ece contributes 192 tokens instead of 768 and the frame goes
-# 1593 -> 1017 tokens (4x192 spectro + 2x108 video + 7x4 slow-TS + 5 fast-TS). Vocabs move too
-# (co2 64000 -> 32768, mhr 1000 -> 32768, ece 1000 -> 32768). The trainer derives BOTH from the
-# cache, so nothing here needs editing — but any step budget, memory estimate or eval script that
-# hardcoded 1593 is now wrong.
+# CACHE_DIR: the default points at the rebuilt cache, so that if it is missing the job
+# fails with "no cached shots" instead of training on an older, incompatible cache.
+# The trainer derives the frame width and vocabularies from the cache, so a cache with
+# different codecs needs no edit here; only hardcoded token counts elsewhere would be wrong.
 CACHE_DIR="${CACHE_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_production/frame_codes_noinorm}"
 OUT_DIR="${OUT_DIR:-/lustre/orion/fus187/proj-shared/models/ignite_production/runs/prod_d1024L16}"
 DEPTH="${DEPTH:-16}"; D_MODEL="${D_MODEL:-1024}"; STEPS="${STEPS:-55399}"
-# STEPS is a WINDOW-COUNT budget, not a model property: 55399 = 10 epochs over the 1.42 M windows
-# of the old cache at effective batch 256. Re-derive it once the rebuilt cache is on disk.
+# STEPS is a window-count budget: 55399 = 10 epochs over the 1.42 M windows of the old
+# cache at effective batch 256. Re-derive it for another cache.
 BATCH_SIZE="${BATCH_SIZE:-1}"; ACCUM_STEPS="${ACCUM_STEPS:-2}"
-GRAD_CKPT="${GRAD_CKPT:-1}"       # 0 disables recompute-in-backward (will OOM at d1024xL16)
+GRAD_CKPT="${GRAD_CKPT:-1}"       # 0 disables recompute in backward (runs out of memory at d1024xL16)
 LR="${LR:-1e-3}"; NUM_WORKERS="${NUM_WORKERS:-4}"
-# Optimizer shape. These were previously UNSET, so the argparse defaults applied (min_lr_ratio
-# 0.01 = full cosine decay, weight_decay 0.01, beta2 0.999, no warmup) — i.e. the launcher's
-# silent defaults did NOT match the arms that converged. Setting a var to "" restores that
-# argparse default, so every one of them is still fully env-overridable.
+# Optimizer shape. Setting one of these to "" falls back to the argparse default
+# (min_lr_ratio 0.01 = full cosine decay, weight_decay 0.01, beta2 0.999, no warmup).
 WARMUP_STEPS="${WARMUP_STEPS-100}"
 MIN_LR_RATIO="${MIN_LR_RATIO-1.0}"
 BETA2="${BETA2-0.9}"
 WEIGHT_DECAY="${WEIGHT_DECAY-0}"
-# Objective + rollout-drift schedule (see the LOCKED block above).
+# Objective and scheduled sampling (see the defaults above).
 GEN_MASK_P="${GEN_MASK_P:-0.0}"
-CKPT_EVERY="${CKPT_EVERY:-500}"   # in OPTIMIZER steps (accumulation-independent); must be
-                                  # < steps-per-leg so a 12 h leg checkpoints before its wall
-PRECOMPUTE="${PRECOMPUTE:-0}"     # 1 = build the frame-code cache (each rank a shot-shard) then exit
+SS_FINAL_FRAC="${SS_FINAL_FRAC:-0.75}"
+SS_RAMP_STEPS="${SS_RAMP_STEPS:-2000}"
+CKPT_EVERY="${CKPT_EVERY:-500}"   # in optimizer steps (independent of accumulation); keep it
+                                  # below the steps per leg so a 12 h leg saves before its wall
+PRECOMPUTE="${PRECOMPUTE:-0}"     # 1 = build the frame-code cache (each rank a shard of shots), then exit
 MAX_SHOTS="${MAX_SHOTS:-0}"       # cap total shots for a --precompute sanity run (0 = full dataset)
 CODEC_TMPL="${CODEC_TMPL:-}"      # precompute codec override, e.g. 'path/codecs/{m}/codec_best.pt'
-# Architecture / horizon. Formerly empty (= fall through to DynamicsConfig); now pinned to the
-# locked values so the launcher, not a dataclass three files away, is the record of the run.
+# Architecture and horizon, set here so the launcher records the run.
 N_HEADS="${N_HEADS:-16}"; K0="${K0:-20}"; N_PREDICT="${N_PREDICT:-80}"
-TRAIN_CAP="${TRAIN_CAP:-0}"       # N-shots generalization probe: train on first N shots only
-WINDOWS_PER_SHOT="${WINDOWS_PER_SHOT:-0}"   # keep only the first n windows/shot (0 = all); see
-                                            # --windows_per_shot. TRAIN set only.
-# RUNTIME CAP OVERRIDE. TRAIN_CAP normally arrives via `sbatch --export`, which SLURM captures at
-# SUBMIT time -- a queued leg's cap is therefore frozen, and growing the training pool would mean
-# resubmitting the whole chain. This launcher, by contrast, is `exec bash`-ed FROM DISK on every
-# leg, so a file read here takes effect at the next leg rotation with no resubmission.
-# Added 2026-08-21 to grow 1000->1003 / 4000->4003 when the three pinned VALIDATION shots were
-# also added to training (user request), without restarting either chain.
+TRAIN_CAP="${TRAIN_CAP:-0}"       # train on the first N shots only (0 = all)
+WINDOWS_PER_SHOT="${WINDOWS_PER_SHOT:-0}"   # keep only the first n windows per shot (0 = all);
+                                            # training set only, see --windows_per_shot
+# Runtime TRAIN_CAP override. `sbatch --export` values are fixed at submit time, but this
+# script is read from disk on every leg, so a train_cap.override file in OUT_DIR changes
+# the cap at the next leg without resubmitting the chain.
 if [ -f "${OUT_DIR}/train_cap.override" ]; then
-  _TC=$(tr -dc '0-9' < "${OUT_DIR}/train_cap.override")     # sanitise: set -u + stray newline
+  _TC=$(tr -dc '0-9' < "${OUT_DIR}/train_cap.override")     # digits only (set -u, stray newline)
   if [ -n "${_TC}" ]; then
     echo "[launcher] TRAIN_CAP override ${TRAIN_CAP} -> ${_TC} (${OUT_DIR}/train_cap.override)"
     TRAIN_CAP="${_TC}"
   fi
 fi
 VAL_N="${VAL_N:-0}"               # fixed validation size (shots); 0 = 5% fraction
-# Held-out TEST partition, untouched until the end (user convention 0.90/0.05/0.05).
-# Without this the split is 0.95/0.05/0 and there is NO test set at all.
+# Held-out test fraction (split 0.90/0.05/0.05). With 0 there is no test set.
 TEST_FRAC="${TEST_FRAC:-0.05}"
-PIN_VAL="${PIN_VAL:-200729}"
-# PIN_TRAIN: neighbour stratification. COMMA-separated -- set it INSIDE the job script, never
-# via sbatch --export, which splits the export list on commas.
-PIN_TRAIN="${PIN_TRAIN:-}"      # standing example shot: pinned to val, never trained
+# Paper use-case shots, never trained on: 200729 and the detachment control
+# experiments 201081/201085. Applies to new runs only; a resumed run reloads its
+# frozen split_shots.json. Comma-separated, so set it here, not via --export.
+PIN_VAL="${PIN_VAL:-200729,201081,201085}"
+# PIN_TRAIN: shots forced into training. Comma-separated, so set it in the job script,
+# not via sbatch --export.
+PIN_TRAIN="${PIN_TRAIN:-}"
 VAL_WINDOWS="${VAL_WINDOWS:-32}"  # independent of BATCH_SIZE (see --val_windows)
-# MASK_ABSENT: drop ABSENT diagnostics from the CE. ON for production (user 2026-08-12).
-# An absent diagnostic feeds its frozen codec a constant, so it encodes to the same null
-# codeword in every shot — ~38% of the loss TERMS, because the loss weights every modality
-# equally regardless of token count. Their tokens still enter the model as INPUT.
-# REQUIRES <cache>/_presence.json to exist ALREADY: train() builds it on rank 0 behind a
-# dist.barrier(), so on a 128-rank job the other 127 would wait out a full 8753-shot scan
-# and trip the 600 s NCCL watchdog. Build it first with BUILD_PRESENCE=1 — and REBUILD it
-# after ANY cache change, since a stale map silently mislabels the shots that changed.
+# MASK_ABSENT: leave absent diagnostics out of the CE. An absent diagnostic feeds its codec
+# a constant, so it encodes to the same null code in every shot; with every modality
+# weighted equally these make up ~38% of the loss terms. Their tokens still enter the
+# model as input.
+# Needs <cache>/_presence.json to exist already. Otherwise train() builds it on rank 0
+# behind a barrier, and on a large job the other ranks wait out the full scan and hit the
+# 600 s NCCL timeout. Build it with BUILD_PRESENCE=1, and rebuild it after any cache change.
 MASK_ABSENT="${MASK_ABSENT:-1}"
-# Per-shot text conditioning (optional). TEXT_EMBED_DIM 0/empty = no text flags at
-# all (byte-identical command line to before this feature existed). Path and dim
-# must be set TOGETHER -- see EXTRA assembly below.
-TEXT_EMBED_PATH="${TEXT_EMBED_PATH:-}"
-TEXT_EMBED_DIM="${TEXT_EMBED_DIM:-0}"
-TEXT_DROPOUT_P="${TEXT_DROPOUT_P:-0.1}"
-TEXT_KEY="${TEXT_KEY:-input}"
 mkdir -p logs "${CACHE_DIR}"
 
-# SPLIT_SEED must be NON-ZERO for production: 0 selects the legacy SORTED-TAIL split,
-# which puts the highest shot numbers (one whole campaign) in val. Probe v1 showed
-# exactly that arrangement collapses cross-campaign — diversity is what flipped the
-# sign. 42 is the seed the frozen production split was drawn with.
+# SPLIT_SEED has to be non-zero: 0 selects the legacy sorted-tail split, which puts the
+# highest shot numbers (one whole campaign) in val, and models do not generalise across
+# that. 42 is the seed of the production split.
 SPLIT_SEED="${SPLIT_SEED:-42}"
-SHOT_SAMPLE="${SHOT_SAMPLE:-0}"   # precompute: random-sample this many shots from ALL data
+SHOT_SAMPLE="${SHOT_SAMPLE:-0}"   # precompute: random-sample this many shots from all data
 SHOT_SEED="${SHOT_SEED:-0}"       # seed for SHOT_SAMPLE
 
-# Allocator config must reach the RANKS, not just the submitting shell, so re-export it here
-# and ECHO it (the trainer logs the RANK-SEEN value too — the launcher's echo runs in the batch
-# step and cannot prove what the srun tasks got).
-#
-# DO NOT read this as the fix for job 5233441's fragmentation OOM (19.26 GiB "reserved but
-# unallocated" at step ~650). MEASURED 2026-08-12, job 5247144 stderr, this ROCm build:
-#     UserWarning: expandable_segments not supported on this platform
-#     (Triggered internally at c10/hip/HIPAllocatorConfig.h:40)
-# The option is accepted and echoed back as if it were active, but the allocator IGNORES it —
-# so the log line below is evidence of INTENT, not of effect. What actually keeps the footprint
-# survivable is the batch config: BATCH_SIZE 1 + ACCUM_STEPS (measured bs1 30.0 GiB allocated
-# vs bs2 49.0 GiB, bs2 reserving 62.7/64) plus the smaller d512xL8 backbone. Left exported so a
-# future ROCm that does support it picks the behaviour up for free.
+# The allocator config has to reach the ranks, so it is exported here (the trainer logs
+# the value each rank sees). The ROCm build on Frontier ignores expandable_segments with
+# a warning; what keeps memory in bounds there is BATCH_SIZE 1 with accumulation.
 export PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
 echo "[ignite_dynamics] PYTORCH_ALLOC_CONF=${PYTORCH_ALLOC_CONF} \
 (NOTE: expandable_segments is a NO-OP on this ROCm build)"
 
-# TEXT_EMBED_PATH and TEXT_EMBED_DIM must be set TOGETHER or not at all: dim-without-path
-# would pass --text_embed_path "" and die inside the trainer's TOGETHER guard with a
-# confusing h5py error, and path-without-dim would silently launch an UNCONDITIONED
-# baseline (the gate below keys on TEXT_EMBED_DIM alone).
-if { [ -n "${TEXT_EMBED_PATH}" ] && [ "${TEXT_EMBED_DIM}" = "0" ]; } || \
-   { [ -z "${TEXT_EMBED_PATH}" ] && [ "${TEXT_EMBED_DIM}" != "0" ]; }; then
-  echo "ERROR: TEXT_EMBED_PATH and TEXT_EMBED_DIM must be set together (path='${TEXT_EMBED_PATH}', dim='${TEXT_EMBED_DIM}')" >&2
-  exit 1
-fi
-
 EXTRA=()
-# DATA_DIR: read shots from an OVERLAY instead of the canonical foundation_model
-# (which is not group-writable). discover_shots() over the overlay also RESTRICTS
-# a re-tokenize to exactly the shots it contains.
+# DATA_DIR: read shots from an overlay directory instead of the canonical one (which is
+# not group-writable). A re-tokenize then covers exactly the shots in the overlay.
 [ -n "${DATA_DIR:-}" ] && EXTRA+=(--data_dir "${DATA_DIR}")
 [ -n "${CODEC_TMPL}" ] && EXTRA+=(--codec_tmpl "${CODEC_TMPL}")
 [ -n "${N_HEADS}" ] && EXTRA+=(--n_heads "${N_HEADS}")
@@ -201,18 +152,12 @@ EXTRA=()
 [ "${MASK_ABSENT}" = "1" ] && EXTRA+=(--mask_absent)
 [ "${BALANCE_PRESENCE:-0}" = "1" ] && EXTRA+=(--balance_presence)
 [ -n "${PRESENCE_PATH:-}" ] && EXTRA+=(--presence_path "${PRESENCE_PATH}")
-[ "${TEXT_EMBED_DIM}" != "0" ] && [ -n "${TEXT_EMBED_DIM}" ] && EXTRA+=(
-  --text_embed_path "${TEXT_EMBED_PATH}" --text_embed_dim "${TEXT_EMBED_DIM}"
-  --text_dropout_p "${TEXT_DROPOUT_P}" --text_key "${TEXT_KEY}"
-)
 
 if [ "${BUILD_PRESENCE:-0}" = "1" ]; then
-  # Rebuild <cache>/_presence.json — the absent-diagnostic mask --mask_absent scores against.
-  # SINGLE RANK on purpose: build_presence is a serial CPU pass over every cached shot writing
-  # ONE file, so extra ranks would each redo the whole scan and race on the output.
-  # MUST be re-run whenever the cache changes. train() only builds the map `if not exists`, so a
-  # stale one is reused silently: the 2026-08-12 co2 re-tokenize made co2 PRESENT on 190735/190736
-  # while the Aug-11 map still recorded it absent — masking away the very data that was added.
+  # Rebuild <cache>/_presence.json, the absent-diagnostic mask that --mask_absent uses.
+  # One rank: it is a serial CPU pass writing one file, so more ranks would redo the scan
+  # and race on the output. train() builds the map only if it is missing, so a stale map
+  # is reused without warning; rerun this after every cache change.
   echo "[ignite_dynamics] BUILD_PRESENCE host=$(hostname) cache=${CACHE_DIR} \
 out=${PRESENCE_PATH:-${CACHE_DIR}/_presence.json}"
   srun -N 1 -n 1 -c "$SLURM_CPUS_PER_TASK" \
@@ -220,14 +165,13 @@ out=${PRESENCE_PATH:-${CACHE_DIR}/_presence.json}"
        -m tokamak_foundation_model.ignite.train_dynamics \
        --cache_dir "${CACHE_DIR}" --build_presence "${EXTRA[@]}"
 elif [ "${PATCH_ACTUATORS:-0}" = "1" ]; then
-  # One-off cache repair: rewrite ONLY the actuators with the 2026-08-11 time-base fix.
-  # Codes are untouched (diagnostics were always on the correct absolute-time base), so this
-  # is an I/O pass, NOT a re-precompute. DRY_RUN=1 verifies without writing.
+  # Cache repair: rewrite only the actuators with the corrected time base. Codes are left
+  # alone, so this is an I/O pass, not a re-precompute. DRY_RUN=1 checks without writing.
   echo "[ignite_dynamics] PATCH_ACTUATORS host=$(hostname) nodes=${SLURM_JOB_NUM_NODES} \
 world_size=${SLURM_NTASKS} cache=${CACHE_DIR} dry_run=${DRY_RUN:-0}"
   [ "${DRY_RUN:-0}" = "1" ] && EXTRA+=(--dry_run)
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
-       --gpus-per-task=1 --gpu-bind=closest \
+       --gpus-per-task=1 --gpu-bind="${SRUN_GPU_BIND:-closest}" \
        scripts/slurm_frontier/_srun_rank_wrapper.sh \
        -m tokamak_foundation_model.ignite.train_dynamics \
        --cache_dir "${CACHE_DIR}" --patch_actuators "${EXTRA[@]}"
@@ -235,25 +179,30 @@ elif [ "${PRECOMPUTE}" = "1" ]; then
   echo "[ignite_dynamics] PRECOMPUTE host=$(hostname) nodes=${SLURM_JOB_NUM_NODES} \
 world_size=${SLURM_NTASKS} cache=${CACHE_DIR} max_shots=${MAX_SHOTS} codec_tmpl=${CODEC_TMPL:-manifest}"
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
-       --gpus-per-task=1 --gpu-bind=closest \
+       --gpus-per-task=1 --gpu-bind="${SRUN_GPU_BIND:-closest}" \
        scripts/slurm_frontier/_srun_rank_wrapper.sh \
        -m tokamak_foundation_model.ignite.train_dynamics \
        --cache_dir "${CACHE_DIR}" \
        --precompute --max_shots "${MAX_SHOTS}" "${EXTRA[@]}"
 else
   mkdir -p "${OUT_DIR}"
-  # Echo the LOCKED knobs, not just the shape: an arm that silently reverted one of them
-  # (a stale export, an unset var) is otherwise indistinguishable from production in the log.
+  # Log every knob, so a run that picked up a wrong value can be told apart in the log.
   echo "[ignite_dynamics] TRAIN host=$(hostname) nodes=${SLURM_JOB_NUM_NODES} world_size=${SLURM_NTASKS} \
 cache=${CACHE_DIR} out=${OUT_DIR} depth=${DEPTH} d_model=${D_MODEL} n_heads=${N_HEADS} \
 k0=${K0} n_predict=${N_PREDICT} steps=${STEPS} bs=${BATCH_SIZE} accum=${ACCUM_STEPS} \
 grad_ckpt=${GRAD_CKPT} lr=${LR} warmup=${WARMUP_STEPS} min_lr_ratio=${MIN_LR_RATIO} \
-beta2=${BETA2} wd=${WEIGHT_DECAY} gen_mask_p=${GEN_MASK_P} ss_final=${SS_FINAL_FRAC:-config} \
-ss_ramp=${SS_RAMP_STEPS:-config} mask_absent=${MASK_ABSENT} block_forcing=${BLOCK_FORCING:-0} \
+beta2=${BETA2} wd=${WEIGHT_DECAY} gen_mask_p=${GEN_MASK_P} ss_final=${SS_FINAL_FRAC} \
+ss_ramp=${SS_RAMP_STEPS} mask_absent=${MASK_ABSENT} block_forcing=${BLOCK_FORCING:-0} \
+forecast_depth=${FORECAST_DEPTH:-1} act_drop_p=${ACT_DROP_P:-0} hist_gap_p=${HIST_GAP_P:-0} hist_gap_max=${HIST_GAP_MAX:-10} \
+event_windows=${EVENT_WINDOWS_PER_SHOT:-0} event_weight=${EVENT_WEIGHT:-1} event_frames=${EVENT_FRAMES:-15} \
 seed_drop_p=${SEED_DROP_P:-0} seed_column_drop_p=${SEED_COLUMN_DROP_P:-0} \
-actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0}"
+actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0} \
+rollout_horizon=${ROLLOUT_HORIZON:-0} rollout_weight=${ROLLOUT_WEIGHT:-1.0} \
+rollout_start_jitter=${ROLLOUT_START_JITTER:-0} rollout_temperature=${ROLLOUT_TEMPERATURE:-1.0} \
+val_rollout_horizon=${VAL_ROLLOUT_HORIZON:-0} skill_every=${SKILL_EVERY:-0} skill_shots=${SKILL_SHOTS:-32} \
+skill_gumbel=${SKILL_GUMBEL:-0} best_metric=${BEST_METRIC:-masked}"
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
-       --gpus-per-task=1 --gpu-bind=closest \
+       --gpus-per-task=1 --gpu-bind="${SRUN_GPU_BIND:-closest}" \
        scripts/slurm_frontier/_srun_rank_wrapper.sh \
        -m tokamak_foundation_model.ignite.train_dynamics \
        --cache_dir "${CACHE_DIR}" \
@@ -265,8 +214,8 @@ actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0}"
        --lr "${LR}" \
        --num_workers "${NUM_WORKERS}" \
        --ckpt_every "${CKPT_EVERY}" \
-       ${SS_FINAL_FRAC:+--ss_final_frac "$SS_FINAL_FRAC"} \
-       ${SS_RAMP_STEPS:+--ss_ramp_steps "$SS_RAMP_STEPS"} \
+       --ss_final_frac "${SS_FINAL_FRAC}" \
+       --ss_ramp_steps "${SS_RAMP_STEPS}" \
        --gen_mask_p "${GEN_MASK_P}" \
        --grad_ckpt "${GRAD_CKPT}" \
        --best_metric "${BEST_METRIC:-masked}" \
@@ -288,10 +237,27 @@ actuator_noise=${ACTUATOR_NOISE:-0} window_jitter=${WINDOW_JITTER:-0}"
        --val_windows_per_shot "${VAL_WINDOWS_PER_SHOT:-0}" \
        --grad_clip "${GRAD_CLIP:-0}" \
        --block_forcing "${BLOCK_FORCING:-0}" \
+       --forecast_depth "${FORECAST_DEPTH:-1}" \
+       --act_drop_p "${ACT_DROP_P:-0}" \
+       --hist_gap_p "${HIST_GAP_P:-0}" \
+       --hist_gap_max "${HIST_GAP_MAX:-10}" \
+       --event_windows_per_shot "${EVENT_WINDOWS_PER_SHOT:-0}" \
+       --snapshot_every "${SNAPSHOT_EVERY:-0}" \
+       --event_weight "${EVENT_WEIGHT:-1}" \
+       --event_frames "${EVENT_FRAMES:-15}" \
        --seed_drop_p "${SEED_DROP_P:-0}" \
        --seed_column_drop_p "${SEED_COLUMN_DROP_P:-0}" \
        --actuator_noise "${ACTUATOR_NOISE:-0}" \
        --window_jitter "${WINDOW_JITTER:-0}" \
+       --rollout_horizon "${ROLLOUT_HORIZON:-0}" \
+       --rollout_weight "${ROLLOUT_WEIGHT:-1.0}" \
+       --rollout_start_jitter "${ROLLOUT_START_JITTER:-0}" \
+       --rollout_temperature "${ROLLOUT_TEMPERATURE:-1.0}" \
+       --val_rollout_horizon "${VAL_ROLLOUT_HORIZON:-0}" \
+       --skill_every "${SKILL_EVERY:-0}" \
+       --skill_shots "${SKILL_SHOTS:-32}" \
+       --skill_gumbel "${SKILL_GUMBEL:-0}" \
+       --skill_codec_tmpl "${SKILL_CODEC_TMPL:-}" \
        --train_cap "${TRAIN_CAP}" \
        --val_n "${VAL_N}" "${EXTRA[@]}"
 fi

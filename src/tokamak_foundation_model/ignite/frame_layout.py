@@ -152,8 +152,11 @@ class FrameTokenizer(nn.Module):
 
         Parameters
         ----------
-        codes : dict of str to torch.LongTensor of shape (B, F, n_tok)
-            Codes of every modality; masked positions hold the ``[MASK]`` id.
+        codes : dict of str to torch.Tensor
+            Codes of every modality, a LongTensor of shape (B, F, n_tok) whose
+            masked positions hold the ``[MASK]`` id, or already embedded codes of
+            shape (B, F, n_tok, d_model) (see :meth:`code_vectors`), which a
+            rollout trained end to end feeds back.
         frame_offset : int, default=0
             Index of the first frame, for windows that do not start at frame 0.
 
@@ -168,7 +171,7 @@ class FrameTokenizer(nn.Module):
                 f"FrameTokenizer.embed: codes missing modalities {sorted(missing)}"
             )
         reference = codes[self.cfg.modalities[0].name]
-        B, F, _ = reference.shape
+        B, F = reference.shape[:2]
         if frame_offset + F > self.cfg.max_frames:
             raise ValueError(
                 f"frame_offset+F={frame_offset + F} exceeds "
@@ -185,9 +188,15 @@ class FrameTokenizer(nn.Module):
                     f"{m.name}: expected (B={B}, F={F}, {m.n_tok}); "
                     f"got {tuple(modality_codes.shape)}"
                 )
+            embedded = modality_codes.is_floating_point()
+            if embedded and self.lag_k > 0:
+                raise ValueError("embedded codes do not support lag_embed_k > 0")
             positions = torch.arange(m.n_tok, device=device)
+            code_part = (
+                modality_codes if embedded else self.code_embed[m.name](modality_codes)
+            )
             embedding = (
-                self.code_embed[m.name](modality_codes)
+                code_part
                 + self.modality_embed.weight[self._mod_index[m.name]].view(1, 1, 1, -1)
                 + self.pos_embed[m.name](positions).view(1, 1, m.n_tok, -1)
                 + frame_embedding.view(1, F, 1, -1)
@@ -203,6 +212,19 @@ class FrameTokenizer(nn.Module):
                 embedding = embedding + self.lag_embed[m.name][lag_index](lag)
             embeddings.append(embedding)
         return torch.cat(embeddings, dim=2)
+
+    def code_vectors(self, name: str, codes: torch.Tensor) -> torch.Tensor:
+        """Embed the codes of one modality, shape (..., d_model)."""
+        return self.code_embed[name](codes)
+
+    def soft_code_vectors(self, name: str, weights: torch.Tensor) -> torch.Tensor:
+        """Mix the code embeddings of one modality by ``weights`` (..., codebook).
+
+        One-hot weights give exactly :meth:`code_vectors`; the ``[MASK]`` row is
+        never mixed in.
+        """
+        table = self.code_embed[name].weight[: weights.shape[-1]]
+        return weights.to(table.dtype) @ table
 
     def logits(self, h: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Apply the per-modality heads to every position.

@@ -1,26 +1,25 @@
-"""IGNITE Phase-A **gate spike** — a small, parametrizable training + gate probe.
+"""IGNITE Phase-A gate spike: a small training and gate probe for the spectro codec.
 
-This is the minimal end-to-end exercise of the Phase-A codec against the oracle gate
-(``docs/IGNITE_DESIGN.md`` §4.4). It:
+The minimal end-to-end run of a Phase-A codec against the gate
+(``docs/IGNITE_DESIGN.md`` §4.4):
 
-  1. trains a :class:`~ignite.codec.SpectroCodec` with a standard GAN alternation
-     (generator step on the codec, discriminator step on an external
-     :class:`~ignite.discriminator.FreqAwarePatchGAN`, both Adam);
-  2. every ``eval_every`` steps computes the gate on held-out batches — **stability**
-     (codes of ``x`` vs its δ-shifted pair), **persistence** + **forecastability** (codes
-     over consecutive world-model frames), and **decode_fidelity** (recon vs target);
-  3. logs a compact per-eval line and returns the final gate dict.
+1. Train a :class:`~ignite.codec.SpectroCodec` with GAN alternation (a generator
+   step on the codec, a discriminator step on an external
+   :class:`~ignite.discriminator.FreqAwarePatchGAN`, both Adam).
+2. Every ``eval_every`` steps, compute the gate on held-out batches: stability
+   (codes of ``x`` against its δ-shifted pair), persistence and forecastability
+   (codes over consecutive frames) and decode fidelity (recon against target).
+3. Log one line per evaluation and return the final gate dict.
 
-Everything runs on CPU with **synthetic** data (sum-of-sinusoid raw signals fed through
-``data.py``) so the smoke test needs no real HDF5. The real-data entry point
-(:func:`real_ece_batches`) is a clearly-marked TODO stub for the parent to wire.
+With ``--synthetic`` everything runs on CPU on sum-of-sinusoid signals fed through
+``data.py``, so the smoke test needs no HDF5. :func:`real_ece_batches` and
+:func:`real_frame_sequence` read real ece windows through the HDF5 loader. The
+DDP codec trainer (``train_codec.py``) reuses the gate, step, guard and checkpoint
+helpers defined here.
 
-Reuse boundary (§7): only ``torch`` + sibling ``ignite`` modules
-(``codec``, ``discriminator``, ``losses``, ``gate``, ``data``, ``config``). No FAITH
-model code.
-
-Gate stratification note (§4.4): forecastability uses the gate's DEFAULT code-derived
-transition split (``transition_mask=None``) — we do **not** build a physics detector here.
+Following §7 this uses only ``torch`` and sibling ``ignite`` modules, no FAITH model
+code. Forecastability uses the gate's default code-derived transition split; there
+is no physics transition detector here.
 """
 from __future__ import annotations
 
@@ -41,9 +40,7 @@ from .discriminator import FreqAwarePatchGAN
 from .losses import discriminator_loss
 
 
-# ------------------------------------------------------------------------------------- #
-# synthetic data
-# ------------------------------------------------------------------------------------- #
+# Synthetic data
 def _sum_of_sinusoids(
     n_samples: int,
     freqs_hz: Iterable[float],
@@ -51,10 +48,10 @@ def _sum_of_sinusoids(
     noise_std: float,
     generator: torch.Generator,
 ) -> torch.Tensor:
-    """A single-channel (n_samples,) raw signal = sum of sinusoids (+ optional noise).
+    """One channel of raw signal, shape (n_samples,): a sum of sinusoids plus noise.
 
-    Phases are random (per call) so that a δ-shift genuinely changes the sub-window
-    realization while the *frequencies* (the statistic) are unchanged.
+    Phases are drawn per call, so a δ-shift changes the sub-window realization while
+    the frequencies (the statistic) stay the same.
     """
     t = torch.arange(n_samples, dtype=torch.float32) / fs
     x = torch.zeros(n_samples, dtype=torch.float32)
@@ -73,10 +70,10 @@ def _random_shot(
     noise_std: float,
     generator: torch.Generator,
 ) -> torch.Tensor:
-    """A raw (C, W_full) shot long enough to slice δ-shift pairs from.
+    """A raw (C, W_full) shot long enough to cut δ-shift pairs from.
 
-    Each channel is an independent sum-of-sinusoid realization of the SAME mode set
-    (so the freq statistic is shared across channels, only the phase realization differs).
+    Each channel is an independent realization of the same mode set: the frequency
+    statistic is shared across channels and only the phases differ.
     """
     w_full = cfg.window_samples * span_windows
     chans = [
@@ -97,24 +94,22 @@ def synthetic_batches(
     base_freqs_hz: Optional[List[float]] = None,
     seed: int = 0,
 ) -> List[Tuple[torch.Tensor, torch.Tensor]]:
-    """Produce ``n_batches`` of δ-shift consistency pairs ``(spec_a, spec_b)``.
+    """Build ``n_batches`` of δ-shift consistency pairs ``(spec_a, spec_b)``.
 
     Each element is a pair of log-power spectrogram batches of shape
-    ``(batch_size, C, freq_bins, time_frames)`` built entirely from synthetic
-    sum-of-sinusoid raw signals via :func:`data.shift_pair_windows` — NO real data.
+    ``(batch_size, C, freq_bins, time_frames)``, made from synthetic sum-of-sinusoid
+    signals via :func:`data.shift_pair_windows`.
 
-    ``spec_a`` is the window ``[t0, t0+CHUNK_S]`` and ``spec_b`` the δ-shifted window
-    ``[t0+δ, t0+CHUNK_S+δ]`` of the same synthetic shot: same modes (statistic), different
-    sub-window realization. ``δ`` defaults to the midpoint of ``cfg.consistency_delta_ms``
-    (deterministic for the smoke test) unless ``delta_ms`` is given or ``None`` forces a
-    per-pair draw from the config range.
+    ``spec_a`` is the window ``[t0, t0 + CHUNK_S]`` and ``spec_b`` the δ-shifted window
+    ``[t0 + δ, t0 + CHUNK_S + δ]`` of the same shot: the same modes, a different
+    sub-window realization. δ is ``delta_ms`` if given, else the midpoint of
+    ``cfg.consistency_delta_ms``, which keeps the smoke test deterministic.
 
     Notes
     -----
-    * Each sample within a batch uses a slightly different mode set / start time so the
-      batch is not degenerate.
-    * The returned list is materialized (small, CPU-friendly) so callers can re-iterate it
-      as held-out eval data.
+    Each sample in a batch has a slightly different mode set and start time, so the
+    batch is not degenerate. The list is materialized, so callers can iterate it
+    again as held-out data.
     """
     gen = torch.Generator().manual_seed(seed)
     if base_freqs_hz is None:
@@ -156,12 +151,12 @@ def _consecutive_frame_sequence(
     noise_std: float = 0.01,
     seed: int = 123,
 ) -> torch.Tensor:
-    """A batch of consecutive world-model frames for persistence / forecastability.
+    """A batch of consecutive frames for persistence and forecastability.
 
-    Returns ``(batch_size, n_frames, C, freq_bins, time_frames)``. Consecutive frames come
-    from consecutive 50 ms windows of a synthetic shot whose mode frequencies **drift
-    slowly** across frames — a predictable transition the Markov probe should beat
-    persistence on (§4.4), while the shared structure keeps persistence meaningfully high.
+    Returns ``(batch_size, n_frames, C, freq_bins, time_frames)``. Frames are
+    consecutive 50 ms windows of a synthetic shot whose mode frequencies drift slowly,
+    a predictable transition on which the Markov probe should beat persistence
+    (§4.4), while the shared structure keeps persistence high.
     """
     gen = torch.Generator().manual_seed(seed)
     base_freqs = [40e3, 90e3, 150e3]
@@ -184,23 +179,19 @@ def _consecutive_frame_sequence(
     return torch.stack(seqs, dim=0).to(device)  # (B, n_frames, C, F, T)
 
 
-# ------------------------------------------------------------------------------------- #
-# real-data path (wires the existing HDF5 loader, read-only)
-# ------------------------------------------------------------------------------------- #
+# Real-data path (reads the existing HDF5 loader; data_loader.py is not modified)
 #
-# Integration facts (verified against real 200729 ece; see data.py integration note):
-#   * The loader class is ``TokamakH5Dataset`` (data_loader.py). One instance == one shot.
-#   * ``ds._load_signal_raw(ds.h5_file, cfg_sig, t_start, t_end) -> (raw (C,T), valid_len,
-#     nan_mask (C,T))`` returns raw samples ALREADY resampled to ``cfg_sig.target_fs``
-#     (500 kHz for ece == STFT_FS) and NaN/zero-filled. It's an internal (underscore) API
-#     that needs an OPEN h5py handle — we call ``ds._open_hdf5()`` first and pin the call.
-#   * For ece, ``channels_to_use=slice(0,40)`` so the raw output has C == 40 channels.
-#   * The loader zero-PADS windows past the real data end and reports ``valid_len`` = the
-#     number of real (non-padded) target-rate samples in the window. We guard on that.
-#
-# We do NOT modify data_loader.py. We only read ``_load_signal_raw`` + the ece SignalConfig.
+# - The loader class is ``TokamakH5Dataset`` (data_loader.py), one instance per shot.
+# - ``ds._load_signal_raw(ds.h5_file, cfg_sig, t_start, t_end)`` returns
+#   ``(raw (C, T), valid_len, nan_mask (C, T))``, already resampled to
+#   ``cfg_sig.target_fs`` (500 kHz for ece, equal to STFT_FS) and NaN/zero-filled.
+#   It is an internal API that needs an open h5py handle, so ``ds._open_hdf5()`` is
+#   called first.
+# - For ece ``channels_to_use=slice(0, 40)``, so the raw output has 40 channels.
+# - The loader zero-pads windows past the end of the data and reports in
+#   ``valid_len`` how many target-rate samples are real; windows are checked on it.
 
-# Default location of the preprocessed shot HDF5 files (see MEMORY / project notes).
+# Default directory of the preprocessed shot HDF5 files (a Frontier path).
 DEFAULT_DATA_DIR = "/lustre/orion/fus187/proj-shared/foundation_model"
 _ECE_SIGNAL_NAME = "ece"
 
@@ -260,12 +251,11 @@ def _load_raw_span(
     *,
     min_std: float,
 ) -> Optional[torch.Tensor]:
-    """Load a raw ece window ``[t0, t0 + span_s]`` at STFT_FS; None if it fails the guard.
+    """Load a raw ece window ``[t0, t0 + span_s]`` at STFT_FS; None if unusable.
 
-    Guards (skip → None):
-      * the window overruns the real (non-padded) data: ``valid_len`` must cover the whole
-        span in target-rate samples;
-      * the window is degenerate (all-NaN / all-zero / near-flat): ``std < min_std``.
+    Returns None when the window runs past the real (non-padded) data, i.e.
+    ``valid_len`` does not cover the span, when it holds non-finite values, or when
+    it is near-flat (``std < min_std``).
     """
     t_end = t0 + span_s
     raw, valid_len, _nan = ds._load_signal_raw(ds.h5_file, ece_cfg, t_start=t0, t_end=t_end)
@@ -293,51 +283,52 @@ def real_ece_batches(
     min_std: float = 1e-3,
     seed: int = 0,
 ) -> List[Tuple[torch.Tensor, torch.Tensor]]:
-    """Real ECE δ-shift consistency pairs from the existing HDF5 loader.
+    """Real ece δ-shift consistency pairs from the existing HDF5 loader.
 
-    Same structure as :func:`synthetic_batches`: a list of ``(spec_a, spec_b)`` log-power
-    spectrogram batches, each ``(batch_size, C, cfg.freq_bins, cfg.time_frames)``, where
-    ``spec_b`` is the δ-shifted nuisance pair of ``spec_a`` (via
-    :func:`data.shift_pair_windows`). ``C`` is the real ece channel count (40).
+    Same structure as :func:`synthetic_batches`: a list of ``(spec_a, spec_b)``
+    log-power spectrogram batches, each ``(batch_size, C, cfg.freq_bins,
+    cfg.time_frames)``, where ``spec_b`` is the δ-shifted pair of ``spec_a`` (via
+    :func:`data.shift_pair_windows`) and C is the ece channel count (40).
 
-    **Side effect (intended):** ``cfg.channels`` is set to the ece channel count actually
-    loaded (40), so the codec / discriminator built from ``cfg`` match the data.
+    Sets ``cfg.channels`` to the loaded ece channel count, so a codec and
+    discriminator built from ``cfg`` match the data.
 
     Parameters
     ----------
     cfg : SpectroCodecConfig
-        ``freq_bins`` / ``time_frames`` for the crop-pad; ``consistency_delta_ms`` for the
-        δ draw when ``delta_ms is None``. ``cfg.channels`` is OVERWRITTEN to 40.
+        ``freq_bins`` / ``time_frames`` for the crop-pad, ``consistency_delta_ms`` for
+        the δ draw when ``delta_ms`` is None. ``cfg.channels`` is set to 40.
     n_batches, batch_size : int
-        Number of held-out/train batches and pairs per batch.
+        Number of batches and pairs per batch.
     shots : sequence of shot ids, optional
-        Shots to draw windows from. Defaults to the first 8 auto-discovered shots in
-        ``data_dir`` (200729 is included explicitly first if present).
+        Shots to take windows from. Defaults to 8 shots found in ``data_dir``, with
+        200729 first if present.
     data_dir : path
-        Directory of ``{shot}_processed.h5`` files. Default = the training data dir.
-    device : str | torch.device
+        Directory of ``{shot}_processed.h5`` files.
+    device : str or torch.device
     delta_ms : float or None
-        Sub-window shift (ms). ``None`` → per-pair draw from ``cfg.consistency_delta_ms``.
+        Sub-window shift in ms; None draws one per pair from
+        ``cfg.consistency_delta_ms``.
     t0_start : float
-        First window start time (s). Default 1.0 s (skips ramp-up per the data-windowing
-        convention).
+        First window start in s. The default 1.0 s skips the ramp-up.
     t0_step : float
-        Advance between successive windows within a shot (s). Default = ``CHUNK_S`` (50 ms)
-        so windows are non-overlapping.
+        Step between windows within a shot in s. The default ``CHUNK_S`` (50 ms) makes
+        windows non-overlapping.
     min_std : float
         Minimum raw std for a window to count as non-degenerate.
     seed : int
-        Seeds the per-pair δ draw for reproducibility.
+        Seeds the per-pair δ draw.
 
     Returns
     -------
-    list of (spec_a, spec_b), each ``(batch_size, C=40, cfg.freq_bins, cfg.time_frames)``
-    float32 on ``device``.
+    list of (spec_a, spec_b)
+        Each ``(batch_size, 40, cfg.freq_bins, cfg.time_frames)``, float32 on
+        ``device``.
 
     Raises
     ------
     RuntimeError
-        If not enough valid windows can be found to fill ``n_batches * batch_size`` pairs.
+        If there are not enough valid windows for ``n_batches * batch_size`` pairs.
     """
     channels = _fill_and_get_channels(cfg)
     n_needed = n_batches * batch_size
@@ -409,19 +400,18 @@ def real_frame_sequence(
     t0_start: float = 1.0,
     min_std: float = 1e-3,
 ) -> torch.Tensor:
-    """Consecutive-frame ece sequence for persistence / forecastability.
+    """Consecutive-frame ece sequences for persistence and forecastability.
 
-    Returns ``(batch_size, n_frames, C=40, cfg.freq_bins, cfg.time_frames)``: for each
-    sample, ``n_frames`` CONSECUTIVE 50 ms (== ``CHUNK_S``) windows of a real shot, each
-    STFT'd to log-power via :func:`data.log_power_stft`. This is the material the trainer
-    encodes into the ``(B, n_frames, n_tok, fsq_dim)`` code sequence that
-    ``gate.forecastability`` / ``gate.persistence`` consume.
+    Returns ``(batch_size, n_frames, 40, cfg.freq_bins, cfg.time_frames)``: per
+    sample, ``n_frames`` consecutive 50 ms (``CHUNK_S``) windows of a real shot, each
+    turned into log-power by :func:`data.log_power_stft`. The trainer encodes this into
+    the ``(B, n_frames, n_tok, fsq_dim)`` codes that ``gate.forecastability`` and
+    ``gate.persistence`` take.
 
-    A sequence sample is accepted only if ALL ``n_frames`` consecutive windows are valid
-    (real, non-degenerate). Sequences are gathered by scanning shots and stepping the start
-    time by ``n_frames * CHUNK_S`` (non-overlapping sequence blocks).
+    A sequence is kept only if all its windows are valid. Shots are scanned with the
+    start time stepping by ``n_frames * CHUNK_S``, so sequences do not overlap.
 
-    **Side effect (intended):** sets ``cfg.channels`` to 40 (as :func:`real_ece_batches`).
+    Like :func:`real_ece_batches`, sets ``cfg.channels`` to 40.
     """
     channels = _fill_and_get_channels(cfg)
     seq_span_s = n_frames * CHUNK_S
@@ -465,7 +455,7 @@ def real_frame_sequence(
     return torch.stack(seqs, dim=0).to(device)  # (B, n_frames, C, F, T)
 
 
-# --- small helpers shared by the two real-data builders ------------------------------- #
+# Helpers shared by the two real-data builders
 def _fill_and_get_channels(cfg: SpectroCodecConfig) -> int:
     """Open a throwaway ece config to learn the real channel count, set cfg.channels."""
     channels = _ECE_CHANNELS_CACHE.get("n")
@@ -528,80 +518,78 @@ def _close_dataset(ds) -> None:
         ds.h5_file = None
 
 
-# ------------------------------------------------------------------------------------- #
-# best-checkpoint selection (composite gate score) + optional EMA of codec params
-# ------------------------------------------------------------------------------------- #
-# Default reconstruction floor for gate-score disqualification. Mirrors
-# ``SpectroCodecConfig.gate_recon_floor``; used when ``gate_score`` is called without an
-# explicit floor (e.g. minimal unit-test gate dicts). Callers with a cfg in scope pass
-# ``cfg.gate_recon_floor`` so the config remains the single source of truth.
+# Best-checkpoint selection (composite gate score) and an optional EMA of the codec
+
+# Default reconstruction floor for disqualification; mirrors
+# ``SpectroCodecConfig.gate_recon_floor``. Used when ``gate_score`` gets no explicit
+# floor (e.g. in unit tests); callers with a cfg pass ``cfg.gate_recon_floor``.
 DEFAULT_RECON_FLOOR: float = 0.2
 
 
 def gate_score(gate_dict: Dict[str, object], recon_floor: float = DEFAULT_RECON_FLOOR,
                hard_min_codes: int = 8) -> float:
-    """Composite selection score for a gate eval; higher is better.
+    """Composite selection score for a gate evaluation; higher is better.
 
-    The score judges **reconstruction + forecastability + utilization** — NOT raw per-dim
-    codebook entropy. A well-reconstructing codec that happens to have one dead FSQ dim (the
-    classic large-codebook artifact: ``min_dim_entropy = 0``) is a GOOD codec and must be
-    selectable; only a codec that genuinely fails to reconstruct is disqualified.
+    The score judges reconstruction, forecastability and utilization, not per-dim
+    codebook entropy. A codec that reconstructs well but has one dead FSQ dimension
+    (common with large codebooks: ``min_dim_entropy = 0``) is a good codec and stays
+    selectable.
 
-    HARD DISQUALIFICATION (``score = -inf``) applies ONLY when reconstruction genuinely
-    fails — ``decode["envelope_corr"]`` is NaN (e.g. co2's dead 1-code codec, whose flat
-    envelope makes the correlation undefined) or below ``recon_floor``. The dim-entropy /
-    ``collapsed`` flag is NO LONGER a hard gate (that wrongly rejected ece/bes at
-    env_corr≈0.84); it survives only as a soft utilization reward below.
+    The score is ``-inf`` (disqualified) only when reconstruction fails, i.e.
+    ``decode["envelope_corr"]`` is NaN (a one-code codec has a flat envelope) or
+    below ``recon_floor``, or when fewer than ``hard_min_codes`` distinct codes are
+    used. The ``collapsed`` flag is not a hard gate, since it rejected codecs that
+    reconstructed well (envelope_corr about 0.84); utilization enters only as a soft
+    reward.
 
-    For codecs above the recon floor the finite score is a documented weighted sum of
-    clamped, [0, 1]-normalized sub-metrics::
+    Otherwise the score is a weighted sum of sub-metrics clamped to [0, 1]::
 
-        recon   = clamp(envelope_corr, 0, 1)                     # reconstruction quality
-        f1      = clamp(peak_f1, 0, 1)                           # mode-overlap quality
-        fcast   = clamp(margin_transition / MARGIN_SCALE, 0, 1)  # forecastability (skill)
+        recon   = clamp(envelope_corr, 0, 1)
+        f1      = clamp(peak_f1, 0, 1)
+        fcast   = clamp(margin_transition / MARGIN_SCALE, 0, 1)
         util    = 0.5 * clamp(min_dim_entropy, 0, 1)
-                + 0.5 * clamp(frac_of_observable, 0, 1)          # SOFT utilization reward
+                + 0.5 * clamp(frac_of_observable, 0, 1)
 
         score   = W_RECON * recon + W_F1 * f1 + W_FCAST * fcast + W_UTIL * util
 
-    with weights ``(W_RECON, W_F1, W_FCAST, W_UTIL) = (1.0, 1.0, 1.0, 0.5)`` and
-    ``MARGIN_SCALE = 0.1`` (a per-position mean log-lik margin of ~0.1 is a strong probe
-    win, so it maps to a full point of forecast reward). All four terms are in a comparable
-    [0, ~1] range so the weighted sum is a reasonable single-number proxy. Among
-    reconstructing codecs, the best-utilized + most-forecastable wins — so after
-    right-sizing the codebook the well-utilized codec is preferred. Revisit the weighting if
-    one term starts to dominate selection in practice.
+    with ``(W_RECON, W_F1, W_FCAST, W_UTIL) = (1.0, 1.0, 1.0, 0.5)`` and
+    ``MARGIN_SCALE = 0.1``: a per-position mean log-likelihood margin of 0.1 is a
+    strong probe win and earns the full forecast point. Revisit the weights if one
+    term starts to dominate selection.
 
-    Args:
-        gate_dict:   a gate dict as produced by :func:`compute_gate` (keys ``forecastability``,
-                     ``decode``, ``utilization``).
-        recon_floor: envelope_corr disqualification floor. Defaults to
-                     :data:`DEFAULT_RECON_FLOOR`; callers with a cfg pass
-                     ``cfg.gate_recon_floor``.
+    Parameters
+    ----------
+    gate_dict : dict
+        As produced by :func:`compute_gate` (keys ``forecastability``, ``decode``,
+        ``utilization``).
+    recon_floor : float
+        ``envelope_corr`` disqualification floor. Callers with a cfg pass
+        ``cfg.gate_recon_floor``.
+    hard_min_codes : int
+        Minimum number of distinct codes; fewer disqualifies the evaluation.
     """
     fc = gate_dict["forecastability"]  # type: ignore[index]
     dec = gate_dict["decode"]  # type: ignore[index]
     ut = gate_dict["utilization"]  # type: ignore[index]
 
-    # --- hard disqualification: reconstruction genuinely failed --------------------------
+    # Hard disqualification: reconstruction failed
     env_corr = float(dec["envelope_corr"])  # type: ignore[index]
     if math.isnan(env_corr) or env_corr < recon_floor:
         return float("-inf")
 
-    # --- hard disqualification: TERMINAL code collapse (2026-08-03) ----------------------
-    # A collapsing codec can keep reconstructing through decoder pos-emb alone (measured:
-    # co2 v5 at ~25 codes and falling still decoded at corr 0.78, job 5147855), so the
-    # recon floor never fires and best.pt tracks the collapse. The floor is on the
-    # ABSOLUTE distinct-code count — the 0.02 frac flag is miscalibrated for 64k
-    # codebooks (2% = 1280 codes would disqualify every healthy fsq6 checkpoint). The
-    # default 8 sits below every healthy observation (mhr's gate-overfit used 10) and
-    # above the terminal 1-code state. Applied only when the utilization dict carries
-    # ``n_distinct_codes`` (older/foreign gate dicts are unaffected).
+    # Hard disqualification: terminal code collapse. A collapsing codec can keep
+    # reconstructing through the decoder's position embeddings alone (co2 at about 25
+    # codes still decoded at corr 0.78), so the recon floor never fires. The floor is
+    # on the absolute distinct-code count, because the 0.02 fraction flag is wrong for
+    # 64k codebooks (2% = 1280 codes would reject every healthy fsq6 checkpoint). The
+    # default 8 is below every healthy codec seen (the smallest used 10) and above the
+    # terminal one-code state. It applies only when the utilization dict carries
+    # ``n_distinct_codes``.
     n_codes = ut.get("n_distinct_codes") if isinstance(ut, dict) else None  # type: ignore[union-attr]
     if n_codes is not None and int(n_codes) < int(hard_min_codes):
         return float("-inf")
 
-    # --- soft, clamped/normalized sub-metrics (all in ~[0, 1]) ---------------------------
+    # Soft sub-metrics, clamped to [0, 1]
     def _clamp01(v: float) -> float:
         if math.isnan(v):
             return 0.0
@@ -613,8 +601,8 @@ def gate_score(gate_dict: Dict[str, object], recon_floor: float = DEFAULT_RECON_
     recon = _clamp01(env_corr)
     f1 = _clamp01(float(dec["peak_f1"]))  # type: ignore[index]
     fcast = _clamp01(float(fc["margin_transition"]) / MARGIN_SCALE)  # type: ignore[index]
-    # utilization is a SOFT reward (never a hard gate): mean of per-dim entropy + the
-    # eval-size-relative observable fraction. Missing keys default to 0 (no reward).
+    # Utilization is a soft reward: mean of the per-dim entropy and the observable
+    # fraction. Missing keys count as 0.
     min_dim_entropy = _clamp01(float(ut.get("min_dim_entropy", 0.0)))  # type: ignore[union-attr]
     frac_obs = _clamp01(float(ut.get("frac_of_observable", 0.0)))  # type: ignore[union-attr]
     util = 0.5 * min_dim_entropy + 0.5 * frac_obs
@@ -623,12 +611,11 @@ def gate_score(gate_dict: Dict[str, object], recon_floor: float = DEFAULT_RECON_
 
 
 class _EMA:
-    """Cheap exponential-moving-average shadow of a module's parameters.
+    """Exponential moving average of a module's state_dict.
 
-    Maintains a detached CPU/-device shadow ``dict[name -> tensor]`` of the codec's params
-    (float tensors EMA'd; non-float buffers/params copied as-is). ``update`` is O(#params)
-    per step; ``state_dict`` returns the shadow merged over the live state so it is a
-    drop-in weight set for :meth:`SpectroCodec.load_state_dict`.
+    Float tensors are averaged; non-float buffers (e.g. ``num_batches_tracked``) are
+    copied. ``state_dict`` returns a copy of the shadow, usable directly with
+    :meth:`SpectroCodec.load_state_dict`.
     """
 
     def __init__(self, module: torch.nn.Module, decay: float) -> None:
@@ -658,9 +645,7 @@ class _EMA:
         return {name: t.detach().clone() for name, t in self.shadow.items()}
 
 
-# ------------------------------------------------------------------------------------- #
-# gate evaluation
-# ------------------------------------------------------------------------------------- #
+# Gate evaluation
 @torch.no_grad()
 def compute_gate(
     codec: SpectroCodec,
@@ -668,52 +653,47 @@ def compute_gate(
     frame_seq: torch.Tensor,
     cfg: SpectroCodecConfig,
 ) -> Dict[str, object]:
-    """Compute the four §4.4 gate quantities on held-out data.
+    """Compute the §4.4 gate quantities on held-out data.
 
     Parameters
     ----------
     codec : SpectroCodec
-        The (partially) trained codec.
+        The codec being trained.
     eval_pairs : list of (spec_a, spec_b) or (spec_a, spec_b, mask)
-        Held-out δ-shift pairs; used for **stability** (codes of a vs b) and
-        **decode_fidelity** (recon of a vs a). A third element, when present, is the
-        ``(B, C, T)`` per-(channel, STFT-frame) validity mask for ``spec_a`` (built by
-        ``data.spectro_frame_mask`` when ``cfg.mask_missing`` is set) and is forwarded to
-        ``gate.decode_fidelity``, so every reconstruction statistic AND every trivial
-        baseline is taken over real diagnostic data only. A 2-element pair passes ``None``
-        and the gate is byte-identical to the pre-2026-09-03 one.
-    frame_seq : (B, n_frames, C, F, T)
-        Consecutive world-model frames; used for **persistence** (frame t vs t+1) and
-        **forecastability** (whole sequence of codes).
+        Held-out δ-shift pairs, used for stability (codes of a against b) and decode
+        fidelity (recon of a against a). The optional third element is the (B, C, T)
+        per-(channel, STFT frame) validity mask of ``spec_a``
+        (``data.spectro_frame_mask``, when ``cfg.mask_missing`` is set). It is passed
+        to ``gate.decode_fidelity``, so the reconstruction statistics and baselines
+        use real data only.
+    frame_seq : tensor of shape (B, n_frames, C, F, T)
+        Consecutive frames, used for persistence (frame 0 against 1) and
+        forecastability (the whole code sequence).
     cfg : SpectroCodecConfig
 
     Returns
     -------
-    dict with keys ``stability`` (float), ``persistence`` (float),
-    ``forecastability`` (dict), ``decode`` (dict), ``utilization`` (dict — codebook
-    usage / collapse detector), plus the mandate booleans ``pass_stability`` /
-    ``pass_persistence`` / ``pass_utilization``.
+    dict
+        ``stability`` and ``persistence`` (floats), ``forecastability``, ``decode``
+        and ``utilization`` (dicts), and the pass flags ``pass_stability``,
+        ``pass_persistence`` and ``pass_utilization``.
     """
     was_training = codec.training
     codec.eval()
 
-    # --- stability + decode on the held-out δ-pairs -----------------------------------
+    # Stability and decode fidelity on the held-out δ-pairs
     stab_vals: List[float] = []
     dec_corr: List[float] = []
     dec_f1: List[float] = []
     dec_sharp: List[float] = []
-    # PATCH-LATTICE (checkerboard / patch-seam) artifact keys — reported for the recon AND
-    # for the ground-truth control (``target_*``). Informational only: gate_score does not
-    # read them, so best-ckpt selection is byte-identical to before.
+    # Patch-lattice keys, for the recon and the ground-truth control (``target_*``).
+    # gate_score does not read them.
     _lat_keys = (
         "patch_lattice_ratio", "lattice_energy_frac", "seam_ratio_freq", "seam_ratio_time",
     )
-    # FULL-SPECTROGRAM reconstruction keys (gate.full_spectro_metrics + its trivial
-    # baselines) — the only metrics in the decode dict that compare the spectrogram to the
-    # spectrogram; envelope_corr / peak_f1 average the whole time axis away first and
-    # sharpness is a scalar HF ratio dominated by the patch lattice. Carried in every
-    # gate_*.json from now on, but — exactly like the lattice keys — gate_score does NOT
-    # read them, so best-checkpoint selection is bit-identical to before.
+    # Full-spectrogram keys (gate.full_spectro_metrics and its trivial baselines), the
+    # only decode keys that compare the whole arrays. gate_score does not read them
+    # either, so checkpoint selection does not depend on them.
     _full_keys = ("spec_nrmse", "spec_corr2d", "spec_valid_frac",
                   "spec_nrmse_band", "spec_corr2d_band")
     _base_keys = tuple(
@@ -752,7 +732,7 @@ def compute_gate(
     for k, v in dec_lat.items():
         decode[k] = float(sum(v) / len(v))
 
-    # --- persistence + forecastability on the consecutive-frame sequence --------------
+    # Persistence and forecastability on the consecutive-frame sequence
     B, n_frames = frame_seq.shape[0], frame_seq.shape[1]
     # encode every frame -> (B, n_frames, n_tok, fsq_dim) codes
     flat = frame_seq.reshape(B * n_frames, *frame_seq.shape[2:])  # (B*Fr, C, F, T)
@@ -762,7 +742,7 @@ def compute_gate(
     # persistence over the first consecutive step (frame 0 -> frame 1)
     persistence_val = gate.persistence(codes_seq[:, 0], codes_seq[:, 1])
 
-    # forecastability over the full sequence; DEFAULT code-derived transition split
+    # Forecastability over the full sequence, with the default code-derived split
     forecast = gate.forecastability(codes_seq, transition_mask=None)
 
     # codebook utilization / collapse detection over the full eval code set (all frames).
@@ -792,7 +772,7 @@ def _fmt_gate(step: int, g: Dict[str, object]) -> str:
         f"stab={g['stability']:.3f}({'ok' if g['pass_stability'] else 'x'}) "
         f"persist={g['persistence']:.3f}({'ok' if g['pass_persistence'] else 'x'}) "
         f"util[frac={ut['frac_codes_used']:.4f} "  # type: ignore[index]
-        # .get: synthetic / older gate dicts need not carry the count + joint-entropy fields.
+        # .get: synthetic or older gate dicts may lack the count and entropy fields.
         f"ncode={ut.get('n_distinct_codes', '?')}/{ut.get('codebook_size', '?')} "  # type: ignore[union-attr]
         f"eff={ut.get('effective_codes', float('nan')):.1f} "  # type: ignore[union-attr]
         f"minH={ut['min_dim_entropy']:.3f}]"  # type: ignore[index]
@@ -802,13 +782,13 @@ def _fmt_gate(step: int, g: Dict[str, object]) -> str:
         f"decode[corr={dec['envelope_corr']:.3f} "  # type: ignore[index]
         f"f1={dec['peak_f1']:.3f} "  # type: ignore[index]
         f"sharp={dec['sharpness']:.3f}"  # type: ignore[index]
-        # patch-lattice (checkerboard) artifact: recon value / ground-truth control.
-        # .get so synthetic / older gate dicts (which carry no patch size) still format.
+        # Patch-lattice ratio, recon / ground-truth control. Synthetic or older gate
+        # dicts carry no patch size, hence .get.
         + (f" lattice={dec.get('patch_lattice_ratio', float('nan')):.2f}"  # type: ignore[union-attr]
            f"/gt{dec.get('target_patch_lattice_ratio', float('nan')):.2f}"  # type: ignore[union-attr]
            if "patch_lattice_ratio" in dec else "")  # type: ignore[operator]
-        # FULL-spectrogram recon (nothing collapsed), printed beside the time-averaged
-        # env_corr above; /tm = the trivial time-mean-envelope baseline in the same units.
+        # Full-spectrogram recon beside the time-averaged env_corr; /tm is the
+        # time-mean-envelope baseline in the same units.
         + (f" nrmse={dec.get('spec_nrmse', float('nan')):.3f}"  # type: ignore[union-attr]
            f"/tm{dec.get('base_tmean_spec_nrmse', float('nan')):.3f}"  # type: ignore[union-attr]
            f" corr2d={dec.get('spec_corr2d', float('nan')):.3f}"  # type: ignore[union-attr]
@@ -818,11 +798,10 @@ def _fmt_gate(step: int, g: Dict[str, object]) -> str:
     )
 
 
-# ------------------------------------------------------------------------------------- #
-# DDP-safe divergence guard (shared by every adversarial codec train step)
-# ------------------------------------------------------------------------------------- #
-# Running count of skipped optimizer steps (across ALL codecs in this process). Rank-0 logs
-# it so a firing guard is visible in the .err trace. Reset with :func:`reset_skipped_steps`.
+# Divergence guard shared by every adversarial codec train step, safe under DDP
+
+# Skipped optimizer steps in this process, across all codecs. Rank 0 logs it so a
+# firing guard shows in the .err log. Reset with :func:`reset_skipped_steps`.
 _SKIPPED_STEPS: int = 0
 
 
@@ -838,23 +817,20 @@ def skipped_steps() -> int:
 
 
 def is_step_diverged(*losses: torch.Tensor) -> bool:
-    """Collective-safe test: should EVERY rank skip this optimizer step?
+    """Whether every rank should skip this optimizer step.
 
-    A codec that collapses (co2 / video, 2026-07) drives the adaptive adversarial weight and
-    the generator loss to Inf/NaN on ONE rank; if that rank silently corrupts its params while
-    the others step cleanly, the ranks desync and the next collective hits the NCCL watchdog ->
-    SIGTERM (exit 143). This guard makes the skip decision IDENTICAL on all ranks:
+    A collapsing codec can drive the adaptive adversarial weight and the generator
+    loss to Inf/NaN on one rank. If that rank corrupts its parameters while the
+    others step, the ranks desync and the next collective hits the NCCL watchdog
+    (SIGTERM, exit 143). The decision is therefore made identical on all ranks: the
+    local flag is 1 if any of ``losses`` is non-finite, and under DDP it is
+    all-reduced with MAX, so if any rank is bad all ranks return True. Without DDP
+    the local flag is returned.
 
-    * local bad-flag = 1.0 if ANY of ``losses`` is non-finite on THIS rank, else 0.0;
-    * under DDP (``dist.is_initialized()`` and ``world_size > 1``): ``all_reduce(MAX)`` the flag
-      so every rank sees the SAME value — if ANY rank is bad, ALL ranks return True and skip;
-    * non-distributed (``world_size == 1``): just the local flag.
-
-    IMPORTANT: this only gates ``optimizer.step()``. The caller must still run ``backward()``
-    (and thus the gradient all-reduce) UNIFORMLY on every rank before calling this; only the
-    parameter update is conditionally + uniformly skipped, so the collective stays symmetric.
-
-    When True, the caller also bumps the skipped-step counter via :func:`note_skipped_step`.
+    This gates only ``optimizer.step()``. The caller must still run ``backward()``
+    (and so the gradient all-reduce) on every rank before calling it, so the
+    collectives stay symmetric. On True the caller also calls
+    :func:`note_skipped_step`.
     """
     local_bad = 0.0
     for loss in losses:
@@ -882,10 +858,8 @@ def note_skipped_step() -> None:
     _SKIPPED_STEPS += 1
 
 
-# ------------------------------------------------------------------------------------- #
-# shared per-step generator/discriminator alternation (reused by run_spike AND the
-# streaming DDP trainer in train_codec.py)
-# ------------------------------------------------------------------------------------- #
+# One generator/discriminator step, shared by run_spike and the streaming DDP
+# trainer in train_codec.py
 def codec_train_step(
     codec: "SpectroCodec",
     disc: "FreqAwarePatchGAN",
@@ -896,53 +870,57 @@ def codec_train_step(
     cfg: SpectroCodecConfig,
     step: int,
 ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor]:
-    """ONE generator+discriminator alternation step on a δ-shift pair.
+    """One generator plus discriminator step on a δ-shift pair.
 
-    This is the SINGLE source of truth for the per-step training math shared by
-    :func:`run_spike` (fixed pre-built pool, 1-GPU) and the streaming DDP trainer
-    (:mod:`train_codec`). It performs, in order:
+    Shared by :func:`run_spike` (fixed pre-built pool, one GPU) and the streaming DDP
+    trainer (:mod:`train_codec`), so both use the same per-step math:
 
-      1. **generator (codec) step** — ``codec.generator_losses(spec_a, spec_b, disc, cfg,
-         step)``; backprop ``total`` into the codec; ``opt_g.step()``;
-      2. **discriminator step** — a fresh, *detached* recon of ``spec_a``, scored against
-         the real ``spec_a`` via :func:`losses.discriminator_loss`; ``opt_d.step()``.
+    1. Generator (codec) step: ``codec.generator_losses(spec_a, spec_b, disc, cfg,
+       step)``, backward on ``total``, ``opt_g.step()``.
+    2. Discriminator step: a fresh, detached recon of ``spec_a`` scored against the
+       real ``spec_a`` by :func:`losses.discriminator_loss`, ``opt_d.step()``.
 
-    ``codec`` / ``disc`` may be raw modules OR DDP-wrapped: ``generator_losses`` is a method
-    on ``SpectroCodec``, so under DDP pass the *unwrapped* codec here for the generator loss
-    but the *wrapped* module for the forward that DDP must hook. The DDP trainer handles that
-    by calling ``codec(spec_a)`` through the wrapper inside ``generator_losses`` — see
-    :mod:`train_codec` for how it composes this. For the 1-GPU path both are raw modules.
+    ``codec`` and ``disc`` may be raw modules or DDP-wrapped. ``generator_losses`` is
+    a ``SpectroCodec`` method; under DDP the trainer calls ``codec(spec_a)`` through
+    the wrapper inside ``generator_losses`` so DDP sees the forward (see
+    :mod:`train_codec`). On one GPU both are raw modules.
 
     Parameters
     ----------
-    codec, disc : the codec (generator) and external discriminator (raw or DDP-wrapped).
-    opt_g, opt_d : their Adam optimizers.
-    spec_a, spec_b : (B, C, F, T) δ-shift pair already on the target device.
-    cfg : SpectroCodecConfig.
-    step : int — global step (drives ``cfg.adv_warmup_steps``).
+    codec, disc : nn.Module
+        The codec (generator) and the external discriminator, raw or DDP-wrapped.
+    opt_g, opt_d : torch.optim.Optimizer
+        Their Adam optimizers.
+    spec_a, spec_b : tensor of shape (B, C, F, T)
+        δ-shift pair, already on the target device.
+    cfg : SpectroCodecConfig
+    step : int
+        Global step (drives ``cfg.adv_warmup_steps``).
 
     Returns
     -------
-    (g_terms, d_loss)
-        ``g_terms`` is the dict from :meth:`SpectroCodec.generator_losses` (keys include
-        ``total`` / ``adversarial`` / ``pixel`` / ``consistency`` / ``entropy`` /
-        ``adaptive_weight`` / ``recon`` / ``codes``); ``d_loss`` is the scalar discriminator
-        loss tensor. Both are LIVE tensors for the caller to ``.detach()`` when logging.
+    g_terms : dict
+        From :meth:`SpectroCodec.generator_losses` (``total``, ``adversarial``,
+        ``pixel``, ``consistency``, ``entropy``, ``adaptive_weight``, ``recon``,
+        ``codes``, ...).
+    d_loss : tensor
+        Scalar discriminator loss. Both outputs are live tensors; detach them for
+        logging.
     """
     codec.train()
 
-    # ---- generator (codec) step ----
+    # Generator (codec) step
     opt_g.zero_grad(set_to_none=True)
     g_terms = codec.generator_losses(spec_a, spec_b, disc, cfg, step=step)
     g_terms["total"].backward()
-    # DDP-safe divergence guard: backward (+ its grad all-reduce) already ran uniformly; only
-    # opt_g.step() is conditionally + UNIFORMLY skipped so a collapsing codec can't desync DDP.
+    # backward and its gradient all-reduce already ran on every rank; only the step
+    # is skipped, on all ranks alike, so a collapsing codec cannot desync DDP.
     if is_step_diverged(g_terms["total"]):
         note_skipped_step()
     else:
         opt_g.step()
 
-    # ---- discriminator step (fresh recon, detached from the codec graph) ----
+    # Discriminator step on a fresh recon, detached from the codec graph
     opt_d.zero_grad(set_to_none=True)
     with torch.no_grad():
         recon = codec.forward(spec_a)["recon"]
@@ -956,9 +934,7 @@ def codec_train_step(
     return g_terms, d_loss
 
 
-# ------------------------------------------------------------------------------------- #
-# the spike
-# ------------------------------------------------------------------------------------- #
+# The spike
 def run_spike(
     cfg: SpectroCodecConfig,
     batches: List[Tuple[torch.Tensor, torch.Tensor]],
@@ -985,62 +961,60 @@ def run_spike(
     on_ema: Optional[Callable[[int, Dict[str, torch.Tensor],
                                Dict[str, object]], None]] = None,
 ) -> Dict[str, object]:
-    """Train the codec with GAN alternation on ``batches``; gate every ``eval_every`` steps.
+    """Train the codec with GAN alternation on ``batches``; gate every ``eval_every``.
 
     Parameters
     ----------
     cfg : SpectroCodecConfig
     batches : list of (spec_a, spec_b)
-        δ-shift training pairs (see :func:`synthetic_batches`). Cycled if ``steps`` exceeds
-        ``len(batches)``. ``spec_a`` is both the recon target and the code source; ``spec_b``
-        is its δ-shifted nuisance pair for the consistency term.
+        δ-shift training pairs (see :func:`synthetic_batches`), cycled if ``steps``
+        exceeds ``len(batches)``. ``spec_a`` is the recon target and the code source;
+        ``spec_b`` is its δ-shifted pair for the consistency term.
     steps : int
-        Number of generator/discriminator alternation steps.
-    device : str | torch.device
+        Number of generator/discriminator steps.
+    device : str or torch.device
     eval_every : int
-        Compute + log the gate every this many steps (and always after the last step).
+        Compute and log the gate every this many steps, and after the last step.
     lr, disc_lr : float
-        Adam learning rates for the codec (generator) and discriminator
-        (``disc_lr`` defaults to ``lr``).
-    eval_pairs : optional held-out δ-pairs for the gate. Built synthetically if None.
-    frame_seq : optional held-out consecutive-frame sequence for persistence /
-        forecastability. Built synthetically if None.
-    eval_batch_size, eval_frames : sizes for the auto-built held-out eval data.
+        Adam learning rates of the codec and the discriminator (``disc_lr``
+        defaults to ``lr``).
+    eval_pairs : list, optional
+        Held-out δ-pairs for the gate; built synthetically if None.
+    frame_seq : tensor, optional
+        Held-out consecutive-frame sequence for persistence and forecastability;
+        built synthetically if None.
+    eval_batch_size, eval_frames : int
+        Sizes of the synthetic held-out data.
     log_fn : callable(str) or None
-        Per-eval logger (default ``print``); pass ``None`` to silence.
+        Per-evaluation logger (default ``print``); None silences it.
+    seed : int
     resume_state : dict or None
-        Optional checkpoint (as written by the CLI ``main``) to warm-start from. Keys used:
-        ``codec`` / ``disc`` / ``opt_g`` / ``opt_d`` state_dicts and ``step`` (the number of
-        steps ALREADY completed). Training then runs for ``steps`` MORE steps, and the
-        global step numbers logged / passed to ``on_eval`` continue from ``resume_state``.
-        This is a warm-start hook only — it does not change the training math.
+        Checkpoint written by the CLI ``main`` to warm-start from: ``codec``,
+        ``disc``, ``opt_g`` and ``opt_d`` state_dicts and ``step``, the number of
+        steps already done. Training then runs ``steps`` more steps, and the global
+        step numbers continue from there.
     on_eval : callable(step, codec, opt_g, opt_d, disc, gate_dict) or None
-        Called at every gate evaluation (and after the last step) so the CLI can persist a
-        ``gate_<step>.json`` and a ``codec_last.pt`` checkpoint. ``step`` is the global step.
-        The ``gate_dict`` handed in additionally carries a ``score`` key (the composite
-        :func:`gate_score`, ``-inf`` only when reconstruction fails) and an ``is_best`` flag.
+        Called at every gate evaluation so the CLI can write ``gate_<step>.json`` and
+        ``codec_last.pt``. ``step`` is the global step; ``gate_dict`` also carries
+        ``score`` (:func:`gate_score`) and ``is_best``.
     ema : bool
-        If True, maintain an exponential-moving-average shadow of the CODEC parameters
-        (updated every training step) and expose it to ``on_ema`` at each eval. Cheap: a
-        detached shadow param dict. Default off.
+        Keep an exponential moving average of the codec parameters, updated every
+        step, and pass it to ``on_ema`` at each evaluation.
     ema_decay : float
-        EMA decay in [0, 1); default 0.999.
+        EMA decay in [0, 1).
     on_best : callable(step, codec, disc, gate_dict) or None
-        Called ONLY when the composite :func:`gate_score` strictly improves on the best seen
-        so far (a recon-failed eval, score ``-inf``, never becomes best). Lets the CLI persist
-        a ``codec_best.pt`` frozen at the best eval. ``gate_dict`` carries ``score``/``is_best``.
+        Called only when :func:`gate_score` strictly improves on the best so far (a
+        ``-inf`` score never becomes best), so the CLI can write ``codec_best.pt``.
     on_ema : callable(step, ema_state_dict, gate_dict) or None
-        Called at each eval when ``ema`` is True, with the current EMA weight state_dict, so
-        the CLI can persist ``codec_ema.pt``.
+        Called at each evaluation when ``ema`` is set, so the CLI can write
+        ``codec_ema.pt``.
 
     Returns
     -------
-    The final gate dict from :func:`compute_gate` (keys: ``stability``, ``persistence``,
-    ``forecastability``, ``decode``, ``utilization``, ``pass_stability``,
-    ``pass_persistence``, ``pass_utilization``), with an extra ``steps`` key recording how
-    many steps were run and a ``global_step`` key giving the last global step number
-    (== ``start_step + steps``). Also carries ``best_score`` / ``best_step`` (the composite
-    score and global step of the best eval, ``None``/``-inf`` if every eval failed recon).
+    dict
+        The last gate dict from :func:`compute_gate`, plus ``steps`` (steps run),
+        ``global_step`` (``start_step + steps``), and ``best_score`` / ``best_step``
+        (``-inf`` / None if every evaluation failed reconstruction).
     """
     if steps < 1:
         raise ValueError("run_spike: steps must be >= 1")
@@ -1056,7 +1030,7 @@ def run_spike(
     opt_g = torch.optim.Adam(codec.parameters(), lr=lr)
     opt_d = torch.optim.Adam(disc.parameters(), lr=disc_lr if disc_lr is not None else lr)
 
-    # optional warm-start (additive; does not alter the training math below)
+    # Optional warm start
     start_step = 0
     if resume_state is not None:
         codec.load_state_dict(resume_state["codec"])
@@ -1068,14 +1042,14 @@ def run_spike(
             opt_d.load_state_dict(resume_state["opt_d"])
         start_step = int(resume_state.get("step", 0))
 
-    # optional EMA shadow of the codec params (built AFTER any warm-start load).
+    # EMA shadow of the codec params, built after any warm-start load
     ema_shadow: Optional[_EMA] = _EMA(codec, ema_decay) if ema else None
 
     # best-checkpoint tracking (composite gate score; higher is better).
     best_score = float("-inf")
     best_step: Optional[int] = None
 
-    # held-out eval data (never trained on) — moved to device to keep run_spike device-correct
+    # Held-out eval data (never trained on), moved to the device
     if eval_pairs is None:
         eval_pairs = synthetic_batches(
             cfg, n_batches=1, batch_size=eval_batch_size, device=device, seed=seed + 777
@@ -1097,12 +1071,12 @@ def run_spike(
         spec_a = spec_a.to(device)
         spec_b = spec_b.to(device)
 
-        # ---- one generator+discriminator alternation step (shared per-step math) ----
+        # One generator + discriminator step
         g_terms, d_loss = codec_train_step(
             codec, disc, opt_g, opt_d, spec_a, spec_b, cfg, step=step
         )
 
-        # ---- EMA shadow update (every step; cheap) ----
+        # EMA update, every step
         if ema_shadow is not None:
             ema_shadow.update(codec)
 
@@ -1114,8 +1088,8 @@ def run_spike(
             g["adaptive_weight"] = float(g_terms["adaptive_weight"])
             g["step"] = step
 
-            # composite selection score (-inf ONLY if reconstruction fails; utilization is
-            # a soft reward, not a hard gate — see gate_score docstring).
+            # Composite selection score; -inf only if reconstruction fails (see
+            # gate_score).
             score = gate_score(g, recon_floor=cfg.gate_recon_floor, hard_min_codes=getattr(cfg, "gate_hard_min_codes", 8))
             g["score"] = score
             is_best = score > best_score
@@ -1148,9 +1122,7 @@ def run_spike(
     return final_gate
 
 
-# ------------------------------------------------------------------------------------- #
-# CLI entry point (Phase-A gate-spike run)
-# ------------------------------------------------------------------------------------- #
+# CLI entry point
 def _jsonable(obj: object) -> object:
     """Recursively coerce a gate dict into plain JSON-serializable types."""
     if isinstance(obj, dict):
@@ -1182,11 +1154,11 @@ def _save_checkpoint(
     disc: FreqAwarePatchGAN,
     cfg: SpectroCodecConfig,
 ) -> Path:
-    """Write ``codec_last.pt`` (codec + disc + both optimizers + step) for ``--resume``.
+    """Write ``codec_last.pt`` (codec, disc, both optimizers, step) for ``--resume``.
 
-    ``step`` here is the 0-indexed current step; the checkpoint records the COUNT of
-    completed steps (``step + 1``) so that :func:`run_spike`'s ``resume_state["step"]``
-    (= steps already completed) makes the resumed global step numbers continue seamlessly.
+    ``step`` is the 0-indexed current step. The checkpoint stores the number of
+    completed steps (``step + 1``), which is what :func:`run_spike` expects in
+    ``resume_state["step"]``, so resumed step numbers continue without a gap.
     """
     path = out_dir / "codec_last.pt"
     tmp = out_dir / "codec_last.pt.tmp"
@@ -1206,15 +1178,12 @@ def _save_checkpoint(
 
 
 def resume_best_score(out_path) -> float:
-    """Initial ``best_score`` for a trainer loop: the score of an existing
-    ``codec_best.pt`` in ``out_path``, else ``-inf``.
+    """Initial ``best_score`` for a trainer loop.
 
-    CHAIN-RESUME FIX (2026-08-05): every trainer loop initialized
-    ``best_score = -inf`` unconditionally, so each resume leg of a chained run
-    restarted best-tracking from scratch and OVERWROTE ``codec_best.pt`` with its
-    leg-local best even when globally worse (observed: ece v6 best 2.2065 @88k
-    clobbered by 2.1709 @101k in the next leg). Reading the score back from the
-    best file itself needs no checkpoint-format change and heals existing dirs.
+    The score stored in ``out_path/codec_best.pt``, else ``-inf``. Starting each
+    resumed leg at ``-inf`` would let it overwrite ``codec_best.pt`` with a leg-local
+    best that is worse than the stored one. Reading the score back from the file
+    needs no change to the checkpoint format.
     """
     if out_path is None:
         return float("-inf")
@@ -1237,11 +1206,11 @@ def _save_best_checkpoint(
     cfg: SpectroCodecConfig,
     gate_dict: Dict[str, object],
 ) -> Path:
-    """Write ``codec_best.pt`` — the codec frozen at the best composite-gate eval.
+    """Write ``codec_best.pt``, the codec at the best composite-gate evaluation.
 
-    Records the codec + disc state, the ``step`` (COUNT of completed steps, matching
-    :func:`_save_checkpoint`), the composite ``score``, and the full ``gate`` dict so the
-    frozen checkpoint is self-describing. Written atomically (tmp + replace).
+    Stores the codec and disc state, ``step`` (number of completed steps, as in
+    :func:`_save_checkpoint`), ``score`` and the full ``gate`` dict, so the file
+    describes itself. Written via a temporary file and replace.
     """
     path = out_dir / "codec_best.pt"
     tmp = out_dir / "codec_best.pt.tmp"
@@ -1280,10 +1249,10 @@ def _save_ema_checkpoint(
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m tokamak_foundation_model.ignite.spike",
-        description="IGNITE Phase-A gate spike (1-GPU broad/firm run).",
+        description="IGNITE Phase-A gate spike: train a spectrogram codec and gate it.",
     )
     p.add_argument("--n_shots", type=int, default=40,
-                   help="Number of shots to auto-discover for the data pool (broad).")
+                   help="Number of shots to auto-discover for the data pool.")
     p.add_argument("--shots", type=str, default=None,
                    help="Optional explicit comma-separated shot list (overrides --n_shots).")
     p.add_argument("--n_batches", type=int, default=400,
@@ -1309,8 +1278,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--data_dir", type=str, default=DEFAULT_DATA_DIR,
                    help="Directory of {shot}_processed.h5 files.")
     p.add_argument("--synthetic", action="store_true",
-                   help="Use synthetic sum-of-sinusoid data (NO real HDF5); for smoke tests "
-                        "and dry-runs.")
+                   help="Use synthetic sum-of-sinusoid data instead of real HDF5 "
+                        "(smoke tests and dry runs).")
     p.add_argument("--entropy_weight", type=float, default=None,
                    help="Override cfg.entropy_weight (anti-collapse regularizer strength).")
     p.add_argument("--consistency_weight", type=float, default=None,
@@ -1336,8 +1305,8 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     torch.manual_seed(args.seed)
     device = torch.device(args.device)
 
-    # ece codec config: real ece is 40 channels. real_ece_batches would overwrite
-    # cfg.channels to the loaded count anyway; set it here so the synthetic path matches.
+    # ece has 40 channels. real_ece_batches sets cfg.channels from the data anyway;
+    # setting it here makes the synthetic path match.
     cfg = SpectroCodecConfig(channels=40)
     if args.entropy_weight is not None:
         cfg.entropy_weight = float(args.entropy_weight)
@@ -1348,7 +1317,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     if args.shots is not None:
         shots = [s.strip() for s in args.shots.split(",") if s.strip()]
 
-    # ---- build the pool ONCE (train batches + held-out eval slice + frame sequence) ----
+    # Build the pool once: train batches, held-out eval slice and frame sequence
     print(f"[spike-cli] building pool: synthetic={args.synthetic} "
           f"n_batches={args.n_batches} batch_size={args.batch_size} "
           f"n_frames={args.n_frames} device={device}", flush=True)
@@ -1390,13 +1359,13 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         print(f"[spike-cli] resuming from {args.resume}", flush=True)
         resume_state = torch.load(args.resume, map_location=device, weights_only=False)
 
-    # ---- persistence callback: write gate JSON + rolling checkpoint at every eval ----
+    # Write the gate JSON and the rolling checkpoint at every evaluation
     def on_eval(step, codec, opt_g, opt_d, disc, gate_dict):
         gp = _write_gate_json(out_dir, step, gate_dict)
         cp = _save_checkpoint(out_dir, step, codec, opt_g, opt_d, disc, cfg)
         print(f"[spike-cli] step {step}: wrote {gp.name} + {cp.name}", flush=True)
 
-    # ---- best-by-gate callback: freeze codec_best.pt when the composite score improves ----
+    # Write codec_best.pt when the composite score improves
     def on_best(step, codec, disc, gate_dict):
         bp = _save_best_checkpoint(
             out_dir, step, float(gate_dict["score"]), codec, disc, cfg, gate_dict
@@ -1404,7 +1373,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
         print(f"[spike-cli] step {step}: NEW BEST score={gate_dict['score']:+.4f} "
               f"-> wrote {bp.name}", flush=True)
 
-    # ---- optional EMA callback: write codec_ema.pt (EMA weights) at every eval ----
+    # Optional: write the EMA weights to codec_ema.pt at every evaluation
     def on_ema(step, ema_state, gate_dict):
         ep = _save_ema_checkpoint(out_dir, step, ema_state, cfg)
         print(f"[spike-cli] step {step}: wrote {ep.name} (EMA)", flush=True)
@@ -1431,7 +1400,7 @@ def main(argv: Optional[Sequence[str]] = None) -> Dict[str, object]:
     )
     final_gate["wall_s"] = time.time() - t_run
 
-    # ---- summary ----
+    # Summary
     summary = dict(final_gate)
     summary["config"] = {
         "n_shots": args.n_shots,

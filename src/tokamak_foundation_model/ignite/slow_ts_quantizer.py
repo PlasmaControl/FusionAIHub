@@ -1,14 +1,9 @@
-"""Phase-A FSQ bottleneck for the slow-TS codec.
+"""FSQ bottleneck for the slow-TS codec.
 
-The FSQ math is IDENTICAL to the spectrogram codec's (``quantizer.SpectroQuantizer``): the
-quantizer only touches ``cfg.d_model`` / ``cfg.fsq_levels`` / ``cfg.diversity_weight`` /
-``cfg.fsq_dim`` — fields the :class:`~ignite.config.SlowTSCodecConfig` carries with the same
-names and meaning as :class:`~ignite.config.SpectroCodecConfig`. So the slow-TS quantizer
-REUSES :class:`~ignite.quantizer.SpectroQuantizer` verbatim (straight-through FSQ + the
-Genie/LFQ entropy anti-collapse term) — a thin, documented alias rather than a copy, exactly
-as ``video_quantizer.VideoQuantizer`` does. Deliberate infra reuse (docs/IGNITE_DESIGN.md §7).
-
-Only external libs + config.py + sibling ``quantizer`` are used; no FAITH model code.
+The FSQ math is the spectrogram codec's. ``quantizer.SpectroQuantizer`` reads only
+``d_model``, ``fsq_levels``, ``diversity_weight`` and ``fsq_dim``, which
+:class:`~ignite.config.SlowTSCodecConfig` carries with the same meaning, so this class is
+a thin subclass rather than a copy, as in ``video_quantizer`` (docs/IGNITE_DESIGN.md §7).
 """
 from __future__ import annotations
 
@@ -17,14 +12,11 @@ from .quantizer import SpectroQuantizer
 
 
 class SlowTSQuantizer(SpectroQuantizer):
-    """FSQ bottleneck for the slow-TS codec — same STE-FSQ + entropy machinery as spectro.
+    """FSQ bottleneck for the slow-TS codec.
 
-    ``quantize(feats) -> (quant (B,n_tok,d_model), codes (B,n_tok,fsq_dim) long)`` and
-    ``entropy_loss(feats) -> scalar`` are inherited UNCHANGED from
-    :class:`~ignite.quantizer.SpectroQuantizer`; only the config *type* differs (a
-    ``SlowTSCodecConfig``, which exposes the identical ``d_model`` / ``fsq_levels`` /
-    ``fsq_dim`` / ``diversity_weight`` fields the parent reads).
+    ``quantize`` and ``entropy_loss`` are inherited unchanged from
+    :class:`~ignite.quantizer.SpectroQuantizer`; only the config type differs.
     """
 
     def __init__(self, cfg: SlowTSCodecConfig) -> None:  # noqa: D401 (thin init)
-        super().__init__(cfg)  # SpectroQuantizer.__init__ only reads cfg.d_model / cfg.fsq_levels
+        super().__init__(cfg)

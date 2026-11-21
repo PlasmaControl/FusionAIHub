@@ -5,7 +5,7 @@ model out and decodes the ground-truth and predicted codes through the frozen
 codecs. Token accuracy and decoded nRMSE are reported against persistence (the last
 seed frame held constant), and a ground-truth versus prediction figure is rendered.
 
-Usage, in the frontier pixi environment::
+Usage, in the ``stellarai`` pixi environment::
 
     python -m tokamak_foundation_model.ignite.eval_dynamics \
         --ckpt <run>/dynamics_latest.pt --shot 200729 --out_dir <dir>
@@ -20,15 +20,16 @@ IGNITE_DATA_DIR
     H5 directory of the measured signals.
 IGNITE_EVAL_BF16
     ``1`` runs the rollout under bf16 autocast, which lowers accuracy.
+IGNITE_HISTORY_CACHE
+    ``1`` (the default of this CLI) keeps the committed frames' temporal keys and
+    values during a rollout, so each decode step runs one frame instead of the whole
+    history (``MaskGITDynamics.rollout(history_cache=...)``); about 8x faster per
+    shot, same result up to float rounding. ``0`` runs the full pass. Library calls
+    (e.g. training's skill check) default to ``0``.
 IGNITE_ACT_GLOBAL
     Must match training, see :func:`load_model`.
 IGNITE_FIG_*, IGNITE_CMAP_*
     Figure options, see :class:`FigureOptions`.
-
-The decode policy (``--top_p``, ``--global_pool``, ``--revision_rounds``,
-``--cfg_scale``, ``--gumbel``, ``--best_of_n``) defaults to the original sampler, and a
-checkpoint trained with text conditioning reads its per-shot embedding from
-``--text_embed_path``.
 """
 
 from __future__ import annotations
@@ -53,8 +54,6 @@ from .dynamics_config import (
     ModalitySpec,
 )
 from .maskgit import MaskGITDynamics
-from .sampling import SamplerConfig
-from .scoring import best_of_n as _best_of_n
 
 # Modalities decoded and scored. A codec that fails to decode aborts the whole
 # evaluation, so IGNITE_EVAL_MODALITIES can restrict the set.
@@ -117,13 +116,10 @@ class FigureOptions:
         Add the per-frame video nRMSE row.
     gt_only : bool
         Draw the same figure without any prediction artist.
-    cmap_spectro, cmap_video : str
+    cmap_spectro, cmap_video, cmap_diff : str
         Colour maps.
     legend_loc : str
         Location of the legend in the first panel.
-    png_dpi : int
-        Resolution of the PNG (``IGNITE_FIG_PNG_DPI``); the PDF keeps the
-        printed width exactly.
     """
 
     spectro: Tuple[str, ...]
@@ -139,8 +135,8 @@ class FigureOptions:
     gt_only: bool
     cmap_spectro: str
     cmap_video: str
+    cmap_diff: str
     legend_loc: str
-    png_dpi: int
 
     @classmethod
     def from_env(cls) -> FigureOptions:
@@ -164,8 +160,8 @@ class FigureOptions:
             gt_only=_env_flag("IGNITE_FIG_GT_ONLY", "0"),
             cmap_spectro=env("IGNITE_CMAP_SPECTRO", "Blues"),
             cmap_video=env("IGNITE_CMAP_VIDEO", "gray"),
+            cmap_diff=env("IGNITE_CMAP_DIFF", "RdBu_r"),
             legend_loc=env("IGNITE_FIG_LEGEND_LOC", "upper left"),
-            png_dpi=int(env("IGNITE_FIG_PNG_DPI", "400")),
         )
 
 
@@ -178,75 +174,89 @@ FIG_PT = FIGURE_OPTIONS.font_pt
 FIG_SERIF = ["Times New Roman", "Liberation Serif", "STIXGeneral", "DejaVu Serif"]
 
 
+_COORD_MAPS: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
+
+
+def _coords_to_quant(codec, coords: torch.Tensor) -> torch.Tensor:
+    """Map [0, 1] FSQ grid coordinates (..., n_levels) to the codec's decoder input.
+
+    ``indices_to_codes`` is affine in the level indices (scale and shift, optional
+    rotation, linear projection), so the map is fitted once per codec on its own code
+    table and checked to be exact. The expected coordinates of a token therefore decode
+    from exactly the expected decoder input.
+    """
+    fsq = codec.quantizer.fsq
+    key = id(codec)
+    if key not in _COORD_MAPS:
+        levels = fsq._levels.to(coords.device)
+        index = torch.arange(int(levels.prod()), device=coords.device)
+        level_index = fsq.indices_to_level_indices(index).float()
+        target = fsq.indices_to_codes(index).float()
+        design = torch.cat([level_index, torch.ones_like(level_index[:, :1])], dim=1)
+        weight = torch.linalg.lstsq(design.double(), target.double()).solution.float()
+        error = float((design @ weight - target).abs().max())
+        if error > 1e-4:
+            raise RuntimeError(f"FSQ code map is not affine (max error {error:.2e})")
+        _COORD_MAPS[key] = (levels, weight)
+    levels, weight = _COORD_MAPS[key]
+    if coords.shape[-1] != levels.numel():
+        raise ValueError(f"coords have {coords.shape[-1]} levels, codec has {levels.numel()}")
+    level_index = coords.float() * (levels.float() - 1.0)
+    return torch.cat([level_index, torch.ones_like(level_index[..., :1])], dim=-1) @ weight
+
+
 @torch.no_grad()
 def decode_flat(codec, flat: torch.Tensor) -> torch.Tensor:
-    """Decode flat FSQ codes of shape (T, n_tok) into the codec's normalised space."""
+    """Decode flat FSQ codes (T, n_tok) into the codec's normalised space.
+
+    A floating-point ``flat`` of shape (T, n_tok, n_levels) is read as grid coordinates
+    in ``[0, 1]`` (an expected frame, see ``MaskGITDynamics.rollout(return_mean=True)``)
+    and decoded without rounding to a code.
+    """
+    if flat.is_floating_point():
+        return codec.decode(_coords_to_quant(codec, flat))
     return codec.decode(codec.quantizer.fsq.indices_to_codes(flat))
+
+
+def archived(codes, key: str) -> torch.Tensor:
+    """One array of a ``codes_<shot>_step<N>.npz`` archive as a tensor for decode_flat.
+
+    Code arrays (``gt__``, ``pred__``, ``real__``) come back as longs, expected frames
+    (``mean__``, ``realmean__``) as float coordinates.
+    """
+    value = torch.from_numpy(np.asarray(codes[key]))
+    return value.float() if value.is_floating_point() else value.long()
 
 
 @torch.no_grad()
 def decode_flat_chunked(
     codec, flat: torch.Tensor, device, chunk: int = _DECODE_CHUNK
 ) -> np.ndarray:
-    """Decode (T, n_tok) codes in chunks of frames; same result, bounded memory."""
+    """Decode (T, n_tok) codes in chunks of frames; same result, bounded memory.
+
+    Also takes (T, n_tok, n_levels) float coordinates (see :func:`decode_flat`).
+    """
+    if not flat.is_floating_point():
+        flat = flat.long()
     decoded = [
-        decode_flat(codec, flat[start : start + chunk].to(device).long()).float().cpu()
+        decode_flat(codec, flat[start : start + chunk].to(device)).float().cpu()
         for start in range(0, flat.shape[0], chunk)
     ]
     return torch.cat(decoded, dim=0).numpy()
 
 
-# Payload key -> DynamicsConfig field, where the two names differ.
-_PAYLOAD_FIELDS = {"cfg_k0": "k0_seed", "cfg_ss_final_frac": "ss_ramp_final_frac"}
-
-
-def _payload_config(checkpoint) -> Dict:
-    """Every :class:`DynamicsConfig` field the checkpoint payload saved.
-
-    Restoring them all lets an evaluation tell a CTF or self-forcing arm from the
-    baseline.
-    """
-    fields = {field.name for field in dataclasses.fields(DynamicsConfig)}
-    kwargs = {}
-    for key, value in checkpoint.items():
-        name = _PAYLOAD_FIELDS.get(key, key[len("cfg_") :])
-        if key.startswith("cfg_") and name in fields:
-            kwargs[name] = value
-    if "fsq_levels" in kwargs:
-        kwargs["fsq_levels"] = tuple(int(level) for level in kwargs["fsq_levels"])
-    if "modalities" in checkpoint:
-        kwargs["modalities"] = tuple(
-            ModalitySpec(*spec) for spec in checkpoint["modalities"]
-        )
-    return kwargs
-
-
-def _infer_shapes(cfg, state_dict) -> None:
-    """Read the architecture from the weights, never from a config default.
-
-    ``actuator_dim`` grew 70 -> 88 when i_coil was added (a default of 70 took
-    down job 5329757); ``lag_embed_k`` and ``act_cross_attn`` failed the same way.
-    """
+def _infer_actuator_dim(cfg, state_dict) -> None:
     weight = state_dict.get("backbone.act_embed.weight")
-    if weight is not None:
-        width = int(weight.shape[1])
-        if width != int(cfg.actuator_dim):
-            print(
-                f"[eval] actuator_dim {cfg.actuator_dim} -> {width} "
-                f"(inferred from backbone.act_embed.weight)",
-                flush=True,
-            )
-            cfg.actuator_dim = width
-    cfg.lag_embed_k = len(
-        {
-            key.split(".")[4]
-            for key in state_dict
-            if key.startswith("backbone.tok.lag_embed.")
-        }
-    )
-    cfg.act_cross_attn = any(key.startswith("backbone.act_cross.") for key in state_dict)
-    text = state_dict.get("backbone.text_embed.weight")
-    cfg.text_embed_dim = 0 if text is None else int(text.shape[1])
+    if weight is None:
+        return
+    width = int(weight.shape[1])
+    if width != int(cfg.actuator_dim):
+        print(
+            f"[eval] actuator_dim {cfg.actuator_dim} -> {width} "
+            f"(inferred from backbone.act_embed.weight)",
+            flush=True,
+        )
+        cfg.actuator_dim = width
 
 
 def _infer_head_type(cfg, checkpoint) -> None:
@@ -301,10 +311,9 @@ def _check_actuator_normalisation(checkpoint) -> None:
 def load_model(ckpt_path: Path, device) -> Tuple[MaskGITDynamics, DynamicsConfig, int]:
     """Rebuild a trained model from its checkpoint.
 
-    Every ``cfg_*`` field the payload saved is restored, and the architecture is
-    inferred from the weights where possible (actuator width, lag embeddings,
-    actuator cross-attention, text projection, latent versus classifier heads), so
-    a stale config default cannot break a load.
+    The architecture is inferred from the weights where possible (actuator width,
+    latent versus classifier heads), so a stale config default cannot break a
+    load.
 
     Parameters
     ----------
@@ -329,11 +338,32 @@ def load_model(ckpt_path: Path, device) -> Tuple[MaskGITDynamics, DynamicsConfig
         the reverse: the model would see actuators it was not trained on.
     """
     checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
-    cfg = DynamicsConfig(**_payload_config(checkpoint))
-    _infer_shapes(cfg, checkpoint["model"])
+    model_kwargs = dict(
+        depth=int(checkpoint["cfg_depth"]), d_model=int(checkpoint["cfg_d_model"])
+    )
+    if "modalities" in checkpoint:
+        model_kwargs["modalities"] = tuple(
+            ModalitySpec(*spec) for spec in checkpoint["modalities"]
+        )
+    for key, field in (
+        ("cfg_n_heads", "n_heads"),
+        ("cfg_k0", "k0_seed"),
+        ("cfg_n_predict", "n_predict"),
+    ):
+        if key in checkpoint:
+            model_kwargs[field] = int(checkpoint[key])
+    cfg = DynamicsConfig(**model_kwargs)
+    cfg.grad_checkpointing = False
+    _infer_actuator_dim(cfg, checkpoint["model"])
+    if "cfg_act_cross_attn" in checkpoint:
+        cfg.act_cross_attn = bool(checkpoint["cfg_act_cross_attn"])
+    if "cfg_dropout" in checkpoint:
+        cfg.dropout = float(checkpoint["cfg_dropout"])
+    if "cfg_fsq_levels" in checkpoint:
+        cfg.fsq_levels = tuple(int(level) for level in checkpoint["cfg_fsq_levels"])
     _infer_head_type(cfg, checkpoint)
     _check_actuator_normalisation(checkpoint)
-    cfg.grad_checkpointing, cfg.dropout = False, 0.0
+    cfg.dropout = 0.0
     model = MaskGITDynamics(cfg).to(device).eval()
     model.load_state_dict(checkpoint["model"])
     return model, cfg, int(checkpoint.get("step", 0))
@@ -347,8 +377,9 @@ def load_shot_cache(cache_dir: Path, shot: str) -> Dict:
     return torch.load(path, map_location="cpu", weights_only=False)
 
 
-# Cached actuators are z-scored per shot, so gain or offset edits are no-ops; the
-# counterfactuals are structural.
+# Accepted ``actuator_mode`` forms. On per-shot z-scored actuators a gain or offset
+# edit is a no-op, so the physical-unit modes (scale, ramp, set, balance) need the
+# dataset-wide normalisation of IGNITE_ACT_GLOBAL.
 ACTUATOR_MODES = (
     "real",
     "zero",
@@ -356,7 +387,166 @@ ACTUATOR_MODES = (
     "shuffle",
     "donor:<shot>",
     "group_zero:<group>",
+    "scale:<group>=<factor>[@<frame>][+<group>=<factor>[@<frame>]...]",
+    "ramp:<group>=<factor>@<frame>/<ramp_frames>",
+    "set:<group>[<i>,...]=<value>@<frame>[-<end>][+...]",
+    "balance:off=<i>,..;counter=<j>,..;nm_per_mw=<rate>;kv=<kV>@<frame>",
+    "linear:<ramp_frames>[/<amount>]:<mode>",
+    "file:<plan.npz>",
 )
+
+
+def _global_actuator_stats():
+    """Per-channel ``mu`` and ``sd`` of the ``IGNITE_ACT_GLOBAL`` normalisation.
+
+    Returns None when the variable or its stats file is missing.
+    """
+    side_cache = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
+    stats = Path(side_cache) / "act_global_stats.npz" if side_cache else None
+    if stats is None or not stats.exists():
+        return None
+    loaded = np.load(stats, allow_pickle=True)
+    return (
+        torch.as_tensor(loaded["mu"], dtype=torch.float32),
+        torch.as_tensor(loaded["sd"], dtype=torch.float32),
+    )
+
+
+def _scale_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
+    """Scale actuator groups in physical units, in place, for ``scale:`` modes.
+
+    ``spec`` is ``<group>=<factor>[@<frame>]`` terms joined by ``+``; each scales
+    that group's physical value by ``factor`` from ``frame`` (default ``K0``, the
+    first predicted frame) to the end of the window. ``factor`` 0 switches the
+    actuator off. Needs the dataset-wide normalisation (``IGNITE_ACT_GLOBAL``):
+    a normalised value g maps to physical ``g * sd + mu``.
+    """
+    stats = _global_actuator_stats()
+    if stats is None:
+        raise ValueError("scale: actuator modes need IGNITE_ACT_GLOBAL with its stats")
+    mu, sd = stats
+    for term in spec.split("+"):
+        target, _, start = term.partition("@")
+        group, _, factor = target.partition("=")
+        columns = _actuator_group_columns(group.strip())
+        first = int(start) if start else K0
+        if not K0 <= first < n_frames:
+            raise ValueError(f"scale start frame {first} outside [{K0}, {n_frames})")
+        frames = slice(first, n_frames)
+        m, d = mu[columns], sd[columns]
+        varies = d > 0
+        physical = edited[frames, columns] * d + m
+        rescaled = (physical * float(factor) - m) / torch.where(varies, d, torch.ones_like(d))
+        edited[frames, columns] = torch.where(varies, rescaled, edited[frames, columns])
+
+
+def _set_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
+    """Set single actuator channels to physical values, in place, for ``set:`` modes.
+
+    ``spec`` is ``<group>[<i>,<j>...]=<value>@<frame>[-<end>]`` terms joined by
+    ``+``. The listed channels of the group (indices into its
+    :data:`~.train_dynamics._ACT_SPEC` columns, e.g. the 8 beam lines 15L, 15R, 21L,
+    21R, 30L, 30R, 33L, 33R) take ``value`` in physical units from ``frame`` to
+    ``end`` (exclusive; default the end of the window). Needs ``IGNITE_ACT_GLOBAL``,
+    as :func:`_scale_actuators`.
+    """
+    stats = _global_actuator_stats()
+    if stats is None:
+        raise ValueError("set: actuator modes need IGNITE_ACT_GLOBAL with its stats")
+    mu, sd = stats
+    for term in spec.split("+"):
+        target, _, timing = term.partition("@")
+        group_part, _, value = target.partition("=")
+        group, _, index_text = group_part.partition("[")
+        columns = _actuator_group_columns(group.strip())
+        indices = [int(i) for i in index_text.rstrip("]").split(",")] if index_text else \
+            list(range(columns.stop - columns.start))
+        start, _, end = timing.partition("-")
+        first = int(start) if start else K0
+        last = int(end) if end else n_frames
+        if not K0 <= first < last <= n_frames:
+            raise ValueError(f"set frames {first}-{last} outside [{K0}, {n_frames}]")
+        for i in indices:
+            c = columns.start + i
+            if sd[c] > 0:
+                edited[first:last, c] = (float(value) - mu[c]) / sd[c]
+
+
+def _balance_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
+    """Zero the net NBI torque with counter beams, in place, for ``balance:`` modes.
+
+    ``spec`` is ``off=<i>,..;counter=<j>,..;nm_per_mw=<rate>;kv=<voltage>@<frame>``
+    with indices into the 8 beam lines (15L, 15R, 21L, 21R, 30L, 30R, 33L, 33R) of
+    the ``pinj``, ``beam_voltage`` and ``tinj`` groups. From ``frame`` on the ``off``
+    beams are switched off and, frame by frame, the ``counter`` beams share the
+    torque that cancels the remaining beams' torque: power ``torque / |nm_per_mw|``,
+    voltage ``kv`` while on. The remaining beams keep their recorded waveform,
+    ramp-down included, so the counter power follows it. Needs ``IGNITE_ACT_GLOBAL``.
+    """
+    stats = _global_actuator_stats()
+    if stats is None:
+        raise ValueError("balance: actuator modes need IGNITE_ACT_GLOBAL with its stats")
+    mu, sd = stats
+    options, _, start = spec.partition("@")
+    fields = dict(term.split("=", 1) for term in options.split(";") if term)
+    off = [int(i) for i in fields["off"].split(",")]
+    counter = [int(i) for i in fields["counter"].split(",")]
+    rate = abs(float(fields["nm_per_mw"]))
+    volts = float(fields["kv"]) * 1e3
+    first = int(start) if start else K0
+    if not K0 <= first < n_frames:
+        raise ValueError(f"balance start frame {first} outside [{K0}, {n_frames})")
+    frames = slice(first, n_frames)
+    groups = {name: _actuator_group_columns(name) for name in ("pinj", "beam_voltage", "tinj")}
+    physical = {
+        name: edited[frames, cols] * sd[cols] + mu[cols] for name, cols in groups.items()
+    }
+    kept = [i for i in range(physical["tinj"].shape[1]) if i not in off and i not in counter]
+    share = (physical["tinj"][:, kept].sum(1).clamp_min(0.0) / len(counter)).unsqueeze(1)
+    for name in groups:
+        physical[name][:, off] = 0.0
+    on = (share > 0).float()
+    physical["tinj"][:, counter] = -share
+    physical["pinj"][:, counter] = share / rate * 1e6
+    physical["beam_voltage"][:, counter] = volts * on
+    for name, cols in groups.items():
+        d = sd[cols]
+        varies = d > 0
+        normed = (physical[name] - mu[cols]) / torch.where(varies, d, torch.ones_like(d))
+        edited[frames, cols] = torch.where(varies, normed, edited[frames, cols])
+
+
+def _ramp_actuators(edited, spec: str, K0: int, n_frames: int) -> None:
+    """Hold an actuator group from ``frame`` on and ramp it, in place, for ``ramp:``.
+
+    ``spec`` is ``<group>=<factor>@<frame>/<ramp_frames>``. From ``frame`` (default
+    ``K0``) each channel follows, in physical units,
+    ``I0 + (factor * I0 - I0) * clip((t - frame) / ramp_frames, 0, 1)``, where ``I0``
+    is its value at ``frame``: factor 1 holds ``I0``, factor 0.5 ramps to half of it
+    over ``ramp_frames`` frames and then holds. Needs ``IGNITE_ACT_GLOBAL``, as
+    :func:`_scale_actuators`.
+    """
+    stats = _global_actuator_stats()
+    if stats is None:
+        raise ValueError("ramp: actuator modes need IGNITE_ACT_GLOBAL with its stats")
+    mu, sd = stats
+    target, _, timing = spec.partition("@")
+    group, _, factor = target.partition("=")
+    start, _, ramp = timing.partition("/")
+    columns = _actuator_group_columns(group.strip())
+    first = int(start) if start else K0
+    if not K0 <= first < n_frames:
+        raise ValueError(f"ramp start frame {first} outside [{K0}, {n_frames})")
+    m, d = mu[columns], sd[columns]
+    varies = d > 0
+    scale = torch.where(varies, d, torch.ones_like(d))
+    initial = edited[first, columns] * d + m
+    steps = torch.arange(n_frames - first, dtype=edited.dtype)
+    weight = (steps / max(1, int(ramp or 0))).clamp(0, 1).unsqueeze(1)
+    physical = initial + (initial * float(factor) - initial) * weight
+    edited[first:n_frames, columns] = torch.where(
+        varies, (physical - m) / scale, edited[first:n_frames, columns]
+    )
 
 
 def _actuator_group_columns(group: str) -> slice:
@@ -382,8 +572,16 @@ def apply_actuator_mode(
     mode : str
         ``"real"`` (unchanged), ``"zero"``, ``"freeze"`` (hold the last seed
         frame), ``"shuffle"`` (seeded permutation of the predicted frames),
-        ``"donor:<shot>"`` (another shot's actuators) or ``"group_zero:<group>"``
-        (zero one :data:`~.train_dynamics._ACT_SPEC` group).
+        ``"donor:<shot>"`` (another shot's actuators), ``"group_zero:<group>"``
+        (zero one :data:`~.train_dynamics._ACT_SPEC` group) or
+        ``"scale:<group>=<factor>[@<frame>]"`` (scale a group in physical units
+        from ``frame`` on, :func:`_scale_actuators`) or
+        ``"ramp:<group>=<factor>@<frame>/<ramp_frames>"`` (hold a group at its value at
+        ``frame``, then ramp it linearly to ``factor`` times that value,
+        :func:`_ramp_actuators`), or one of the ``set:``, ``balance:`` and
+        ``linear:`` forms of :data:`ACTUATOR_MODES` (:func:`_set_actuators`,
+        :func:`_balance_actuators`; ``linear:`` ramps into another mode), or
+        ``"file:<plan.npz>"`` (the ``act_norm`` array of a shot-designer plan).
     K0 : int
         First predicted frame; the seed frames stay real.
     cache_dir : path-like, default=None
@@ -412,7 +610,10 @@ def apply_actuator_mode(
     elif kind == "donor" and has_argument:
         if cache_dir is None:
             raise ValueError("donor mode needs cache_dir")
-        donor = load_shot_cache(Path(cache_dir), argument)["actuators"].float()
+        donor_cache = load_shot_cache(Path(cache_dir), argument)
+        # The donor must use the same normalisation as the edited shot.
+        _load_global_actuators(donor_cache, argument)
+        donor = donor_cache["actuators"].float()
         if donor.shape[0] < n_frames:
             raise RuntimeError(
                 f"donor {argument} has {donor.shape[0]} frames < F={n_frames}"
@@ -420,6 +621,42 @@ def apply_actuator_mode(
         edited[predicted] = donor[predicted]
     elif kind == "group_zero" and has_argument:
         edited[predicted, _actuator_group_columns(argument)] = 0.0
+    elif kind == "scale" and has_argument:
+        _scale_actuators(edited, argument, K0, n_frames)
+    elif kind == "ramp" and has_argument:
+        _ramp_actuators(edited, argument, K0, n_frames)
+    elif kind == "set" and has_argument:
+        _set_actuators(edited, argument, K0, n_frames)
+    elif kind == "balance" and has_argument:
+        _balance_actuators(edited, argument, K0, n_frames)
+    elif kind == "file" and has_argument:
+        # A whole actuator plan from the shot designer (designer.simulate.export): the
+        # normalised actuators of every cache frame, measured except where edited.
+        plan = torch.as_tensor(np.load(argument)["act_norm"], dtype=edited.dtype)
+        if plan.shape[0] < n_frames or plan.shape[1] != edited.shape[1]:
+            raise ValueError(f"plan {argument} has shape {tuple(plan.shape)}; needs at "
+                             f"least ({n_frames}, {edited.shape[1]})")
+        # The seed frames are never edited, so they identify the shot and normalisation.
+        if not torch.allclose(plan[:K0], act[:K0].to(plan.dtype), atol=1e-3):
+            raise ValueError(f"plan {argument} was built for another shot or normalisation")
+        edited[predicted] = plan[predicted]
+    elif kind == "linear" and has_argument:
+        # Ramp from the measured actuators into another mode's: every channel moves
+        # linearly, frame by frame, from its measured value to the target mode's value
+        # over ramp_frames, starting where the target first differs, and stays at
+        # ``amount`` of the way (default 1) after. Beam power, voltage and torque of a
+        # balance target ramp together, as a modulated beam's frame averages do.
+        timing, _, inner = argument.partition(":")
+        ramp_text, _, amount = timing.partition("/")
+        target = apply_actuator_mode(act, inner, K0, cache_dir, n_frames)
+        changed = (target[:n_frames] != act[:n_frames]).any(dim=1).nonzero()
+        if len(changed):
+            first = int(changed[0])
+            steps = torch.arange(n_frames - first, dtype=edited.dtype)
+            weight = (steps / max(1, int(ramp_text))).clamp(0, 1) * float(amount or 1)
+            edited[first:n_frames] = act[first:n_frames] + weight.unsqueeze(1) * (
+                target[first:n_frames] - act[first:n_frames]
+            )
     else:
         raise ValueError(
             f"unknown actuator_mode {mode!r}; expected one of {ACTUATOR_MODES}"
@@ -428,19 +665,24 @@ def apply_actuator_mode(
 
 
 class Rollout(NamedTuple):
-    """Ground-truth and predicted codes of one rollout, ``(F, n_tok)`` each."""
+    """Ground-truth and predicted codes of one rollout, ``(F, n_tok)`` each.
+
+    ``pred_mean`` holds the expected frames ``(F, n_tok, n_levels)`` in ``[0, 1]``
+    coordinates when the rollout could produce them (categorical head, no consensus).
+    """
 
     gt_codes: Dict[str, torch.Tensor]
     pred_codes: Dict[str, torch.Tensor]
     k0: int
     n_frames: int
+    pred_mean: Optional[Dict[str, torch.Tensor]] = None
 
 
-def _load_global_actuators(cache: Dict, shot) -> torch.Tensor:
-    """The cached actuators, or the ``IGNITE_ACT_GLOBAL`` ones; ``cache`` is unchanged."""
+def _load_global_actuators(cache: Dict, shot) -> None:
+    """Replace the cached actuators by the ``IGNITE_ACT_GLOBAL`` ones, in place."""
     side_cache = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
     if not side_cache:
-        return cache["actuators"]
+        return
     if shot is None:
         raise ValueError("IGNITE_ACT_GLOBAL is set: rollout_shot needs the shot id")
     entry = Path(side_cache) / f"{shot}.pt"
@@ -450,7 +692,69 @@ def _load_global_actuators(cache: Dict, shot) -> torch.Tensor:
         )
     width = cache["actuators"].shape[-1]
     loaded = torch.load(entry, map_location="cpu", weights_only=False)
-    return loaded["actuators_global"][:, :width]
+    cache["actuators"] = loaded["actuators_global"][:, :width]
+
+
+def _rank_device() -> torch.device:
+    """This rank's GPU, or the CPU when there is none.
+
+    With one GPU visible per rank (Frontier) it is ``cuda:0``; with all of the node's
+    GPUs visible (StellarAI, ``SRUN_GPU_BIND=none``) it is ``cuda:LOCAL_RANK``, as in
+    ``train_codec._DDPState``.
+    """
+    if not torch.cuda.is_available():
+        return torch.device("cpu")
+    index = int(os.environ.get("LOCAL_RANK", "0")) if torch.cuda.device_count() > 1 else 0
+    torch.cuda.set_device(index)
+    return torch.device("cuda", index)
+
+
+def slowts_denorm(codecs) -> Dict:
+    """Map decoded slow time series back to physical units, from the codecs' own stats.
+
+    Each slow-TS codec standardises its input per channel with the global
+    ``channel_mean`` / ``channel_std`` of its configuration, after
+    ``log10(x + 1)`` for the Thomson signals (:data:`config.SLOWTS_PREPROCESS_METHOD`).
+    The returned callables invert that on arrays of shape (F, C_pad, T) and drop the
+    padded channels. Only the modalities of :data:`_SLOWTS_UNITS` (n_e, T_e, T_i) are
+    converted; the others stay normalised.
+
+    Parameters
+    ----------
+    codecs : dict
+        ``{name: (codec, codec_cfg, family)}`` as from ``load_frozen_codecs``.
+
+    Returns
+    -------
+    denorm : dict of str to callable
+    """
+    from .config import SLOWTS_PREPROCESS_METHOD
+
+    denorm = {}
+    for name, (_codec, codec_cfg, family) in codecs.items():
+        method = SLOWTS_PREPROCESS_METHOD.get(name)
+        mean = getattr(codec_cfg, "channel_mean", None)
+        std = getattr(codec_cfg, "channel_std", None)
+        if family != "slowts" or method not in ("standardize", "log_standardize"):
+            continue
+        # Only n_e, T_e and T_i, whose figure rows carry units (_SLOWTS_UNITS). cer_rot
+        # has broken stats on some channels (inverts to ~1e27); mse has no unit row.
+        if name not in _SLOWTS_UNITS:
+            continue
+        if mean is None or std is None:
+            continue
+        mean = np.asarray(mean, dtype=np.float64)
+        std = np.clip(np.asarray(std, dtype=np.float64), 1e-3, None)
+
+        def invert(x, mean=mean, std=std, log=method == "log_standardize"):
+            x = np.asarray(x, dtype=np.float64)[:, : mean.size]
+            shape = [1] * x.ndim
+            shape[1] = -1
+            y = x * std.reshape(shape) + mean.reshape(shape)
+            return (np.power(10.0, y) - 1.0) if log else y
+
+        denorm[name] = invert
+    return denorm
 
 
 @torch.no_grad()
@@ -465,17 +769,14 @@ def rollout_shot(
     actuator_mode: str = "real",
     cache_dir=None,
     shot=None,
-    sampler: Optional[SamplerConfig] = None,
-    best_of: int = 1,
-    text_vec: Optional[torch.Tensor] = None,
+    guidance: float = 1.0,
+    decode: Optional[Dict] = None,
+    start: int = 0,
 ) -> Rollout:
     """Seed ``K0`` real frames of a shot and roll the model out.
 
     The rollout draws the same random numbers whatever ``actuator_mode`` is, so
-    two runs with the same seed differ only through the actuators. ``top_p``,
-    ``global_pool``, ``revision_rounds`` and ``cfg_scale`` keep that pairing (a
-    fixed number of draws per frame); ``best_of > 1`` does not, so never combine
-    it with an actuator counterfactual.
+    two runs with the same seed differ only through the actuators.
 
     Parameters
     ----------
@@ -484,8 +785,8 @@ def rollout_shot(
     cfg : DynamicsConfig
         Its configuration.
     cache : dict
-        The shot's cache entry; not modified. With ``IGNITE_ACT_GLOBAL`` set the
-        rollout uses the side-cache actuators of ``shot`` instead of its own.
+        The shot's cache entry. With ``IGNITE_ACT_GLOBAL`` set its actuators
+        are replaced in place by the side-cache ones.
     K0 : int
         Seed frames.
     temperature : float
@@ -500,71 +801,155 @@ def rollout_shot(
         Cache directory, for donor counterfactuals.
     shot : str, default=None
         Shot id; required when ``IGNITE_ACT_GLOBAL`` is set.
-    sampler : SamplerConfig, default=None
-        Decode policy; None is ``SamplerConfig(temperature=temperature)``, the
-        original sampler.
-    best_of : int, default=1
-        Above 1, roll out that many candidates and keep the most self-consistent
-        one (masked pseudo-likelihood); a different random stream.
-    text_vec : torch.Tensor of shape (text_embed_dim,), default=None
-        Text embedding of the shot, for a text-conditioned model; zeros if None.
+    guidance : float, default=1.0
+        Classifier-free guidance weight (:meth:`MaskGITDynamics.generate_frame`).
+    decode : dict, default=None
+        Further rollout options: ``gate``, ``consensus_n``, ``consensus_q``,
+        ``consensus_mode`` (:meth:`MaskGITDynamics.rollout`); ``infer`` (modalities
+        generated while all others keep their measured codes) and ``seed_from``
+        (``{modality: shot}``, seed frames taken from another shot).
+    start : int, default=0
+        First frame of the window in the shot: the seed is frames
+        ``start..start+K0``. Frame indices of ``actuator_mode`` count from it.
 
     Returns
     -------
     rollout : Rollout
-        Codes over the whole window ``[0, F)`` on the CPU, ``K0`` and the window
-        length ``F = min(cfg.max_frames, n_frames)``; unpacks as a 4-tuple.
+        Codes over the whole window on the CPU, ``K0``, the window length
+        ``F = min(cfg.max_frames, n_frames - start)`` and, where possible, the
+        expected frames.
     """
-    n_frames = min(cfg.max_frames, int(cache["n_frames"]))
+    n_frames = min(cfg.max_frames, int(cache["n_frames"]) - int(start))
     if n_frames <= K0:
         raise RuntimeError(
             f"shot has F={n_frames} frames <= K0={K0}; nothing to predict"
         )
     names = [m.name for m in cfg.modalities]
-    codes = cache["codes"]
+    codes = {name: cache["codes"][name][start : start + n_frames] for name in names}
     seed_codes = {
         name: codes[name][:K0].long().unsqueeze(0).to(device) for name in names
     }
+    _load_global_actuators(cache, shot)
     actuators = apply_actuator_mode(
-        _load_global_actuators(cache, shot)[:n_frames].float(),
+        cache["actuators"][start : start + n_frames].float(),
         actuator_mode,
         K0,
         cache_dir=cache_dir,
         F=n_frames,
-    ).unsqueeze(0).to(device)
-    if sampler is None:
-        sampler = SamplerConfig(temperature=temperature)
-    text = {}
-    if cfg.text_embed_dim > 0:
-        if text_vec is None:
-            text_vec = torch.zeros(cfg.text_embed_dim)
-        text = {"text": text_vec.view(1, -1).to(device)}
-    if best_of > 1:
-        trajectory, scores = _best_of_n(
-            model,
-            seed_codes,
-            actuators,
-            n=best_of,
-            n_predict=n_frames - K0,
-            sampler=sampler,
-            generator=generator,
-            **text,
+    )
+    decode = dict(decode or {})
+    for name, donor in (decode.pop("seed_from", None) or {}).items():
+        # Seed one modality from another shot (it did not record in this one); the
+        # measurement kept for scoring is still this shot's.
+        if name not in names:
+            raise ValueError(f"--seed_from: unknown modality {name}")
+        if cache_dir is None:
+            raise ValueError("--seed_from needs cache_dir")
+        donor_codes = load_shot_cache(Path(cache_dir), str(donor))["codes"][name]
+        if donor_codes.shape[0] < start + K0:
+            raise ValueError(f"--seed_from: {donor} has fewer than {start + K0} frames")
+        seed_codes[name] = (
+            donor_codes[start : start + K0].long().unsqueeze(0).to(device)
         )
-        print(
-            f"[eval] best-of-{best_of} pseudo-likelihood "
-            f"{[round(s, 4) for s in scores]} -> kept {round(min(scores), 4)}",
-            flush=True,
-        )
-    else:
-        trajectory = model.rollout(
-            seed_codes,
-            actuators,
-            n_predict=n_frames - K0,
-            temperature=temperature,
-            generator=generator,
-            sampler=sampler,
-            **text,
-        )
+    infer = [n for n in decode.pop("infer", None) or () if n]
+    hide = [n for n in decode.pop("hide", None) or () if n]
+    # A diagnostic that did not record in the initial state (the same codes in every
+    # seed frame: the codec's code of a zero-filled window) is [MASK] there, its
+    # "not recorded" codes are never sampled, and it is predicted with all others,
+    # as --hide does. No information from any other shot is used. On by default from
+    # the CLI (IGNITE_MASK_ABSENT, read at call time), off for library calls.
+    mask_absent = decode.pop("mask_absent", None)
+    if mask_absent is None:
+        mask_absent = os.environ.get("IGNITE_MASK_ABSENT", "0") == "1"
+    # Forbid the masked diagnostic's "not recorded" codes (it must then be predicted as
+    # recording). Off by default: the masked diagnostic is predicted freely, which may
+    # again be "not recorded" (IGNITE_MASK_FORBID=1 or --mask_forbid 1 turns it on).
+    mask_forbid = decode.pop("mask_forbid", None)
+    if mask_forbid is None:
+        mask_forbid = os.environ.get("IGNITE_MASK_FORBID", "0") == "1"
+    absent_seed = {}
+    if mask_absent and not infer and int(decode.get("consensus_n", 1)) <= 1:
+        for name in names:
+            if name in hide:
+                continue
+            seed = codes[name][:K0]
+            if bool((seed == seed[:1]).all()):
+                absent_seed[name] = seed[0].long().to(device)
+        if absent_seed:
+            print(f"[eval] not recorded in the initial state, masked and predicted: "
+                  f"{sorted(absent_seed)}")
+            hide = hide + sorted(absent_seed)
+    if hide:
+        # Missing diagnostics in a free rollout: the hidden modalities are [MASK] in
+        # the seed; the first predicted frame generates them from the other
+        # modalities' seed and then stands in for their seed, and every modality,
+        # hidden or not, is generated autoregressively (nothing held at its
+        # measurement).
+        if infer:
+            raise ValueError("--hide and --infer exclude each other")
+        unknown = sorted(set(hide) - set(names))
+        if unknown:
+            raise ValueError(f"--hide: unknown modalities {unknown}")
+        decode["blind"] = list(hide)
+        decode["bootstrap_blind"] = True
+    if decode.pop("infer_blind", False):
+        if not infer:
+            raise ValueError("--infer_blind needs --infer")
+        # The inferred modalities are also hidden from the history ([MASK]).
+        decode["blind"] = list(infer)
+    if decode.pop("infer_bootstrap", False):
+        if "blind" not in decode:
+            raise ValueError("--infer_bootstrap needs --infer_blind")
+        decode["bootstrap_blind"] = True
+    absent_shot = decode.pop("forbid_absent", None)
+    forbid_mods = [n for n in decode.pop("forbid_mods", None) or () if n]
+    if forbid_mods and not absent_shot:
+        raise ValueError("--forbid_modalities needs --forbid_absent")
+    if absent_shot:
+        # Never sample an inferred modality's "not recorded" frame: the constant codes
+        # it has in a shot where it did not record.
+        # In a plain rollout (complete initial state, nothing removed) the modalities
+        # are given by --forbid_modalities.
+        if not (infer or hide or forbid_mods) or cache_dir is None:
+            raise ValueError("--forbid_absent needs --infer, --hide or "
+                             "--forbid_modalities, and cache_dir")
+        absent = load_shot_cache(Path(cache_dir), str(absent_shot))["codes"]
+        decode["forbid"] = {}
+        for name in infer or hide or forbid_mods:
+            frames = absent[name].long()
+            if not bool((frames == frames[:1]).all()):
+                raise ValueError(
+                    f"--forbid_absent: {name} records in {absent_shot} (codes change)"
+                )
+            decode["forbid"][name] = frames[0].to(device)
+    for name, frame in absent_seed.items() if mask_forbid else ():
+        decode.setdefault("forbid", {}).setdefault(name, frame)
+    if infer:
+        # Inference of missing modalities: every other modality keeps its measured
+        # codes in every predicted frame; only ``infer`` is generated.
+        unknown = sorted(set(infer) - set(names))
+        if unknown:
+            raise ValueError(f"--infer: unknown modalities {unknown}")
+        decode["known_codes"] = {
+            name: codes[name].long().unsqueeze(0).to(device)
+            for name in names
+            if name not in infer
+        }
+    with_mean = model.can_return_mean and int(decode.get("consensus_n", 1)) <= 1
+    trajectory = model.rollout(
+        seed_codes,
+        actuators.unsqueeze(0).to(device),
+        n_predict=n_frames - K0,
+        temperature=temperature,
+        generator=generator,
+        guidance=guidance,
+        return_mean=with_mean,
+        **decode,
+    )
+    mean = None
+    if with_mean:
+        trajectory, mean = trajectory
+        mean = {name: mean[name][0, :n_frames].float().cpu() for name in names}
     return Rollout(
         gt_codes={name: codes[name][:n_frames].long().cpu() for name in names},
         pred_codes={
@@ -572,7 +957,198 @@ def rollout_shot(
         },
         k0=K0,
         n_frames=n_frames,
+        pred_mean=mean,
     )
+
+
+# Core profiles of the rollout skill (analysis/checkpoint_scorecard.py and the
+# trainer's --skill_every): T_e, n_e, T_i, v_tor.
+PROFILE_SIGNALS = ("ts_core_temp", "ts_core_density", "cer_ti", "cer_rot")
+
+
+def profile_converters(codecs, names=PROFILE_SIGNALS) -> Dict:
+    """Per-signal converters of decoded slow time series to physical units.
+
+    Unlike :func:`slowts_denorm` this covers cer_rot too: channels whose stats are
+    broken (``|mean|`` or ``std`` above 1e4, or ``std`` at most 1e-3) become NaN.
+
+    Parameters
+    ----------
+    codecs : dict
+        ``{name: (codec, codec_cfg, family)}`` as from ``load_frozen_codecs``.
+    names : sequence of str
+        Slow-TS modalities to convert.
+
+    Returns
+    -------
+    convert : dict of str to callable
+        Each maps (F, C_pad, T) to (F, C, T) float64.
+    """
+    from .config import SLOWTS_PREPROCESS_METHOD
+
+    convert = {}
+    for name in names:
+        cfg = codecs[name][1]
+        mean = np.asarray(cfg.channel_mean, dtype=np.float64)
+        raw_std = np.asarray(cfg.channel_std, dtype=np.float64)
+        std = np.clip(raw_std, 1e-3, None)
+        broken = (np.abs(mean) > 1e4) | (raw_std > 1e4) | (raw_std <= 1e-3)
+        log = SLOWTS_PREPROCESS_METHOD[name] == "log_standardize"
+
+        def invert(x, mean=mean, std=std, broken=broken, log=log):
+            x = np.asarray(x, dtype=np.float64)[:, : mean.size]
+            y = x * std[None, :, None] + mean[None, :, None]
+            y = np.power(10.0, y) - 1.0 if log else y
+            y[:, broken] = np.nan
+            return y
+
+        convert[name] = invert
+    return convert
+
+
+def core_channels(gt: np.ndarray, k0: int, n_core: int) -> list:
+    """The ``n_core`` channels of (F, C) ``gt`` with the largest mean |value|.
+
+    The mean is over the frames from ``k0`` on.
+    """
+    with np.errstate(invalid="ignore"):
+        level = np.nanmean(np.abs(gt[k0:]), axis=0)
+    finite = np.isfinite(level)
+    order = [
+        int(c) for c in np.argsort(np.where(finite, level, -np.inf))[::-1] if finite[c]
+    ]
+    return order[: max(1, n_core)]
+
+
+def profile_skill(
+    gt_codes, pred_codes, k0: int, n_frames: int, codecs, convert, device
+) -> float:
+    """RMSE skill against persistence of one rollout's core profiles.
+
+    Each signal of :data:`PROFILE_SIGNALS` is decoded, converted to physical units,
+    averaged over time within the frame and over its 3 strongest channels, and
+    scored over frames ``k0..n_frames``: ``1 - rmse(prediction) / rmse(persistence)``,
+    persistence holding the last seed frame. Unrecorded (flat) signals are skipped.
+
+    Parameters
+    ----------
+    gt_codes, pred_codes : dict of str to torch.Tensor
+        Real and predicted frames of each signal: codes ``(F, n_tok)`` or expected
+        coordinates ``(F, n_tok, n_levels)``.
+    k0 : int
+        Seed frames.
+    n_frames : int
+        Frames of the rollout window.
+    codecs : dict
+        The signals' codecs, from ``load_frozen_codecs``.
+    convert : dict
+        From :func:`profile_converters`.
+    device : torch.device
+        Where to decode.
+
+    Returns
+    -------
+    skill : float
+        Mean over the scored signals; NaN when fewer than 2 could be scored.
+    """
+    per_signal = []
+    for name in PROFILE_SIGNALS:
+        gt, predicted = (
+            np.nanmean(
+                convert[name](
+                    decode_flat_chunked(codecs[name][0], codes[name][:n_frames], device)
+                ),
+                axis=-1,
+            )
+            for codes in (gt_codes, pred_codes)
+        )
+        channels = core_channels(gt, k0, 3)
+        with np.errstate(invalid="ignore"):
+            real = np.nanmean(gt[:, channels], 1)
+            model = np.nanmean(predicted[:, channels], 1)
+        truth = real[k0:n_frames]
+        if np.isfinite(truth).sum() < 10 or np.nanstd(truth) < 1e-6 * max(
+            1.0, abs(np.nanmean(truth))
+        ):
+            continue
+        rmse = np.sqrt(np.nanmean((model[k0:n_frames] - truth) ** 2))
+        rmse_persistence = np.sqrt(np.nanmean((real[k0 - 1] - truth) ** 2))
+        if np.isfinite(rmse) and rmse_persistence > 0:
+            per_signal.append(1.0 - rmse / rmse_persistence)
+    return float(np.mean(per_signal)) if len(per_signal) >= 2 else float("nan")
+
+
+def task_state(name: str, family: str, decoded: np.ndarray, convert=None) -> np.ndarray:
+    """Reduce one modality's decoded frames to the state the task scores.
+
+    Slow time series are converted to physical units (where ``convert`` has the
+    signal) and averaged over time within the frame, giving (F, C). Spectrograms
+    are averaged over time within the frame, keeping the frequency profile
+    (F, C, freq): the band power over time, not the turbulent texture. Filterscope
+    envelopes and camera frames are averaged over everything but the channel,
+    giving (F, C).
+    """
+    x = np.asarray(decoded, dtype=np.float64)
+    if family == "slowts" and convert and name in convert:
+        x = convert[name](x)
+    if family == "spectro":
+        return x.mean(axis=-1)
+    with np.errstate(invalid="ignore"):
+        return np.nanmean(x.reshape(x.shape[0], x.shape[1], -1), axis=-1)
+
+
+def task_skill(
+    gt_codes, pred_codes, k0: int, n_end: int, codecs, convert, device
+) -> Dict[str, float]:
+    """RMSE skill against persistence of every recorded modality of one rollout.
+
+    Each modality is decoded, reduced by :func:`task_state` and scored over frames
+    ``k0..n_end`` (the live part of the window): ``1 - rmse(prediction) /
+    rmse(persistence)``, persistence holding the last seed frame. A modality whose
+    codes do not change after the seed was not recorded and is skipped, as is one
+    whose state persistence already matches exactly.
+
+    Parameters
+    ----------
+    gt_codes, pred_codes : dict of str to torch.Tensor
+        Real and predicted codes ``(F, n_tok)`` of each modality.
+    k0 : int
+        Seed frames.
+    n_end : int
+        End of the scored frames (exclusive), at most the window length.
+    codecs : dict
+        ``{name: (codec, cfg, family)}`` from ``load_frozen_codecs``; modalities
+        without a codec are skipped.
+    convert : dict
+        Slow-TS converters to physical units, from :func:`profile_converters`.
+    device : torch.device
+        Where to decode.
+
+    Returns
+    -------
+    skill : dict of str to float
+        Per scored modality.
+    """
+    scores = {}
+    if n_end - k0 < 2:
+        return scores
+    for name, (codec, _cfg, family) in codecs.items():
+        truth_codes = gt_codes[name][:n_end]
+        if bool((truth_codes[k0:] == truth_codes[k0 - 1 : k0]).all()):
+            continue
+        gt, predicted = (
+            task_state(
+                name, family, decode_flat_chunked(codec, c[name][:n_end], device), convert
+            )
+            for c in (gt_codes, pred_codes)
+        )
+        truth = gt[k0:n_end]
+        with np.errstate(invalid="ignore"):
+            rmse = np.sqrt(np.nanmean((predicted[k0:n_end] - truth) ** 2))
+            rmse_persistence = np.sqrt(np.nanmean((gt[k0 - 1 : k0] - truth) ** 2))
+        if np.isfinite(rmse) and rmse_persistence > 1e-12:
+            scores[name] = float(1.0 - rmse / rmse_persistence)
+    return scores
 
 
 def _nrmse(pred: np.ndarray, gt: np.ndarray) -> float:
@@ -1090,7 +1666,7 @@ class _Figure:
         self.t_origin = t_origin
         self.plasma_end = plasma_end
         if plasma_end is not None:
-            # Show the camera frame in the middle of the predicted LIVE plasma.
+            # Show the camera frame in the middle of the predicted live plasma.
             last_live = int((plasma_end - t_origin) / FRAME_S)
             if K0 < last_live < F:
                 self.mid_frame = K0 + (last_live - K0) // 2
@@ -1420,7 +1996,7 @@ def _draw_spectro_rows(figure: _Figure) -> None:
                     vmin=vmin,
                     vmax=vmax,
                     extent=extent,
-                    interpolation="antialiased",
+                    interpolation="none",
                 )
                 ax.axvline(figure.t_rollout, color="w", ls="--", lw=0.9)
                 figure.shade_after_plasma(ax)
@@ -1645,8 +2221,7 @@ def render_figure(
     out_dir.mkdir(parents=True, exist_ok=True)
     png = out_dir / f"dynamics_eval_{shot}_step{step}.png"
     pdf = out_dir / f"dynamics_eval_{shot}_step{step}.pdf"
-    # No bbox_inches: the PDF stays exactly the printed width.
-    figure.fig.savefig(png, dpi=FIGURE_OPTIONS.png_dpi)
+    figure.fig.savefig(png, dpi=200)
     figure.fig.savefig(pdf)
     figure.plt.close(figure.fig)
     return png, pdf
@@ -1817,9 +2392,9 @@ class _EvalContext:
     data_dir: object
     cache_t0: float
     log: object
-    sampler: Optional[SamplerConfig] = None
-    best_of: int = 1
-    text_vecs: Dict[str, torch.Tensor] = dataclasses.field(default_factory=dict)
+    guidance: float = 1.0
+    decode: Optional[Dict] = None
+    denorm: Optional[Dict] = None
 
 
 def _rollouts(context: _EvalContext, cache, shot):
@@ -1840,10 +2415,8 @@ def _rollouts(context: _EvalContext, cache, shot):
             actuator_mode=actuator_mode,
             cache_dir=context.cache_dir,
             shot=shot,
-            # The same decode policy on both arms, or the divergence measures it.
-            sampler=context.sampler,
-            best_of=context.best_of,
-            text_vec=context.text_vecs.get(shot),
+            guidance=context.guidance,
+            decode=context.decode,
         )
 
     # bf16 rollouts measurably lower accuracy, so they are opt-in.
@@ -1851,14 +2424,33 @@ def _rollouts(context: _EvalContext, cache, shot):
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=bf16):
         result = rollout(context.actuator_mode)
         # A counterfactual is measured against the same rollout under the real
-        # actuators, with an identical random stream.
-        baseline = None if context.actuator_mode == "real" else rollout("real")
+        # actuators, with an identical random stream. IGNITE_EVAL_NO_BASELINE=1 skips
+        # that baseline (half the cost) when the real rollout is evaluated anyway.
+        skip = os.environ.get("IGNITE_EVAL_NO_BASELINE") == "1"
+        baseline = None if context.actuator_mode == "real" or skip else rollout("real")
     return result, baseline
 
 
-def _archive_codes(context: _EvalContext, shot, result: Rollout) -> None:
-    """Save the codes, so a figure can be re-rendered without a new rollout."""
+def _archive_codes(context: _EvalContext, shot, result: Rollout, baseline: Optional[Rollout] = None) -> None:
+    """Save the codes, so a figure can be re-rendered without a new rollout.
+
+    A counterfactual also keeps its real-actuator baseline (same random stream) as
+    ``real__<modality>``, so the actuator response can be scored from the archive alone.
+    Expected frames, where the rollout has them, go in as ``mean__`` / ``realmean__``
+    (float16 coordinates in ``[0, 1]``; read them back with :func:`archived`).
+    """
+
+    def means(rollout, prefix):
+        if rollout is None or rollout.pred_mean is None:
+            return {}
+        return {
+            f"{prefix}__{name}": value.numpy().astype(np.float16)
+            for name, value in rollout.pred_mean.items()
+        }
+
     try:
+        # The archive is written before the figures, which create out_dir otherwise.
+        Path(context.out_dir).mkdir(parents=True, exist_ok=True)
         np.savez_compressed(
             Path(context.out_dir) / f"codes_{shot}_step{context.step}.npz",
             K0=np.int32(result.k0),
@@ -1866,6 +2458,8 @@ def _archive_codes(context: _EvalContext, shot, result: Rollout) -> None:
             step=np.int32(context.step),
             shot=str(shot),
             temperature=np.float32(context.temperature),
+            guidance=np.float32(context.guidance),
+            decode=json.dumps(context.decode or {}),
             **{
                 f"gt__{name}": codes.cpu().numpy().astype(np.int32)
                 for name, codes in result.gt_codes.items()
@@ -1874,6 +2468,12 @@ def _archive_codes(context: _EvalContext, shot, result: Rollout) -> None:
                 f"pred__{name}": codes.cpu().numpy().astype(np.int32)
                 for name, codes in result.pred_codes.items()
             },
+            **{
+                f"real__{name}": codes.cpu().numpy().astype(np.int32)
+                for name, codes in (baseline.pred_codes.items() if baseline is not None else ())
+            },
+            **means(result, "mean"),
+            **means(baseline, "realmean"),
         )
     except Exception as e:
         context.log(
@@ -1892,7 +2492,7 @@ def _evaluate_shot(context: _EvalContext, shot, is_first: bool, render: bool) ->
     token_accuracy = _fraction(gt, lambda n: pred[n][predicted] == gt[n][predicted])
     # Codes are highly persistent, so accuracy only means something as skill.
     persistence = _fraction(gt, lambda n: gt[n][predicted] == gt[n][K0 - 1 : K0])
-    _archive_codes(context, shot, result)
+    _archive_codes(context, shot, result, baseline)
     measured = (
         load_raw_gt(
             shot,
@@ -1914,6 +2514,7 @@ def _evaluate_shot(context: _EvalContext, shot, is_first: bool, render: bool) ->
         context.device,
         raw_gt=measured,
         bandpower=context.bandpower,
+        denorm=context.denorm,
     )
     if is_first:
         self_check(decoded)
@@ -1947,7 +2548,6 @@ def _evaluate_shot(context: _EvalContext, shot, is_first: bool, render: bool) ->
             K0,
             F,
             Path(context.out_dir),
-            t_origin=context.cache_t0,
         )
         entry["figure"] = str(png)
     return entry
@@ -2026,41 +2626,6 @@ def _codec_template(codec_tmpl, manifest, manifest_error, log):
     return template
 
 
-def _load_text_vectors(cfg, shot, text_embed_path, text_key, log) -> Dict:
-    """Per-shot text embeddings, for a checkpoint trained with text conditioning.
-
-    An old checkpoint (``text_embed_dim == 0``) never reads the H5. A shot missing
-    from it is conditioned on zeros, with a warning.
-    """
-    if cfg.text_embed_dim <= 0:
-        return {}
-    from .text_embed import load_text_embeddings, lookup
-
-    if not text_embed_path or not Path(text_embed_path).exists():
-        raise SystemExit(
-            f"model requires text_embed_dim={cfg.text_embed_dim} but the text-embedding "
-            f"H5 was not found (--text_embed_path={text_embed_path!r}); pass a valid path"
-        )
-    embeddings = load_text_embeddings(text_embed_path, cfg.text_embed_dim, key=text_key)
-    log(
-        f"[eval] text embedding conditioning: dim={cfg.text_embed_dim} key={text_key} "
-        f"path={text_embed_path} ({len(embeddings)} shots in the H5)",
-        flush=True,
-    )
-    vectors = {}
-    for shot_id in (s.strip() for s in str(shot).split(",")):
-        if not shot_id or shot_id in vectors:
-            continue
-        vectors[shot_id], found = lookup(embeddings, shot_id, cfg.text_embed_dim)
-        if not found:
-            log(
-                f"[eval] WARNING: shot {shot_id} missing from text embeddings; "
-                f"using zeros",
-                flush=True,
-            )
-    return vectors
-
-
 def run(
     ckpt: str,
     shot: str,
@@ -2075,11 +2640,9 @@ def run(
     val_n: int = 0,
     split_seed: int = 0,
     actuator_mode: str = "real",
-    sampler: Optional[SamplerConfig] = None,
-    best_of: int = 1,
-    text_embed_path: Optional[str] = None,
-    text_key: str = "input",
     log=print,
+    guidance: float = 1.0,
+    decode: Optional[Dict] = None,
 ) -> Dict:
     """Evaluate a checkpoint on one or more shots and write ``eval_metrics.json``.
 
@@ -2115,17 +2678,13 @@ def run(
     actuator_mode : str, default="real"
         Counterfactual (:func:`apply_actuator_mode`); any other mode also runs
         the real-actuator rollout with the same seed and reports the divergence.
-    sampler : SamplerConfig, default=None
-        Decode policy of both arms; None is the original sampler.
-    best_of : int, default=1
-        Candidates per rollout, see :func:`rollout_shot`.
-    text_embed_path : str, default=None
-        Per-shot text-embedding H5; read only when the checkpoint was trained
-        with text conditioning (``text_embed_dim > 0``).
-    text_key : str, default="input"
-        Text bundle of the H5: ``"input"`` (pre-shot) or ``"total"``.
     log : callable, default=print
         Logger.
+    guidance : float, default=1.0
+        Classifier-free guidance weight on the actuators; ``1.0`` is off.
+    decode : dict, default=None
+        Confidence gate and consensus options of the rollout
+        (``gate``, ``consensus_n``, ``consensus_q``); ``None`` is the plain rollout.
 
     Returns
     -------
@@ -2133,23 +2692,12 @@ def run(
         Contents of ``eval_metrics.json``; on non-zero ranks only this rank's
         per-shot results.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    log(f"[eval] device={device} ckpt={ckpt} actuator_mode={actuator_mode}", flush=True)
-    if sampler is not None:
-        log(
-            f"[eval] decode policy: top_p={sampler.top_p} "
-            f"global_pool={sampler.global_pool} "
-            f"revision_rounds={sampler.revision_rounds} "
-            f"cfg_scale={sampler.cfg_scale} gumbel={sampler.gumbel} best_of={best_of}",
-            flush=True,
-        )
-    if best_of > 1 and actuator_mode != "real":
-        log(
-            f"[eval] WARNING: --best_of_n {best_of} with actuator_mode={actuator_mode} "
-            f"is NOT an RNG-paired comparison; divergence_vs_real is not a clean "
-            f"effect size.",
-            flush=True,
-        )
+    device = _rank_device()
+    log(
+        f"[eval] device={device} ckpt={ckpt} actuator_mode={actuator_mode} "
+        f"guidance={guidance} decode={decode or {}}",
+        flush=True,
+    )
     if val_tail:
         shot = _resolve_val_shots(ckpt, cache_dir, val_tail, val_n, split_seed, log)
     # Measured ground truth needs the cache's frame origin.
@@ -2168,12 +2716,17 @@ def run(
             flush=True,
         )
     model, cfg, step = load_model(Path(ckpt), device)
-    text_vecs = _load_text_vectors(cfg, shot, text_embed_path, text_key, log)
     n_seed = int(k0) if k0 else cfg.k0_seed
     log(
         f"[eval] model loaded: d_model={cfg.d_model} depth={cfg.depth} "
         f"heads={cfg.n_heads} step={step} K0={n_seed} max_frames={cfg.max_frames} "
         f"frame_tokens={cfg.tokens_per_frame}",
+        flush=True,
+    )
+    log(
+        "[eval] history cache: "
+        + ("on" if os.environ.get("IGNITE_HISTORY_CACHE", "0") == "1" else "off")
+        + " (IGNITE_HISTORY_CACHE; applies to plain rollouts without guidance)",
         flush=True,
     )
     codec_tmpl = _codec_template(codec_tmpl, manifest, manifest_error, log)
@@ -2203,10 +2756,10 @@ def run(
         use_raw_gt=use_raw_gt,
         data_dir=os.environ.get("IGNITE_DATA_DIR") or spike.DEFAULT_DATA_DIR,
         cache_t0=cache_t0,
+        guidance=guidance,
+        decode=decode,
+        denorm=slowts_denorm(codecs),
         log=log,
-        sampler=sampler,
-        best_of=best_of,
-        text_vecs=text_vecs,
     )
 
     all_shots = [s.strip() for s in str(shot).split(",") if s.strip()]
@@ -2241,6 +2794,8 @@ def run(
     ):
         return {"per_shot": per_shot, "rank": rank}
     metrics = _summarise(per_shot, ckpt, step, temperature, seed, codec_tmpl)
+    metrics["guidance"] = float(guidance)
+    metrics["decode"] = dict(decode or {})
     with open(out / "eval_metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
     _log_summary(metrics, log)
@@ -2275,7 +2830,7 @@ def rerender(eval_dir: str, cache_dir: str, codec_tmpl: str = None, log=print) -
     figures : list of str
         PNG paths written by this rank.
     """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = _rank_device()
     manifest, manifest_error = _read_manifest(cache_dir)
     cache_t0 = float(manifest.get("t0_start", 1.0)) if manifest else 1.0
     codec_tmpl = _codec_template(codec_tmpl, manifest, manifest_error, log)
@@ -2284,6 +2839,7 @@ def rerender(eval_dir: str, cache_dir: str, codec_tmpl: str = None, log=print) -
     )
     for codec, _codec_cfg, _family in codecs.values():
         codec.to(device)
+    denorm = slowts_denorm(codecs)
     use_raw_gt = os.environ.get("IGNITE_EVAL_RAW_GT", "1") != "0"
     data_dir = os.environ.get("IGNITE_DATA_DIR") or spike.DEFAULT_DATA_DIR
     archives = sorted(Path(eval_dir).glob("codes_*_step*.npz"))
@@ -2309,16 +2865,11 @@ def rerender(eval_dir: str, cache_dir: str, codec_tmpl: str = None, log=print) -
             if use_raw_gt
             else None
         )
-        decoded = decode_all(codecs, gt, pred, K0, F, device, raw_gt=measured)
+        decoded = decode_all(
+            codecs, gt, pred, K0, F, device, raw_gt=measured, denorm=denorm
+        )
         png, _pdf = render_figure(
-            decoded,
-            shot,
-            step,
-            float(codes["temperature"]),
-            K0,
-            F,
-            Path(eval_dir),
-            t_origin=cache_t0,
+            decoded, shot, step, float(codes["temperature"]), K0, F, Path(eval_dir)
         )
         figures.append(str(png))
         log(f"[rerender] {png}", flush=True)
@@ -2442,6 +2993,114 @@ def build_arg_parser() -> argparse.ArgumentParser:
     add("--cache_dir", default=_DEFAULT_CACHE, help="pre-encoded frame-code cache dir")
     add("--out_dir", required=True, help="output dir for figures and eval_metrics.json")
     add("--temperature", type=float, default=1.0, help="rollout sampling temperature")
+    add(
+        "--guidance",
+        type=float,
+        default=1.0,
+        help="classifier-free guidance weight on the actuators; 1 = off. Needs a "
+        "checkpoint trained with --act_drop_p > 0",
+    )
+    add(
+        "--gate",
+        type=float,
+        default=0.0,
+        help="confidence gate: tokens sampled with probability below it keep the "
+        "previous frame's code; 0 = off",
+    )
+    add(
+        "--consensus_n",
+        type=int,
+        default=1,
+        help="consensus rollout: candidates per frame; 1 = off",
+    )
+    add(
+        "--consensus_q",
+        type=float,
+        default=0.5,
+        help="share of candidates that must agree (within one FSQ cell) to change a "
+        "token",
+    )
+    add(
+        "--consensus_mode",
+        choices=("majority", "mean"),
+        default="majority",
+        help="combine the candidates by near-1 majority or by their mean FSQ "
+        "coordinates",
+    )
+    add(
+        "--consensus_independent",
+        action="store_true",
+        help="consensus over independent rollouts (an ensemble) instead of candidates "
+        "that share the committed history",
+    )
+    add(
+        "--infer",
+        default="",
+        help="comma list of modalities to infer from the others: every other "
+        "modality keeps its measured codes in every predicted frame and only these "
+        "are generated (missing-diagnostic inference); empty = plain rollout",
+    )
+    add(
+        "--hide",
+        default="",
+        help="comma list of modalities missing from the initial state ([MASK] in the "
+        "seed): the first predicted frame generates them from the other modalities "
+        "and then stands in for their seed; every modality is then predicted "
+        "autoregressively as in a plain rollout (excludes --infer)",
+    )
+    add(
+        "--mask_absent",
+        type=int,
+        choices=(0, 1),
+        default=None,
+        help="1 (default from the CLI, IGNITE_MASK_ABSENT): a diagnostic that did not "
+        "record in the initial state is [MASK] there and predicted with all others; "
+        "0: it is continued as recorded (constant 'not recorded' frame). Not with "
+        "--infer or consensus",
+    )
+    add(
+        "--mask_forbid",
+        type=int,
+        choices=(0, 1),
+        default=None,
+        help="with --mask_absent: 1 never samples the masked diagnostic's 'not "
+        "recorded' codes (it must be predicted as recording); 0 (default, "
+        "IGNITE_MASK_FORBID) predicts it freely",
+    )
+    add(
+        "--forbid_modalities",
+        default="",
+        help="with --forbid_absent and neither --infer nor --hide: comma list of "
+        "modalities whose 'not recorded' codes are never sampled in a plain rollout "
+        "(the initial state is kept as measured)",
+    )
+    add(
+        "--infer_blind",
+        action="store_true",
+        help="with --infer: the inferred modalities are also [MASK] in every history "
+        "frame, seed included, so they come from the other modalities alone",
+    )
+    add(
+        "--infer_bootstrap",
+        action="store_true",
+        help="with --infer_blind: only the first predicted frame is generated blind; "
+        "it then stands in for the inferred modalities' seed frames, so no later "
+        "frame sees [MASK] in its history",
+    )
+    add(
+        "--forbid_absent",
+        default="",
+        help="shot in which the --infer modalities did not record: their constant "
+        "'not recorded' codes there are never sampled, so an inferred diagnostic "
+        "cannot be generated as switched off",
+    )
+    add(
+        "--seed_from",
+        default="",
+        help="comma list <modality>:<shot>: that modality's seed frames are taken from "
+        "the other shot (same cache), e.g. tangtv_upper:203489, to give a modality "
+        "that did not record a seed; the scored measurement stays this shot's",
+    )
     add("--seed", type=int, default=0, help="rollout seed")
     add("--k0", type=int, default=0, help="seed frames; 0 = the checkpoint's k0_seed")
     add(
@@ -2467,50 +3126,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--actuator_mode",
         default="real",
         help="actuator counterfactual over the predicted frames: real | zero | "
-        "freeze | shuffle | donor:<shot> | group_zero:<group>",
-    )
-    decode = parser.add_argument_group(
-        "decode policy (defaults reproduce the original sampler)"
-    )
-    decode.add_argument(
-        "--global_pool",
-        action="store_true",
-        help="rank reveal confidence across all modalities jointly",
-    )
-    decode.add_argument("--top_p", type=float, default=None)
-    decode.add_argument("--revision_rounds", type=int, default=0)
-    decode.add_argument("--cfg_scale", type=float, default=1.0)
-    decode.add_argument(
-        "--gumbel",
-        type=float,
-        default=0.0,
-        help="annealed Gumbel noise on the MaskGIT reveal order (0 = greedy)",
-    )
-    # Actuator counterfactual arms draw an identical number of random numbers, so the
-    # comparison is paired. --revision_rounds and --cfg_scale keep that (a fixed
-    # number of extra draws per frame); --best_of_n does not.
-    decode.add_argument(
-        "--best_of_n",
-        type=int,
-        default=1,
-        help="roll out N candidates and keep the most self-consistent one (masked "
-        "pseudo-likelihood). NOT RNG-paired: do not combine with an --actuator_mode "
-        "other than 'real'.",
-    )
-    text = parser.add_argument_group("text conditioning (text-trained checkpoints)")
-    text.add_argument(
-        "--text_embed_path",
-        default="/lustre/orion/fus187/proj-shared/foundation_model/text_embeddings.h5",
-        help="consolidated per-shot text-embedding H5; read only when the checkpoint's "
-        "text_embed_dim > 0",
-    )
-    text.add_argument(
-        "--text_key",
-        default=None,
-        choices=("input", "total"),
-        help="'input' = strictly pre-experiment text; 'total' = the whole bundle "
-        "including post-shot documentation, for probes only. Default: the text_key "
-        "stamped into the checkpoint ('input' for checkpoints before the stamp).",
+        "freeze | shuffle | donor:<shot> | group_zero:<group> | "
+        "scale:<group>=<factor>[@<frame>] (physical units, e.g. scale:pinj=0@50 "
+        "turns the beams off from frame 50) | ramp:<group>=<factor>@<frame>/<frames> "
+        "(hold the value at frame, ramp to factor times it over frames) | set:... | "
+        "balance:... | linear:... (full forms in eval_dynamics.ACTUATOR_MODES)",
     )
     add(
         "--rerender",
@@ -2547,41 +3167,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _resolve_text_key(ckpt, cli_key, cli_path) -> str:
-    """The text key to evaluate with, cross-checked against the one trained with.
-
-    The trainer stamps ``text_key`` and ``text_embed_path`` into the checkpoint;
-    evaluating on a different conditioning text than training is warned about.
-    """
-    checkpoint = torch.load(ckpt, map_location="cpu", weights_only=False)
-    stamped_key = checkpoint.get("text_key")
-    stamped_path = checkpoint.get("text_embed_path") or None
-    del checkpoint
-    if cli_key is None:
-        if stamped_key:
-            print(f"[eval] text_key {stamped_key!r} from checkpoint", flush=True)
-        key = stamped_key or "input"
-    else:
-        key = cli_key
-        if stamped_key and key != stamped_key:
-            print(
-                f"[eval] WARNING: evaluating with DIFFERENT conditioning text than "
-                f"training: checkpoint text_key={stamped_key!r}, --text_key={key!r}; "
-                f"using {key!r}.",
-                flush=True,
-            )
-    if stamped_path and stamped_path != cli_path:
-        print(
-            f"[eval] text_embed_path differs from the checkpoint's stamped path "
-            f"(stamped={stamped_path!r}, using={cli_path!r}); path moves are "
-            f"legitimate",
-            flush=True,
-        )
-    return key
-
-
 def main(argv=None):
     """Run the evaluation or the curation selected by the command line."""
+    os.environ.setdefault("IGNITE_HISTORY_CACHE", "1")  # inference: history cache on
+    os.environ.setdefault("IGNITE_MASK_ABSENT", "1")  # inference: absent seeds masked
     args = build_arg_parser().parse_args(argv)
     if args.curate:
         shots = None
@@ -2606,15 +3195,6 @@ def main(argv=None):
         return 0
     if not args.ckpt:
         raise SystemExit("--ckpt is required (omit only with --curate or --rerender)")
-    sampler = SamplerConfig(
-        temperature=args.temperature,
-        top_p=args.top_p,
-        global_pool=args.global_pool,
-        revision_rounds=args.revision_rounds,
-        cfg_scale=args.cfg_scale,
-        gumbel=args.gumbel,
-    )
-    text_key = _resolve_text_key(args.ckpt, args.text_key, args.text_embed_path)
     return run(
         args.ckpt,
         args.shot,
@@ -2628,11 +3208,26 @@ def main(argv=None):
         val_tail=args.val_tail,
         val_n=args.val_n,
         split_seed=args.split_seed,
+        guidance=args.guidance,
+        decode={
+            "gate": args.gate,
+            "consensus_n": args.consensus_n,
+            "consensus_q": args.consensus_q,
+            "consensus_mode": args.consensus_mode,
+            "consensus_shared": not args.consensus_independent,
+            "infer": [x.strip() for x in args.infer.split(",") if x.strip()],
+            "hide": [x.strip() for x in args.hide.split(",") if x.strip()],
+            "forbid_mods": [x.strip() for x in args.forbid_modalities.split(",") if x.strip()],
+            "mask_absent": None if args.mask_absent is None else bool(args.mask_absent),
+            "mask_forbid": None if args.mask_forbid is None else bool(args.mask_forbid),
+            "infer_blind": args.infer_blind,
+            "infer_bootstrap": args.infer_bootstrap,
+            "forbid_absent": args.forbid_absent.strip() or None,
+            "seed_from": dict(
+                x.strip().split(":", 1) for x in args.seed_from.split(",") if x.strip()
+            ),
+        },
         actuator_mode=args.actuator_mode,
-        sampler=sampler,
-        best_of=args.best_of_n,
-        text_embed_path=args.text_embed_path,
-        text_key=text_key,
     )
 
 

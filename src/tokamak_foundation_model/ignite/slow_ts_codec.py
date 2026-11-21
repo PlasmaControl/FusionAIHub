@@ -1,29 +1,21 @@
-"""IGNITE Phase-A slow-TS codec — encoder + FSQ quantizer + reconstruction decoder.
+"""Slow-TS codec: encoder, FSQ quantizer and reconstruction decoder.
 
-Mirrors :class:`~ignite.codec.SpectroCodec` (same composition: encoder + FSQ + decoder,
-same ``encode`` / ``quantize`` / ``decode`` / ``forward`` / ``generator_losses`` surface)
-for slow-TS windows ``(B, C, T)`` — ``C`` profile positions × ``T`` time samples — but with
-the deliberate "lightest touch" differences of docs/IGNITE_DESIGN.md §4.3:
+Same structure and interface as :class:`~ignite.codec.SpectroCodec` (``encode``,
+``quantize``, ``decode``, ``forward``, ``generator_losses``), for slow-TS windows
+``(B, C, T)`` of ``C`` profile positions by ``T`` time samples. It differs in two ways
+(docs/IGNITE_DESIGN.md §4.3):
 
-    * NO δ-shift consistency term (that projects out an STFT-phase realization nuisance that
-      exists only for spectrograms; a smooth directly-sampled profile has none). So
-      ``generator_losses`` takes a single ``x`` (plus its validity mask), never a nuisance
-      pair.
-    * NO adversarial / discriminator / feature-matching (a smooth low-D profile is not a
-      texture-rich signal where a GAN buys sharpness; and a generative adversarial decoder
-      would HALLUCINATE values into the real missing regions — beam-off gaps, diagnostic
-      not-firing zeros — which is exactly wrong for a kinetic profile). So there is no
-      discriminator argument and no ``decoder.last_layer`` adaptive-adversarial machinery.
+* No δ-shift consistency term. That term removes an STFT-phase nuisance that only
+  spectrograms have, so ``generator_losses`` takes a single ``x`` and its validity mask.
+* No discriminator or feature matching. A smooth low-dimensional profile gains no
+  sharpness from a GAN, and an adversarial decoder would invent values in genuinely
+  missing regions (beam-off gaps, diagnostics not firing).
 
-Loss = **masked reconstruction (MAE over VALID samples only)** + entropy/utilization. The
-mask is CRITICAL: without it the reconstruction MAE would drive the codec toward the
-zero-/NaN-filled missing samples (Thomson ``zero_is_missing`` zeros; CER/MSE beam-off NaNs the
-loader fills with 0), i.e. toward predicting "missing" as a real value. Masking the recon so
-missing samples contribute NOTHING is what respects the loader's missingness contract.
-
-Everything else — the FSQ bottleneck + the entropy/utilization anti-collapse regularizer — is
-REUSED from the shared IGNITE infra (``slow_ts_quantizer`` == the spectro FSQ machinery). Reuses
-**no** FAITH model code (docs/IGNITE_DESIGN.md §7).
+The loss is a reconstruction MAE over valid samples only, plus the entropy regularizer.
+Without the mask the MAE would pull the codec toward the zeros the loader puts in
+missing samples (Thomson ``zero_is_missing`` zeros, CER/MSE beam-off NaNs filled with
+0). The FSQ bottleneck and entropy term are the shared spectro machinery
+(``slow_ts_quantizer``). No FAITH model code is used (docs/IGNITE_DESIGN.md §7).
 """
 from __future__ import annotations
 
@@ -38,19 +30,16 @@ from .slow_ts_quantizer import SlowTSQuantizer
 
 
 class SlowTSCodec(nn.Module):
-    """Encoder + FSQ quantizer + reconstruction decoder for ONE slow-TS signal (Phase A).
+    """Encoder, FSQ quantizer and reconstruction decoder for one slow-TS signal.
 
-    Forward contract
-    ----------------
-    ``forward(x: (B, C, T)) -> dict`` with keys:
-        ``recon``  (B, C, T)            decoded profile-time signal
-        ``feats``  (B, n_tok, d_model)  PRE-FSQ continuous encoder features
-        ``quant``  (B, n_tok, d_model)  STE-quantized (decoder-facing) features
-        ``codes``  (B, n_tok, fsq_dim)  discrete per-dim FSQ codes (long) — Phase-B contract.
+    ``forward(x: (B, C, T))`` returns a dict with keys:
 
-    There is NO external discriminator (unlike the spectro / video codecs): the slow-TS codec
-    is a reconstruction + entropy codec (§4.3 "lightest touch"). ``generator_losses`` takes the
-    validity ``mask`` instead of a discriminator.
+    - ``recon`` (B, C, T): decoded signal
+    - ``feats`` (B, n_tok, d_model): continuous encoder features before FSQ
+    - ``quant`` (B, n_tok, d_model): straight-through quantized features
+    - ``codes`` (B, n_tok, fsq_dim): FSQ codes (long), the Phase-B input
+
+    There is no discriminator; ``generator_losses`` takes the validity ``mask`` instead.
     """
 
     def __init__(self, cfg: SlowTSCodecConfig) -> None:
@@ -60,11 +49,8 @@ class SlowTSCodec(nn.Module):
         self.quantizer = SlowTSQuantizer(cfg)
         self.decoder = SlowTSDecoder(cfg)
 
-    # ------------------------------------------------------------------ #
-    # forward paths
-    # ------------------------------------------------------------------ #
     def encode(self, x: torch.Tensor) -> torch.Tensor:
-        """(B, C, T) -> PRE-FSQ continuous features (B, n_tok, d_model)."""
+        """(B, C, T) -> continuous features before FSQ, (B, n_tok, d_model)."""
         return self.encoder(x)
 
     def quantize(self, feats: torch.Tensor):
@@ -85,9 +71,6 @@ class SlowTSCodec(nn.Module):
     def codebook_size(self) -> int:
         return self.quantizer.codebook_size
 
-    # ------------------------------------------------------------------ #
-    # generator-side loss (the codec's whole loss — there is no GAN alternation)
-    # ------------------------------------------------------------------ #
     def generator_losses(
         self,
         x: torch.Tensor,
@@ -95,59 +78,55 @@ class SlowTSCodec(nn.Module):
         step: int = 0,
         mask: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
-        """Full codec loss for one slow-TS training step.
+        """Codec loss for one slow-TS training step.
 
-        Runs the codec forward on ``x`` (the reconstruction target is ``x`` itself) and
-        combines a MASKED reconstruction MAE with the entropy/utilization regularizer::
+        Runs the codec on ``x`` and combines a masked reconstruction loss with the
+        entropy regularizer::
 
-            recon   = mean_over_VALID |recon - x|         # masked where the signal is missing
-            entropy = quantizer.entropy_loss(enc(x))       # anti-collapse (codebook diversity)
+            recon   = mean over valid samples of |recon - x|
+            entropy = quantizer.entropy_loss(enc(x))
             total   = cfg.recon_weight * recon + cfg.entropy_weight * entropy
 
-        There is **no** adversarial term, **no** feature-matching, **no** δ-shift consistency,
-        and hence **no** VQGAN adaptive-adversarial weight (see the module docstring). ``step``
-        is accepted for a uniform trainer signature but is unused (there is no adv warmup).
+        plus ``cfg.recon_mse_weight`` times the masked squared error when that weight is
+        nonzero.
 
         Parameters
         ----------
         x : (B, C, T)
-            The slow-TS window to reconstruct (also the recon target).
+            Window to reconstruct; also the target.
         cfg : SlowTSCodecConfig
         step : int
-            Unused; accepted for a signature uniform with the spectro/video codecs.
-        mask : (B, C, T) or (B, T) or (B, C) bool/float, optional
-            Per-sample VALIDITY mask (1.0 = valid/real, 0.0 = missing/padded). When given, the
-            reconstruction MAE is averaged over VALID positions ONLY, so a beam-off gap /
-            diagnostic-not-firing zero does not drag the codec toward the (zero/NaN-filled)
-            missing value. ``None`` = all valid. If the mask selects nothing (a whole batch
-            of fully-missing windows) the term falls back to the unmasked MAE so it stays
-            finite + differentiable.
+            Only used for the joint-entropy ramp; kept for a signature shared with the
+            spectro and video codecs.
+        mask : (B, C, T), (B, T) or (B, C) bool or float, optional
+            Validity mask, 1 for real samples and 0 for missing or padded ones. The
+            reconstruction terms average over valid samples only. ``None`` means all
+            valid. If the mask selects nothing, the unmasked mean is used so the loss
+            stays finite.
 
         Returns
         -------
         dict with keys:
-            ``total``            scalar codec loss (backprop this into the codec).
-            ``recon``            (B, C, T) reconstruction (live graph).
-            ``pixel``            raw (masked) reconstruction MAE (for logging / gate).
-            ``entropy``          raw anti-collapse entropy term.
-            ``adaptive_weight``  1.0 constant (no adaptive-adv weight; present for a uniform
-                                 trainer/log contract with the spectro/video codecs).
-            ``codes``            (B, n_tok, fsq_dim) codes for ``x`` (for gate/logging).
+            ``total``            scalar loss to backpropagate.
+            ``recon``            (B, C, T) reconstruction, with graph.
+            ``pixel``            masked reconstruction MAE.
+            ``pixel_mse``        masked squared error (0 when its weight is 0).
+            ``entropy``          entropy term.
+            ``adaptive_weight``  constant 1.0, kept for the same log keys as the other
+                                 codecs.
+            ``codes``            (B, n_tok, fsq_dim) codes of ``x``.
         """
         out = self.forward(x)
         recon, feats_x, codes = out["recon"], out["feats"], out["codes"]
 
         pixel = self._masked_recon_mae(recon, x, mask)
-        # MASKED SQUARED error (cfg.recon_mse_weight, default 0.0 = OFF -> the term is skipped
-        # entirely and the objective is byte-identical to the L1-only original). See
-        # SlowTSCodecConfig.recon_mse_weight: the gate's slowts_nrmse is an RMSE, so an L1-only
-        # objective optimises the conditional MEDIAN of a metric that wants the MEAN.
+        # Optional squared error, skipped when its weight is 0. The gate's slowts_nrmse
+        # is an RMSE, and L1 alone fits the conditional median rather than the mean.
         mse_w = float(getattr(cfg, "recon_mse_weight", 0.0))
         pixel_mse = (self._masked_recon_mse(recon, x, mask) if mse_w != 0.0
                      else recon.new_zeros(()))
-        # `step` is forwarded so cfg.joint_entropy_ramp_steps (the joint-entropy 0->w linear ramp
-        # in SpectroQuantizer.entropy_loss) applies here too; with the default ramp 0 / joint
-        # weight 0 this is a no-op and the returned value is unchanged.
+        # `step` drives the joint-entropy ramp (cfg.joint_entropy_ramp_steps); with the
+        # default ramp and weight of 0 it has no effect.
         entropy = self.quantizer.entropy_loss(feats_x, step=step)
 
         total = (cfg.recon_weight * pixel + mse_w * pixel_mse
@@ -163,12 +142,9 @@ class SlowTSCodec(nn.Module):
             "codes": codes,
         }
 
-    # ------------------------------------------------------------------ #
-    # masked reconstruction MAE / MSE
-    # ------------------------------------------------------------------ #
     @staticmethod
     def _broadcast_mask(recon: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """Expand a (B,C,T) / (B,T) / (B,C) validity mask to ``recon``'s (B, C, T) shape."""
+        """Expand a (B, C, T), (B, T) or (B, C) mask to the shape of ``recon``."""
         m = mask.to(dtype=recon.dtype)
         if m.dim() == 3:            # (B, C, T)
             pass
@@ -187,12 +163,11 @@ class SlowTSCodec(nn.Module):
     def _masked_recon_mae(
         recon: torch.Tensor, x: torch.Tensor, mask: Optional[torch.Tensor]
     ) -> torch.Tensor:
-        """Mean |recon - x| over VALID positions (all positions if ``mask`` is None).
+        """Mean |recon - x| over valid positions (all positions if ``mask`` is None).
 
-        ``mask`` may be (B, C, T) (per-sample), (B, T) (per-time, broadcast over C), or
-        (B, C) (per-position, broadcast over T). If the mask selects nothing (a whole batch
-        of fully-missing windows) the MAE falls back to the unmasked mean so the term is
-        always finite and differentiable.
+        ``mask`` may be (B, C, T), (B, T) (broadcast over C) or (B, C) (broadcast over
+        T). If it selects nothing, the unmasked mean is returned so the term stays
+        finite.
         """
         if mask is None:
             return torch.mean(torch.abs(recon - x))
@@ -206,11 +181,10 @@ class SlowTSCodec(nn.Module):
     def _masked_recon_mse(
         cls, recon: torch.Tensor, x: torch.Tensor, mask: Optional[torch.Tensor]
     ) -> torch.Tensor:
-        """Mean ``(recon - x)**2`` over VALID positions — the L2 twin of :meth:`_masked_recon_mae`.
+        """Mean ``(recon - x)**2`` over valid positions.
 
-        Same mask broadcasting + same empty-mask fallback (delegated to
-        :meth:`_broadcast_mask`), so the two terms are always averaged over exactly the same
-        positions and can be mixed with ``cfg.recon_mse_weight`` without a normalisation skew.
+        Same mask handling and fallback as :meth:`_masked_recon_mae`, so both terms
+        average over the same positions.
         """
         if mask is None:
             return torch.mean((recon - x) ** 2)

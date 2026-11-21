@@ -9,8 +9,7 @@ sections 5.2 and 5.4.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -24,10 +23,42 @@ from .frame_layout import FrameTokenizer
 def _attend_earlier_and_self(q, history_k, history_v, self_k, self_v):
     """Attention of position ``i`` over history positions ``< i`` and its own key.
 
-    Computed explicitly rather than with a masked ``scaled_dot_product_attention``,
-    whose backward fails with "HIP error: invalid argument" on Frontier's ROCm
-    build. The own key enters as one extra column, so the scores are
-    ``(L, L + 1)`` instead of ``(L, 2L)``; the softmax runs in fp32.
+    One fused ``scaled_dot_product_attention`` over the keys ``[history | self]``
+    with the mask ``[earlier | diagonal]``, so the ``(L, 2L)`` scores are never
+    stored for backward. On ROCm the masked kernel's backward fails with "HIP
+    error: invalid argument" (Frontier), so there it falls back to
+    :func:`_attend_earlier_and_self_explicit`.
+
+    Parameters
+    ----------
+    q, self_k, self_v : torch.Tensor of shape (B, heads, L, head_dim)
+        Query-stream projections.
+    history_k, history_v : torch.Tensor of shape (B, heads, L, head_dim)
+        History-stream keys and values.
+
+    Returns
+    -------
+    attended : torch.Tensor of shape (B, heads, L, head_dim)
+    """
+    if torch.version.hip:
+        return _attend_earlier_and_self_explicit(q, history_k, history_v, self_k, self_v)
+    length = q.shape[-2]
+    position = torch.arange(length, device=q.device)
+    earlier = position.view(1, -1) < position.view(-1, 1)
+    mask = torch.cat([earlier, position.view(1, -1) == position.view(-1, 1)], dim=-1)
+    return F.scaled_dot_product_attention(
+        q,
+        torch.cat([history_k, self_k], dim=-2),
+        torch.cat([history_v, self_v], dim=-2),
+        attn_mask=mask,
+    )
+
+
+def _attend_earlier_and_self_explicit(q, history_k, history_v, self_k, self_v):
+    """:func:`_attend_earlier_and_self` without ``scaled_dot_product_attention``.
+
+    The own key enters as one extra column, so the scores are ``(L, L + 1)``
+    instead of ``(L, 2L)``; the softmax runs in fp32.
 
     Parameters
     ----------
@@ -168,6 +199,62 @@ class FactorizedSTBlock(nn.Module):
         flat = flat + self.ffn(self.fn(flat))
         return flat.reshape(B, Fr, N, d)
 
+    def forward_keep_temporal_kv(self, x: torch.Tensor):
+        """:meth:`forward`, also returning the temporal attention keys and values.
+
+        Inference only (the history cache, :class:`HistoryCache`). The output equals
+        :meth:`forward` up to floating-point rounding.
+
+        Returns
+        -------
+        x : torch.Tensor of shape (B, F, N, d)
+        keys, values : torch.Tensor of shape (B * N, heads, F, head_dim)
+        """
+        B, Fr, N, d = x.shape
+        per_frame = x.reshape(B * Fr, N, d)
+        per_frame = per_frame + self.spatial(self.sn(per_frame))
+        x = per_frame.reshape(B, Fr, N, d)
+        per_token = x.permute(0, 2, 1, 3).reshape(B * N, Fr, d)
+        q, k, v = self.temporal._project(self.tn(per_token))
+        attended = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        per_token = per_token + self.temporal._output(attended, per_token.shape)
+        x = per_token.reshape(B, N, Fr, d).permute(0, 2, 1, 3)
+        flat = x.reshape(B * Fr * N, d)
+        flat = flat + self.ffn(self.fn(flat))
+        return flat.reshape(B, Fr, N, d), k, v
+
+    def forward_next_frame(self, x: torch.Tensor, past_k: torch.Tensor, past_v: torch.Tensor):
+        """Apply the block to one new frame, given the cached history.
+
+        Spatial attention and the FFN act on the frame alone; in temporal attention
+        each of its tokens attends to the cached keys and values of the same token
+        in every earlier frame and to itself. Because temporal attention is causal,
+        that is exactly what :meth:`forward` computes for the last frame.
+
+        Parameters
+        ----------
+        x : torch.Tensor of shape (B, 1, N, d)
+        past_k, past_v : torch.Tensor of shape (B * N, heads, P, head_dim)
+
+        Returns
+        -------
+        x : torch.Tensor of shape (B, 1, N, d)
+        keys, values : torch.Tensor of shape (B * N, heads, 1, head_dim)
+            This frame's temporal keys and values, for appending to the cache.
+        """
+        B, Fr, N, d = x.shape
+        per_frame = x.reshape(B, N, d)
+        per_frame = per_frame + self.spatial(self.sn(per_frame))
+        per_token = per_frame.reshape(B * N, 1, d)
+        q, k, v = self.temporal._project(self.tn(per_token))
+        attended = F.scaled_dot_product_attention(
+            q, torch.cat([past_k, k], dim=-2), torch.cat([past_v, v], dim=-2)
+        )
+        per_token = per_token + self.temporal._output(attended, per_token.shape)
+        flat = per_token.reshape(B * N, d)
+        flat = flat + self.ffn(self.fn(flat))
+        return flat.reshape(B, 1, N, d), k, v
+
     def forward_two_stream(self, history: torch.Tensor, query: torch.Tensor):
         """Apply the block to a history and a query stream of shape (B, F, N, d).
 
@@ -192,67 +279,6 @@ class FactorizedSTBlock(nn.Module):
         flat = flat + self.ffn(self.fn(flat))
         both = flat.reshape(2 * B, Fr, N, d)
         return both[:B], both[B:]
-
-    def prefill(self, x: torch.Tensor):
-        """Apply :meth:`forward` and also return the temporal keys and values.
-
-        Returns
-        -------
-        x : torch.Tensor of shape (B, F, N, d)
-        k, v : torch.Tensor of shape (B * N, heads, F, head_dim)
-        """
-        B, Fr, N, d = x.shape
-        per_frame = x.reshape(B * Fr, N, d)
-        per_frame = per_frame + self.spatial(self.sn(per_frame))
-        per_token = per_frame.reshape(B, Fr, N, d).permute(0, 2, 1, 3)
-        per_token = per_token.reshape(B * N, Fr, d)
-        q, k, v = self.temporal._project(self.tn(per_token))
-        attended = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-        per_token = per_token + self.temporal._output(attended, per_token.shape)
-        flat = per_token.reshape(B, N, Fr, d).permute(0, 2, 1, 3).reshape(B * Fr * N, d)
-        return (flat + self.ffn(self.fn(flat))).reshape(B, Fr, N, d), k, v
-
-    def step(
-        self, x: torch.Tensor, k_buf: torch.Tensor, v_buf: torch.Tensor, n: int
-    ) -> torch.Tensor:
-        """Apply the block to one new frame ``x`` of shape (B, N, d) at index ``n``.
-
-        Its keys and values go to slot ``n`` of the buffers, and it attends over
-        slots ``[0, n]``.
-        """
-        B, N, d = x.shape
-        x = x + self.spatial(self.sn(x))
-        per_token = x.reshape(B * N, 1, d)
-        q, k, v = self.temporal._project(self.tn(per_token))
-        k_buf[:, :, n : n + 1], v_buf[:, :, n : n + 1] = k, v
-        attended = F.scaled_dot_product_attention(
-            q, k_buf[:, :, : n + 1], v_buf[:, :, : n + 1]
-        )
-        flat = (per_token + self.temporal._output(attended, per_token.shape)).reshape(
-            B * N, d
-        )
-        return (flat + self.ffn(self.fn(flat))).reshape(B, N, d)
-
-
-@dataclass
-class KVCache:
-    """Every block's temporal keys and values for the frames committed so far.
-
-    Incremental decoding with it is exact: spatial attention stays inside a frame,
-    temporal attention is causal, and actuators and text are added per frame, so a
-    committed frame's keys and values never change when a later frame arrives.
-
-    Attributes
-    ----------
-    k, v : list of torch.Tensor of shape (B * N, heads, max_frames, head_dim)
-        Each block's buffers; slots ``[0, n)`` hold the committed frames.
-    n : int
-        Number of committed frames.
-    """
-
-    k: List[torch.Tensor]
-    v: List[torch.Tensor]
-    n: int
 
 
 class ActuatorCrossAttention(nn.Module):
@@ -302,6 +328,26 @@ class ActuatorCrossAttention(nn.Module):
         return self.o(attended.transpose(1, 2).reshape(B, Fr, N, d))
 
 
+class HistoryCache:
+    """Temporal keys and values of the committed frames, per block (inference only).
+
+    Built by :meth:`DynamicsBackbone.start_history_cache`, extended by one frame at a
+    time with :meth:`DynamicsBackbone.extend_history_cache`. Storage is allocated
+    once for ``max_frames``; at d1024 it is ``2 * depth * B * tokens * max_frames *
+    d_model`` floats (16 GB for 16 blocks, one sample, 100 frames in float32).
+    """
+
+    def __init__(self, keys, values, length: int):
+        self.keys = keys
+        self.values = values
+        self.length = length
+
+    def past(self, block: int):
+        """Keys and values of block ``block`` over the committed frames."""
+        n = self.length
+        return self.keys[block][:, :, :n], self.values[block][:, :, :n]
+
+
 class DynamicsBackbone(nn.Module):
     """Map codes and actuators to per-modality head outputs.
 
@@ -317,10 +363,6 @@ class DynamicsBackbone(nn.Module):
         self.tok = FrameTokenizer(cfg)
         self.act_embed = nn.Linear(cfg.actuator_dim, cfg.d_model)
         self.act_cross = ActuatorCrossAttention(cfg) if cfg.act_cross_attn else None
-        if cfg.text_embed_dim > 0:
-            # No bias: a zero text input, drop_text and text_dropout_p == 1 then coincide
-            # exactly, so missing text is indistinguishable from the trained null.
-            self.text_embed = nn.Linear(cfg.text_embed_dim, cfg.d_model, bias=False)
         self.blocks = nn.ModuleList([FactorizedSTBlock(cfg) for _ in range(cfg.depth)])
         self.out_norm = nn.LayerNorm(cfg.d_model)
 
@@ -328,9 +370,7 @@ class DynamicsBackbone(nn.Module):
         self,
         codes: Dict[str, torch.Tensor],
         actuators: torch.Tensor,
-        drop_actuators: bool = False,
-        text: Optional[torch.Tensor] = None,
-        drop_text: bool = False,
+        act_null: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Return hidden states of shape (B, F, tokens_per_frame, d_model).
 
@@ -340,21 +380,10 @@ class DynamicsBackbone(nn.Module):
             Input codes.
         actuators : torch.Tensor of shape (B, F, actuator_dim)
             Actuators of each frame.
-        drop_actuators : bool, default=False
-            Zero the actuator conditioning of the whole batch: the unconditional
-            branch of classifier-free guidance.
-        text : torch.Tensor of shape (B, text_embed_dim), optional
-            Per-shot text embedding, required when ``cfg.text_embed_dim > 0``.
-        drop_text : bool, default=False
-            Zero the text conditioning of the whole batch.
+        act_null : torch.BoolTensor of shape (B,), default=None
+            Samples run unconditionally: no actuator term at all (see :meth:`_embed`).
         """
-        x = self._embed(
-            codes,
-            actuators,
-            drop_actuators=drop_actuators,
-            text=text,
-            drop_text=drop_text,
-        )
+        x = self._embed(codes, actuators, act_null)
         recompute = self.training and self.cfg.grad_checkpointing and x.requires_grad
         for block in self.blocks:
             x = self._checkpointed(block, recompute, x)
@@ -365,7 +394,7 @@ class DynamicsBackbone(nn.Module):
         history_codes: Dict[str, torch.Tensor],
         query_codes: Dict[str, torch.Tensor],
         actuators: torch.Tensor,
-        text: Optional[torch.Tensor] = None,
+        act_null: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Return query-stream hidden states for block teacher forcing.
 
@@ -381,18 +410,16 @@ class DynamicsBackbone(nn.Module):
             The frames to predict, with masked positions set to ``[MASK]``.
         actuators : torch.Tensor of shape (B, F, actuator_dim)
             Actuators of each frame, shared by both streams.
-        text : torch.Tensor of shape (B, text_embed_dim), optional
-            Per-shot text embedding, shared by both streams.
+        act_null : torch.BoolTensor of shape (B,), default=None
+            Samples run unconditionally, in both streams.
 
         Returns
         -------
         hidden : torch.Tensor of shape (B, F, tokens_per_frame, d_model)
             Query-stream hidden states.
         """
-        # One conditioning-dropout draw for both streams: they are the same samples.
-        keep = self._conditioning_keep(actuators.shape[0], actuators.device)
-        history = self._embed(history_codes, actuators, text=text, keep=keep)
-        query = self._embed(query_codes, actuators, text=text, keep=keep)
+        history = self._embed(history_codes, actuators, act_null)
+        query = self._embed(query_codes, actuators, act_null)
         recompute = (
             self.training and self.cfg.grad_checkpointing and query.requires_grad
         )
@@ -402,47 +429,14 @@ class DynamicsBackbone(nn.Module):
             )
         return self.out_norm(query)
 
-    def _conditioning_keep(
-        self,
-        batch: int,
-        device: torch.device,
-        drop_actuators: bool = False,
-        drop_text: bool = False,
-    ):
-        """Draw the per-sample actuator and text dropout masks of a training batch.
+    def _embed(self, codes, actuators, act_null=None, frame_offset: int = 0) -> torch.Tensor:
+        """Token embeddings plus the actuator term.
 
-        A whole trajectory is conditional or unconditional, as guidance is applied
-        at inference. Nothing is drawn when the dropout is off or in eval mode.
-
-        Returns
-        -------
-        actuator_keep : torch.BoolTensor of shape (B, 1, 1) or None
-        text_keep : torch.BoolTensor of shape (B, 1) or None
+        ``act_null`` (B,) drops the whole actuator term of those samples, the
+        unconditional branch of classifier-free guidance. That is distinct from
+        actuators at their normalised mean, which still add the projection bias, so
+        no new parameter is needed and older checkpoints load unchanged.
         """
-        actuator_keep = text_keep = None
-        if self.training and not drop_actuators and self.cfg.actuator_dropout_p > 0.0:
-            actuator_keep = (
-                torch.rand((batch, 1, 1), device=device) >= self.cfg.actuator_dropout_p
-            )
-        if (
-            self.training
-            and not drop_text
-            and self.cfg.text_embed_dim > 0
-            and self.cfg.text_dropout_p > 0.0
-        ):
-            text_keep = torch.rand((batch, 1), device=device) >= self.cfg.text_dropout_p
-        return actuator_keep, text_keep
-
-    def _embed(
-        self,
-        codes,
-        actuators,
-        frame_offset: int = 0,
-        drop_actuators: bool = False,
-        text: Optional[torch.Tensor] = None,
-        drop_text: bool = False,
-        keep=None,
-    ) -> torch.Tensor:
         x = self.tok.embed(codes, frame_offset=frame_offset)
         B, Fr, N, d = x.shape
         if actuators.shape != (B, Fr, self.cfg.actuator_dim):
@@ -450,42 +444,93 @@ class DynamicsBackbone(nn.Module):
                 f"actuators expected {(B, Fr, self.cfg.actuator_dim)}; "
                 f"got {tuple(actuators.shape)}"
             )
-        if keep is None:
-            keep = self._conditioning_keep(B, x.device, drop_actuators, drop_text)
-        actuator_keep, text_keep = keep
-        # Additive and causal: frame f gets actuator f, and temporal attention is causal.
-        actuator_embedding = self.act_embed(actuators)
-        if drop_actuators:
-            actuator_embedding = torch.zeros_like(actuator_embedding)
-        elif actuator_keep is not None:
-            actuator_embedding = actuator_embedding * actuator_keep.to(
-                actuator_embedding.dtype
-            )
-        x = x + actuator_embedding.unsqueeze(2)
-        if self.act_cross is not None and not drop_actuators:
-            # A second actuator pathway, so it obeys the same conditioning drop:
-            # otherwise the unconditional branch would still see the actuators.
-            cross = self.act_cross(x, actuators)
-            if actuator_keep is not None:
-                cross = cross * actuator_keep.to(cross.dtype).unsqueeze(-1)
-            x = x + cross
-        if self.cfg.text_embed_dim > 0:
-            if text is None:
-                raise ValueError("cfg.text_embed_dim > 0 but no text embedding passed")
-            if text.shape != (B, self.cfg.text_embed_dim):
-                raise ValueError(
-                    f"text expected {(B, self.cfg.text_embed_dim)}; "
-                    f"got {tuple(text.shape)}"
-                )
-            text_embedding = self.text_embed(text)
-            if drop_text:
-                text_embedding = torch.zeros_like(text_embedding)
-            elif text_keep is not None:
-                text_embedding = text_embedding * text_keep.to(text_embedding.dtype)
-            x = x + text_embedding.view(B, 1, 1, d)
-        elif text is not None:
-            raise ValueError("text passed but cfg.text_embed_dim == 0")
-        return x
+        keep = None if act_null is None else (~act_null).to(x.dtype).view(B, 1, 1, 1)
+        conditioning = self.act_embed(actuators).unsqueeze(2)
+        if self.act_cross is not None:
+            conditioning = conditioning + self.act_cross(x, actuators)
+        return x + (conditioning if keep is None else conditioning * keep)
+
+    def supports_history_cache(self) -> bool:
+        """Whether :meth:`start_history_cache` applies (no lag embedding)."""
+        return int(getattr(self.tok, "lag_k", 0)) == 0
+
+    @torch.no_grad()
+    def start_history_cache(
+        self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor
+    ) -> HistoryCache:
+        """Run the committed frames once and keep every block's temporal keys/values.
+
+        Parameters
+        ----------
+        codes : dict of str to torch.LongTensor of shape (B, P, n_tok)
+            Committed frames, as the model should see them (e.g. blind modalities
+            already set to ``[MASK]``).
+        actuators : torch.Tensor of shape (B, P, actuator_dim)
+            Their actuators.
+        """
+        if not self.supports_history_cache():
+            raise ValueError("the history cache does not support lag_embed_k > 0")
+        x = self._embed(codes, actuators)
+        B, P, N, _d = x.shape
+        size = self.cfg.max_frames
+        keys, values = [], []
+        for block in self.blocks:
+            x, k, v = block.forward_keep_temporal_kv(x)
+            store_k = k.new_empty(k.shape[0], k.shape[1], size, k.shape[3])
+            store_v = torch.empty_like(store_k)
+            store_k[:, :, :P] = k
+            store_v[:, :, :P] = v
+            keys.append(store_k)
+            values.append(store_v)
+        return HistoryCache(keys, values, P)
+
+    @torch.no_grad()
+    def next_frame_logits(
+        self,
+        cache: HistoryCache,
+        frame_codes: Dict[str, torch.Tensor],
+        frame_actuators: torch.Tensor,
+    ) -> Dict[str, torch.Tensor]:
+        """Head outputs of one new frame after the cached history.
+
+        Equals the last frame of :meth:`forward` on the history plus this frame, up
+        to floating-point rounding, at the cost of one frame instead of all of them.
+
+        Parameters
+        ----------
+        frame_codes : dict of str to torch.LongTensor of shape (B, 1, n_tok)
+        frame_actuators : torch.Tensor of shape (B, 1, actuator_dim)
+
+        Returns
+        -------
+        logits : dict of str to torch.Tensor of shape (B, 1, n_tok, n_out)
+        """
+        x, _ = self._cached_frame(cache, frame_codes, frame_actuators, keep=False)
+        return self.tok.logits(self.out_norm(x))
+
+    @torch.no_grad()
+    def extend_history_cache(
+        self,
+        cache: HistoryCache,
+        frame_codes: Dict[str, torch.Tensor],
+        frame_actuators: torch.Tensor,
+    ) -> None:
+        """Append a committed frame (shapes as :meth:`next_frame_logits`) to ``cache``."""
+        if cache.length >= self.cfg.max_frames:
+            raise ValueError(f"history cache full at max_frames={self.cfg.max_frames}")
+        self._cached_frame(cache, frame_codes, frame_actuators, keep=True)
+        cache.length += 1
+
+    def _cached_frame(self, cache, frame_codes, frame_actuators, keep: bool):
+        x = self._embed(frame_codes, frame_actuators, frame_offset=cache.length)
+        n = cache.length
+        for index, block in enumerate(self.blocks):
+            past_k, past_v = cache.past(index)
+            x, k, v = block.forward_next_frame(x, past_k, past_v)
+            if keep:
+                cache.keys[index][:, :, n : n + 1] = k
+                cache.values[index][:, :, n : n + 1] = v
+        return x, None
 
     def _checkpointed(self, function, recompute: bool, *inputs):
         if not recompute:
@@ -505,63 +550,7 @@ class DynamicsBackbone(nn.Module):
         self,
         codes: Dict[str, torch.Tensor],
         actuators: torch.Tensor,
-        text: Optional[torch.Tensor] = None,
+        act_null: Optional[torch.Tensor] = None,
     ):
         """Return per-modality head outputs for every position."""
-        return self.tok.logits(self.encode(codes, actuators, text=text))
-
-    def prefill(
-        self,
-        codes: Dict[str, torch.Tensor],
-        actuators: torch.Tensor,
-        max_frames: int,
-        text: Optional[torch.Tensor] = None,
-    ) -> KVCache:
-        """Run the committed frames once and keep every block's temporal keys and values.
-
-        Parameters
-        ----------
-        codes : dict of str to torch.LongTensor of shape (B, F, n_tok)
-            Committed frames.
-        actuators : torch.Tensor of shape (B, F, actuator_dim)
-            Their actuators.
-        max_frames : int
-            Capacity of the cache buffers.
-        text : torch.Tensor of shape (B, text_embed_dim), optional
-            Per-shot text embedding.
-        """
-        if self.tok.lag_k:
-            raise ValueError("the KV cache does not support lag_embed_k > 0")
-        x = self._embed(codes, actuators, text=text)
-        n = x.shape[1]
-        keys, values = [], []
-        for block in self.blocks:
-            x, k, v = block.prefill(x)
-            pad = (*k.shape[:2], max_frames - n, k.shape[-1])
-            keys.append(torch.cat([k, k.new_empty(pad)], dim=2))
-            values.append(torch.cat([v, v.new_empty(pad)], dim=2))
-        return KVCache(keys, values, n)
-
-    def step(
-        self,
-        cache: KVCache,
-        codes: Dict[str, torch.Tensor],
-        actuators: torch.Tensor,
-        text: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """Hidden states (B, tokens_per_frame, d_model) of frame ``cache.n``.
-
-        ``codes`` (``{name: (B, n_tok)}``) and ``actuators`` (B, actuator_dim) are that
-        frame's. Its keys and values are written to slot ``cache.n``; the caller
-        commits the frame by running this once more with the final codes and then
-        advancing ``cache.n``.
-        """
-        x = self._embed(
-            {name: c.unsqueeze(1) for name, c in codes.items()},
-            actuators.unsqueeze(1),
-            frame_offset=cache.n,
-            text=text,
-        )[:, 0]
-        for block, k_buf, v_buf in zip(self.blocks, cache.k, cache.v):
-            x = block.step(x, k_buf, v_buf, cache.n)
-        return self.out_norm(x)
+        return self.tok.logits(self.encode(codes, actuators, act_null))

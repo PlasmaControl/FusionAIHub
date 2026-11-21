@@ -38,6 +38,24 @@ from tokamak_foundation_model.ignite import train_dynamics as td
 from tokamak_foundation_model.ignite import spike as _spike
 
 
+def encode_shot(codec, cfg, modality, family, shot, data_dir, t0, n_max):
+    """Codes ``(n, n_tok)`` int32 of one modality of one shot, ``n <= n_max``.
+
+    None if the shot has fewer than 8 frames of that modality.
+    """
+    ds = td._single_shot_dataset(modality, family, cfg, shot, data_dir, t0_start=t0)
+    n = min(int(n_max), len(ds))
+    if n < 8:
+        return None
+    frames = []
+    with torch.no_grad():
+        for t in range(n):
+            item = ds[t]
+            x = (item[0] if isinstance(item, tuple) else item).unsqueeze(0)
+            frames.append(td.encode_flat(codec, x)[0].to(torch.int32))
+    return torch.stack(frames, 0)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--cache_dir", required=True)
@@ -84,26 +102,14 @@ def main():
                 n_skip += 1
                 continue
 
-            ds = td._single_shot_dataset(a.modality, a.family, cfg, shot, data_dir, t0_start=t0)
-            new_n = len(ds)
-            if not new_n:
-                n_skip += 1
-                continue
-
             # nmin can only SHRINK: it is a min over modalities.
             old_n = int(d["n_frames"])
-            nmin = min(old_n, new_n)
-            if nmin < 8:
+            new_codes = encode_shot(codec, cfg, a.modality, a.family, shot, data_dir, t0,
+                                    old_n)                           # (nmin, n_tok)
+            if new_codes is None:
                 n_skip += 1
                 continue
-
-            frames = []
-            with torch.no_grad():
-                for t in range(nmin):
-                    item = ds[t]
-                    x = (item[0] if isinstance(item, tuple) else item).unsqueeze(0)
-                    frames.append(td.encode_flat(codec, x)[0].to(torch.int32))
-            new_codes = torch.stack(frames, 0)                       # (nmin, n_tok)
+            nmin = new_codes.shape[0]
 
             if a.dry_run:
                 n_done += 1

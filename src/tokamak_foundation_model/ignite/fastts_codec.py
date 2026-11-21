@@ -1,33 +1,31 @@
-"""IGNITE Phase-A fast-TS (filterscopes) codec — encoder + FSQ + RAW-SAMPLE decoder.
+"""IGNITE Phase-A fast-TS (filterscopes) codec: encoder, FSQ and decoder.
 
-2026-09-03 REDESIGN. The codec's input AND reconstruction target is now the RAW 10 kHz
-waveform ``(B, C, W)`` (C = 8 filterscope channels, W = 500 samples in a 50 ms frame), not the
-5-bin ELM ACTIVITY ENVELOPE it used to model. The envelope / RMS / pooling layer is gone.
+``cfg.target`` selects the mode (see ``config.FastTSCodecConfig``). Envelope mode (the
+default) models a 5-bin ELM activity envelope. In raw mode the input and the
+reconstruction target are the 10 kHz waveform ``(B, C, W)`` (C = 8 channels, W = 500
+samples in a 50 ms frame).
 
-OBJECTIVE INVERSION (the substantive change beyond the target)
---------------------------------------------------------------
-The shipped envelope codec ran ``pixel_anchor_weight = 0.05`` against ``adversarial_weight =
-1.0`` — reconstruction weighted ~20x BELOW the GAN. For a SAMPLE-WISE target that is exactly
-backwards: an adversarial decoder synthesizes plausible high-frequency detail that is
-UNCORRELATED with the true samples, which lowers no sample-wise error and raises nRMSE. The
-defaults are therefore ``pixel_anchor_weight = 1.0``, ``adversarial_weight = 0.0``,
-``fm_weight = 0.0`` — a reconstruction-only objective plus the FSQ entropy anti-collapse term.
-The adversarial path is retained (``--adversarial_weight``) so the trade-off is measurable.
+Objective in raw mode
+---------------------
+The envelope codec weights the pixel anchor at 0.05 against adversarial 1.0. For a
+sample-wise target that is backwards: an adversarial decoder adds plausible
+high-frequency detail that is uncorrelated with the true samples, which raises nRMSE.
+``config.fastts_raw_config`` therefore sets ``pixel_anchor_weight = 1.0``,
+``adversarial_weight = 0.0`` and ``fm_weight = 0.0``: reconstruction plus the FSQ
+entropy term. The adversarial path stays available (``--adversarial_weight``).
 
-DELTA-SHIFT CONSISTENCY IS OFF (``consistency_weight = 0.0``)
-------------------------------------------------------------
-The envelope codec enforced ``|enc(x) - enc(x_shift)|^2`` because sub-bin spike TIMING was a
-realization nuisance to be projected out. Sample-wise reconstruction needs the codes to CARRY
-that timing, so the term is counter-productive and defaults OFF; when the weight is 0 the
-second encoder pass is SKIPPED entirely (it is pure wasted compute). The delta pair is still
-built by the loader because the gate's ``stability`` probe reports it — expect it LOW now, and
-note that ``spike.gate_score`` does not read stability.
+Delta-shift consistency in raw mode
+-----------------------------------
+The envelope codec penalizes ``|enc(x) - enc(x_shift)|^2`` to make codes invariant to
+sub-bin spike timing. Sample-wise reconstruction needs codes that carry that timing, so
+raw mode sets ``consistency_weight = 0.0``, and the second encoder pass is then skipped.
+The loader still builds the shifted pair because the gate's ``stability`` probe reports
+it; expect it to be low (``spike.gate_score`` does not read it).
 
-Everything else is reused from the shared IGNITE infra: the FSQ bottleneck
-(:class:`~ignite.fastts_quantizer.FastTSQuantizer`, an alias of the spectro FSQ machinery), the
-adaptive adversarial weight, the entropy/utilization regularizer, and the feature-matching term
-(``losses.feature_matching_loss`` / ``losses._as_score_list`` / ``losses._mean_over_maps``).
-Reuses **no** FAITH model code (7).
+The FSQ bottleneck (:class:`~ignite.fastts_quantizer.FastTSQuantizer`, the spectrogram
+quantizer), the adaptive adversarial weight, the entropy regularizer and the
+feature-matching term (``losses.feature_matching_loss`` / ``losses._as_score_list`` /
+``losses._mean_over_maps``) are shared with the other codecs. No FAITH model code (§7).
 """
 from __future__ import annotations
 
@@ -39,10 +37,9 @@ import torch.nn as nn
 from .config import FastTSCodecConfig
 from .fastts_nets import FastTSDecoder, FastTSEncoder, gain_shape_split
 from .fastts_quantizer import FastTSQuantizer
-# Variance floor below which a (window, channel) pair is treated as dead / absent and
-# excluded from the normalized reconstruction loss. Matches gate._FASTTS_STD_EPS**2 in spirit
-# (that one thresholds the std, this one the variance) so the loss masks exactly what the
-# reported metric excludes.
+# Variance below which a (window, channel) pair counts as dead and is left out of the
+# normalized reconstruction loss. The counterpart of gate._FASTTS_STD_EPS (a std
+# threshold), so the loss excludes what the reported metric excludes.
 _FASTTS_LIVE_VAR_EPS: float = 1e-16
 
 from .losses import (
@@ -54,21 +51,23 @@ from .losses import (
 
 
 class FastTSCodec(nn.Module):
-    """Encoder + FSQ quantizer + decoder for the fast-TS RAW waveform (Phase A).
+    """Encoder, FSQ quantizer and decoder for the fast-TS codec (Phase A).
 
     Forward contract
     ----------------
-    ``forward(x: (B, C, W)) -> dict`` with keys:
-        ``recon``  (B, C, W)            reconstructed RAW samples
-        ``feats``  (B, n_tok, d_model)  PRE-FSQ continuous encoder features
-        ``quant``  (B, n_tok, d_model)  STE-quantized (decoder-facing) features
-        ``codes``  (B, n_tok, fsq_dim)  discrete per-dim FSQ codes (long) — Phase-B contract.
+    ``forward(x) -> dict``, with ``x`` of shape (B, C, W) in raw mode or (B, C, E) in
+    envelope mode, and keys:
+        ``recon``      same shape as ``x``     reconstruction
+        ``feats``      (B, n_tok, d_model)     pre-FSQ continuous encoder features
+        ``quant``      (B, n_tok, d_model)     straight-through quantized features
+        ``codes``      (B, n_tok, fsq_dim)     discrete per-dimension FSQ codes (long),
+                                               the Phase-B contract
+        ``gain_pred``  only with gain-shape    decoded gain
 
-    The discriminator (``fastts_discriminator.Env1DPatchGAN``) is OFF by default
-    (``adversarial_weight`` 0.0) but still lives OUTSIDE the codec (created
-    alongside it by the trainer), exactly as for the spectro / video codecs: the codec's
-    parameters are precisely the tokenizer Phase B freezes, and the two optimizers own disjoint
-    parameter sets.
+    The discriminator (``fastts_discriminator.Env1DPatchGAN``) lives outside the codec
+    and is created by the trainer, as for the spectrogram and video codecs, so the
+    codec's parameters are exactly the tokenizer Phase B freezes and the two optimizers
+    own disjoint parameter sets.
     """
 
     def __init__(self, cfg: FastTSCodecConfig) -> None:
@@ -78,11 +77,8 @@ class FastTSCodec(nn.Module):
         self.quantizer = FastTSQuantizer(cfg)
         self.decoder = FastTSDecoder(cfg)
 
-    # ------------------------------------------------------------------ #
-    # forward paths
-    # ------------------------------------------------------------------ #
     def encode(self, x: torch.Tensor) -> torch.Tensor:
-        """(B, C, W) raw samples -> PRE-FSQ continuous features (B, n_tok, d_model)."""
+        """Raw window -> pre-FSQ continuous features (B, n_tok, d_model)."""
         return self.encoder(x)
 
     def quantize(self, feats: torch.Tensor):
@@ -90,15 +86,14 @@ class FastTSCodec(nn.Module):
         return self.quantizer.quantize(feats)
 
     def decode(self, quant: torch.Tensor) -> torch.Tensor:
-        """Quantized features (B, n_tok, d_model) -> raw-sample reconstruction (B, C, W)."""
+        """Quantized features (B, n_tok, d_model) -> reconstruction."""
         return self.decoder(quant)
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         feats = self.encode(x)
         quant, codes = self.quantize(feats)
-        # GAIN-SHAPE (opt-in) additionally returns the decoded gain so it can be supervised
-        # directly; ``gain_pred`` is None (and the call is the plain single-tensor one) in
-        # every other configuration, so the returned dict is a superset of the old one.
+        # With gain-shape the decoder also returns the decoded gain, for direct
+        # supervision; otherwise gain_pred is None and is left out of the dict.
         if self.cfg.n_gain_tok > 0:
             recon, gain_pred = self.decoder(quant, return_aux=True)
         else:
@@ -112,9 +107,7 @@ class FastTSCodec(nn.Module):
     def codebook_size(self) -> int:
         return self.quantizer.codebook_size
 
-    # ------------------------------------------------------------------ #
-    # generator-side loss (the codec's half of the GAN alternation)
-    # ------------------------------------------------------------------ #
+    # Generator-side loss (the codec's half of the GAN alternation)
     def generator_losses(
         self,
         x: torch.Tensor,
@@ -123,73 +116,67 @@ class FastTSCodec(nn.Module):
         cfg: FastTSCodecConfig,
         step: int = 0,
     ) -> Dict[str, torch.Tensor]:
-        """Full generator loss for one fast-TS codec (generator) step, RAW-SAMPLE target.
+        """Generator loss for one fast-TS codec step.
 
-        ``x`` is the (B, C, W) raw window to reconstruct (also the recon target) and
-        ``x_shift`` its delta-shifted pair (only touched when ``cfg.consistency_weight > 0``,
-        which is NOT the default -- see the module docstring).
+        ``x`` is the window to reconstruct (also the target) and ``x_shift`` its
+        delta-shifted pair, used only when ``cfg.consistency_weight > 0`` (not in raw
+        mode; see the module docstring).
 
-        DEFAULT PATH (``adversarial_weight == 0``, ``fm_weight == 0``,
+        Raw-mode path (``adversarial_weight == 0``, ``fm_weight == 0``,
         ``consistency_weight == 0``)::
 
             total = pixel_anchor_weight * recon + ssim_weight * (1 - CS_SSIM)
-                    + entropy_weight * entropy
+                    + gain_weight * gain + entropy_weight * entropy
 
-        with ``recon`` the sample-wise reconstruction loss selected by ``cfg.recon_loss``
-        ("nrmse" default -- the per-(window, channel) std-normalized RMSE, which IS the
-        reported metric; plain "mse" is NOT a surrogate for it, see :meth:`_recon_loss`). The discriminator
-        is still stepped by the trainer but contributes nothing to the generator, so a
-        GAN-free run is exactly a reconstruction + anti-collapse run.
+        ``recon`` is the sample-wise loss selected by ``cfg.recon_loss`` (default
+        "nrmse", the per-(window, channel) std-normalized RMSE that is the reported
+        metric; see :meth:`_recon_loss`). The trainer still steps the discriminator, but
+        it adds nothing to the generator loss.
 
-        ADAPTIVE ADVERSARIAL PATH (``cfg.adaptive_adv_weight`` and adversarial_weight > 0 --
-        VQGAN/MagViT "adaptive weight", Taming Transformers 3.3)::
+        Adaptive adversarial path (``cfg.adaptive_adv_weight`` and adversarial_weight >
+        0; the VQGAN/MagViT adaptive weight, Taming Transformers 3.3)::
 
-            recon_ref = pixel_anchor_weight * recon + fm_weight * fm
+            recon_ref = pixel_anchor_weight * recon + ssim_weight * ssim
+                        + gain_weight * gain + fm_weight * fm
             non_adv   = recon_ref + consistency_weight*consistency + entropy_weight*entropy
             adv       = -mean(D(recon))
             lam       = (grad_norm(recon_ref) / (grad_norm(adv) + 1e-4)).clamp(0, clamp).detach()
             adv_coeff = 0 if step < adv_warmup_steps else adversarial_weight * lam
             total     = non_adv + adv_coeff * adv
 
-        Returns a dict with keys ``total`` / ``adversarial`` / ``pixel`` (the RAW sample-wise
-        reconstruction loss) / ``ssim`` (``1 - CS-SSIM``, 0 when ``ssim_weight`` is 0) /
-        ``feature_matching`` / ``consistency`` / ``entropy`` / ``adaptive_weight`` /
-        ``recon`` / ``codes`` -- a superset of the previous keys, so the DDP trainer consumes
-        it unchanged.
+        Returns a dict with ``total``, ``adversarial``, ``pixel`` (the reconstruction
+        loss), ``ssim`` (``1 - CS-SSIM``, 0 when ``ssim_weight`` is 0), ``gain``,
+        ``feature_matching``, ``consistency``, ``entropy``, ``adaptive_weight``,
+        ``recon`` and ``codes``, the keys the DDP trainer reads.
         """
         out = self.forward(x)
         recon, feats_x, codes = out["recon"], out["feats"], out["codes"]
         zero = torch.zeros((), device=recon.device, dtype=recon.dtype)
 
-        # ---- GAIN-SHAPE auxiliary: DIRECT supervision of the decoded gain -------------- #
-        # The reconstruction term already sees the level (it is not mean-removed), but it sees
-        # it mixed with the shape error at whatever relative scale the window happens to have.
-        # The gain head produces the reconstruction's ENTIRE per-(window, channel) mean, which
-        # is 96.2% of the variance, so it gets its own unambiguous target as well. OFF (and
-        # exactly zero-cost) unless gain_shape is enabled.
+        # Gain-shape: direct supervision of the decoded gain. The reconstruction term
+        # sees the level too, but mixed with the shape error. The gain head produces the
+        # whole per-(window, channel) mean (96% of the variance), so it gets its own
+        # target. Skipped unless gain_shape is on.
         if "gain_pred" in out and float(getattr(cfg, "gain_weight", 0.0)) > 0.0:
             gain_tgt, _, _, _ = gain_shape_split(x, cfg.uses_gain_scale)
             gain = torch.mean(torch.abs(out["gain_pred"] - gain_tgt))
         else:
             gain = zero
 
-        # ---- reconstruction (the LEADING term in raw mode) --------------------------- #
-        # ENVELOPE mode (the default) keeps the ORIGINAL envelope-anchor MAE bit-for-bit, so a
-        # pre-2026-09-03 config reproduces the old objective exactly. RAW mode uses the
+        # Reconstruction. Envelope mode uses the original MAE; raw mode uses the
         # metric-aligned loss selected by cfg.recon_loss (see _recon_loss).
         if cfg.is_raw:
             pixel = self._recon_loss(recon, x, cfg)
         else:
             pixel = torch.mean(torch.abs(recon - x))
 
-        # ---- structural (SSIM) term: the amplitude/dynamic-range guard --------------- #
-        # OFF by default (ssim_weight 0.0) so the plain arm is an unchanged-recipe control.
+        # Structural (SSIM) term, an amplitude guard. Off at ssim_weight 0.0.
         if cfg.is_raw and float(getattr(cfg, "ssim_weight", 0.0)) > 0.0:
             ssim = self._ssim_loss(recon, x, cfg)
         else:
             ssim = zero
 
-        # ---- adversarial / feature-matching: only when actually weighted ------------- #
+        # Adversarial and feature matching, only when weighted.
         want_adv = float(cfg.adversarial_weight) > 0.0
         want_fm = float(cfg.fm_weight) > 0.0
         if want_adv or want_fm:
@@ -205,7 +192,7 @@ class FastTSCodec(nn.Module):
             adversarial = zero
             fm = zero
 
-        # ---- delta-shift consistency: OFF by default (skips a whole encoder pass) ----- #
+        # Delta-shift consistency; at weight 0 the second encoder pass is skipped.
         if float(cfg.consistency_weight) > 0.0:
             consistency = shift_consistency(feats_x, self.encode(x_shift))
         else:
@@ -213,8 +200,8 @@ class FastTSCodec(nn.Module):
 
         entropy = self.quantizer.entropy_loss(feats_x)
 
-        # The SSIM term is part of the RECONSTRUCTION reference (it is a fidelity term, not a
-        # regularizer), so the VQGAN adaptive adversarial weight balances against it too.
+        # SSIM and gain are fidelity terms, so they belong to the reconstruction
+        # reference that the adaptive adversarial weight balances against.
         recon_ref = (cfg.pixel_anchor_weight * pixel
                      + float(getattr(cfg, "ssim_weight", 0.0)) * ssim
                      + float(getattr(cfg, "gain_weight", 0.0)) * gain
@@ -258,26 +245,25 @@ class FastTSCodec(nn.Module):
     @staticmethod
     def _ssim_loss(recon: torch.Tensor, target: torch.Tensor,
                    cfg: FastTSCodecConfig) -> torch.Tensor:
-        """``1 - mean(contrast * structure)`` of the 1-D SSIM along the SAMPLE axis.
+        """``1 - mean(contrast * structure)`` of the 1-D SSIM along the sample axis.
 
-        The differentiable twin of :func:`gate.fastts_ssim_metrics`' ``fastts_ssim_cs`` —
-        same box window (``cfg.ssim_win``), same 'valid' positions, same per-(window,
-        channel) target-std dynamic range for the constants, so the loss and the reported
-        metric are the SAME quantity rather than two similar ones.
+        The differentiable twin of ``fastts_ssim_cs`` in
+        :func:`gate.fastts_ssim_metrics`: same box window (``cfg.ssim_win``), same
+        'valid' positions and the same per-(window, channel) target-std dynamic range
+        for the constants, so loss and metric are the same quantity.
 
-        Luminance is deliberately excluded: for a SIGNED waveform ``2 mu_r mu_t`` goes
-        negative whenever the two local means straddle zero (MS-SSIM itself uses CS at every
-        scale but the coarsest), and the DC level is already carried by the nRMSE term, which
-        is not mean-removed.
+        Luminance is left out: for a signed waveform ``2 mu_r mu_t`` goes negative when
+        the two local means straddle zero (MS-SSIM also uses only CS at all but the
+        coarsest scale), and the nRMSE term, which is not mean-removed, already carries
+        the DC level.
 
-        WHY THIS TERM AND NOT SPIKE WEIGHTING. The contrast factor
-        ``2 sig_r sig_t / (sig_r^2 + sig_t^2)`` collapses exactly when the reconstruction's
-        LOCAL VARIANCE collapses, which is the variance-collapse failure an element-wise loss
-        rewards. It is a local-second-moment constraint, not a per-sample reweighting — the
-        latter is the recorded dead end for fast-TS.
+        The contrast factor ``2 sig_r sig_t / (sig_r^2 + sig_t^2)`` drops when the
+        reconstruction's local variance collapses, the failure an elementwise loss
+        rewards. It constrains the local second moment instead of reweighting samples
+        (spike weighting did not work for fast-TS).
 
-        Dead / absent (window, channel) pairs (constant target) are masked out, matching
-        both :meth:`_recon_loss` and the gate.
+        Dead (window, channel) pairs (constant target) are masked out, as in
+        :meth:`_recon_loss` and the gate.
         """
         win = int(getattr(cfg, "ssim_win", 17))
         B, C, W = target.shape
@@ -304,41 +290,36 @@ class FastTSCodec(nn.Module):
                     cfg: FastTSCodecConfig) -> torch.Tensor:
         """Sample-wise reconstruction loss selected by ``cfg.recon_loss``.
 
-        WHY THE DEFAULT IS "nrmse" AND NOT "mse" (measured, 2026-09-03)
-        ---------------------------------------------------------------
-        Plain MSE is NOT a surrogate for the reported nRMSE on this signal. In the codec's
-        per-channel-standardized space the raw filterscope window has a per-(window, channel)
-        std of ~0.007 while the WINDOW MEAN swings over ~25 std units -- the between-window
-        DC level carries roughly (25 / 0.007)^2 more energy than the within-window waveform.
-        A plain-MSE optimum therefore spends essentially all of its capacity on the DC level
-        and emits a FLAT line inside each window, and a flat line at the window's own mean
-        scores nRMSE EXACTLY 1.0000, i.e. no better than the trivial baseline. The metric
-        divides by each (window, channel)'s OWN std, so the loss must too.
+        Why the default is "nrmse" and not "mse"
+        ----------------------------------------
+        In the per-channel standardized space a filterscope window has a per-(window,
+        channel) std of ~0.007, while the window mean swings over ~25 units, so the
+        between-window DC level carries about (25 / 0.007)^2 times the energy of the
+        waveform inside the window. A plain-MSE optimum spends its capacity on the DC
+        level and emits a flat line in each window, and a flat line at the window's own
+        mean scores nRMSE exactly 1.0, the trivial baseline. The metric divides by each
+        (window, channel)'s own std, so the loss must too.
 
-        "nrmse" (DEFAULT) is that aligned loss and IS the reported metric: per
-        (window, channel), RMSE divided by that pair's own target std, averaged over pairs.
-        DC error still enters (the numerator is not mean-removed) but now at the right
-        relative scale. Dead / absent pairs -- constant target, zero variance -- are MASKED
-        out exactly as :func:`gate.full_fastts_metrics` excludes them, so they can neither
-        blow the loss up nor be optimized against.
+        "nrmse" (default) is the reported metric: per (window, channel), RMSE divided by
+        that pair's target std, averaged over pairs. DC error still enters (the
+        numerator is not mean-removed), at the right relative scale. Dead pairs
+        (constant target, zero variance) are masked out, as
+        :func:`gate.full_fastts_metrics` excludes them.
 
-        "nmse" is the same thing without the outer square root. It is NOT preferred, for
-        CONDITIONING reasons rather than objective ones: the per-pair squared ratio spans
-        ~1e6 across the population (quietest windows std 0.0009 vs p90 0.071), so an
-        un-rooted mean is dominated by a handful of quiet, pure-noise windows that carry no
-        reconstructable content. The square root compresses that to ~1e3.
+        "nmse" drops the outer square root. It is worse conditioned: the per-pair
+        squared ratio spans ~1e6 (quietest windows std 0.0009, p90 0.071), so its mean
+        is dominated by a few quiet noise windows. The square root compresses that to
+        ~1e3.
 
-        "mse" / "l1" / "huber" are the un-normalized controls -- "mse" is kept precisely so
-        the flat-line failure above can be demonstrated rather than asserted (a flat-line
-        prediction reads mse 5.0e-05 and nrmse 1.0000 on the real geometry).
+        "mse", "l1" and "huber" are unnormalized controls; "mse" shows the flat-line
+        failure (a flat line reads mse 5.0e-05 and nrmse 1.0 on real data).
 
-        A spike-WEIGHTED loss is deliberately NOT offered: that is the recorded dead end for
-        this modality. The alternative on record -- a pre-patch conv stem / overlapping
-        patches -- is implemented in ``fastts_nets`` instead.
+        There is no spike-weighted option, since that did not work for this modality;
+        the conv stem in ``fastts_nets`` is used instead.
         """
         kind = getattr(cfg, "recon_loss", "nrmse")
         if kind in ("nmse", "nrmse"):
-            # per (window, channel) over the SAMPLE axis, mirroring the gate's grouping.
+            # Per (window, channel) over the sample axis, as the gate groups it.
             diff2 = ((recon - target) ** 2).mean(dim=-1)                    # (B, C)
             var = target.var(dim=-1, unbiased=False)                        # (B, C)
             live = var > _FASTTS_LIVE_VAR_EPS
@@ -356,19 +337,17 @@ class FastTSCodec(nn.Module):
             f"unknown cfg.recon_loss={kind!r} (expected nrmse|nmse|mse|l1|huber)"
         )
 
-    # ------------------------------------------------------------------ #
     # VQGAN adaptive adversarial weight ("Taming Transformers" §3.3)
-    # ------------------------------------------------------------------ #
     def _adaptive_adv_weight(
         self,
         ref: torch.Tensor,
         adv: torch.Tensor,
         cfg: FastTSCodecConfig,
     ) -> torch.Tensor:
-        """lam = ‖∇ref‖ / (‖∇adv‖ + 1e-4), clamped to [0, cfg.adaptive_adv_clamp], DETACHED.
+        """lam = ‖∇ref‖ / (‖∇adv‖ + 1e-4), clamped to [0, adaptive_adv_clamp], detached.
 
-        Gradients w.r.t. the decoder's last layer (``self.decoder.last_layer``). Identical in
-        spirit + numerics to ``SpectroCodec._adaptive_adv_weight``.
+        Gradients are taken at ``self.decoder.last_layer``. Same computation as
+        ``SpectroCodec._adaptive_adv_weight``.
         """
         last_layer = self.decoder.last_layer
         zero = torch.zeros((), device=last_layer.device, dtype=last_layer.dtype)

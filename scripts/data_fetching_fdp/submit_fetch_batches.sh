@@ -21,7 +21,7 @@ OUTPUT_DIR=""
 # The pixi project that provides the FDP stack (fdp, toksearch, toksearch_d3d,
 # ptdata 2.x, mdsplus-xrdcl, libfdpio2, h5py). Its `fdp run` supplies the
 # federation environment; see the guide in that directory.
-FDP_PROJECT="/scratch/gpfs/ps9551/fdp-demo"
+FDP_PROJECT="/scratch/gpfs/EKOLEMEN/ps9551/fdp-demo"
 
 # Mode: "range" or "list"
 MODE="range"
