@@ -36,8 +36,11 @@ GPU's uuid and its compute processes. The command sets `CUDA_VISIBLE_DEVICES` to
 need not agree, and the process then uses `cuda:0`. `torch` may already be imported (`harness.py`, which every
 predictor imports, imports it at module level): CUDA reads the variable when it is initialized, and the command
 refuses (exit status 2) if CUDA already is initialized in the process, so that `--gpu` could not take effect.
-It also refuses a GPU on which the lookup lists a compute process (naming the pids), and an index or output
-the lookup cannot resolve. `--train` trains into `<stage0>/direct/<task>/<variant>/` (`best.pt`, `last.pt`,
+By default it refuses a GPU on which the lookup lists a compute process (naming the pids), before training
+and before scoring; `--share-gpu` (direct only) uses such a GPU anyway and prints one line naming the GPU
+and the pids it is shared with (nothing extra on a GPU without a compute process). Sharing changes how fast a
+run goes, not what it computes, and nothing in `score.json` or the checkpoint records tells that a GPU was
+shared. It always refuses an index or output the lookup cannot resolve. `--train` trains into `<stage0>/direct/<task>/<variant>/` (`best.pt`, `last.pt`,
 `train_log.csv`, `config.json`; it refuses to overwrite an existing `best.pt` unless `--force`) and then
 scores it on `--split val_report` (it first removes the stored score of that predictor name, so no number
 outlives the checkpoint it was computed from while the retraining runs); without `--train` it scores the existing `best.pt` ("train first" if
@@ -212,13 +215,21 @@ def _look_up_gpu(gpu: int) -> tuple[str, list[int]] | None:
         return None
 
 
-def _refuse_busy_gpu(gpu: int, pids: list[int]) -> bool:
-    """Print why and return True if the GPU has a compute process."""
-    if pids:
-        print(f"refused: GPU {gpu} has compute processes (pids {', '.join(map(str, pids))}); "
-              "use a GPU without one", file=sys.stderr)
-        return True
-    return False
+def _refuse_busy_gpu(gpu: int, pids: list[int], share: bool = False) -> bool:
+    """Print why and return True if the GPU has a compute process and `share` (`--share-gpu`) is not given.
+
+    With `share` the pids are named on stdout and the GPU is used (False); a GPU without a compute process
+    prints nothing either way.
+    """
+    if not pids:
+        return False
+    listed = ", ".join(map(str, pids))
+    if share:
+        print(f"sharing GPU {gpu} with compute processes (pids {listed})", flush=True)
+        return False
+    print(f"refused: GPU {gpu} has compute processes (pids {listed}); use a GPU without one",
+          file=sys.stderr)
+    return True
 
 
 def _direct_record(ctx: Context) -> dict:
@@ -365,6 +376,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--num-workers", type=int, default=64)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--gpu", type=int, default=None, help="`direct`: the GPU index (required); the others use none")
+    ap.add_argument("--share-gpu", action="store_true",
+                    help="`direct`: use the GPU although other compute processes are on it (their pids are "
+                         "printed); without it a busy GPU is refused")
     ap.add_argument("--force", action="store_true", help="score again even if a score is kept (`direct --train`: "
                                                          "train again over an existing best.pt)")
     ap.add_argument("--variant", default=BASE_VARIANT, help="`direct`: the configuration, scored as direct.<variant>")
@@ -393,8 +407,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.predictor not in PREDICTORS:
         print(f"{args.predictor} is not implemented yet", file=sys.stderr)
         return 2
-    if not is_direct and (args.variant != BASE_VARIANT or args.train or overrides):
-        print("refused: --variant, --train and the configuration options belong to --predictor direct",
+    if not is_direct and (args.variant != BASE_VARIANT or args.train or overrides or args.share_gpu):
+        print("refused: --variant, --train, --share-gpu and the configuration options belong to "
+              "--predictor direct",
               file=sys.stderr)
         return 2
     if is_direct:
@@ -437,7 +452,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"refused: there is no checkpoint at {checkpoint}: train first (--train)", file=sys.stderr)
             return 2
         if args.train:
-            if _refuse_busy_gpu(args.gpu, gpu_pids):
+            if _refuse_busy_gpu(args.gpu, gpu_pids, args.share_gpu):
                 return 2
             gpu_checked = True
             _train_direct(ctx, root / "scores" / args.task / name / args.split)
@@ -452,7 +467,7 @@ def main(argv: list[str] | None = None) -> int:
     if reason != "no score.json":
         print(f"re-scoring {args.task} {name} {args.split}: {reason}", flush=True)
 
-    if is_direct and not gpu_checked and _refuse_busy_gpu(args.gpu, gpu_pids):
+    if is_direct and not gpu_checked and _refuse_busy_gpu(args.gpu, gpu_pids, args.share_gpu):
         return 2
     started = time.monotonic()
     predict_fn = build(ctx)  # a fitted predictor is fitted here if there is no current fit file

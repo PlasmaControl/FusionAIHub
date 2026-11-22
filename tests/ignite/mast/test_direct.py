@@ -602,3 +602,74 @@ def test_a_forced_retraining_of_one_variant_leaves_the_other_variants_scores(com
     assert rh.main([*BASE, "--variant", "wide", "--split", "val_report", *TRAIN]) == 0
     assert rh.main([*BASE, "--variant", "wide", "--split", "val_report", *TRAIN, "--force"]) == 0
     assert _score_json(root).exists() and _score_json(root, "direct.wide").exists()
+
+
+# ------------------------------------------------------------------ --share-gpu
+
+def test_share_gpu_trains_on_a_busy_gpu_and_names_the_pids(command, capsys):
+    rh, root = command
+    rh.smi["apps"] = "GPU-aaa, 4242\nGPU-aaa, 4243\n"
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--share-gpu"]) == 0
+    out = capsys.readouterr().out
+    assert "sharing GPU 0 with compute processes (pids 4242, 4243)" in out
+    assert (root / "direct" / "task_1-2" / "base" / "best.pt").exists()
+    assert _score_json(root).exists()
+
+
+def test_share_gpu_prints_nothing_extra_on_a_free_gpu(command, capsys):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--share-gpu"]) == 0       # GPU 0 is free in the fixture
+    assert "sharing" not in capsys.readouterr().out
+
+
+def test_share_gpu_scores_on_a_busy_gpu_without_training(command, capsys):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
+    rh.smi["apps"] = "GPU-aaa, 777\n"
+    score_again = [*BASE, "--split", "val_report", "--gpu", "0", "--force"]
+    capsys.readouterr()
+    assert rh.main(score_again) == 2                                   # the default did not move
+    assert "777" in capsys.readouterr().err
+    assert rh.main([*score_again, "--share-gpu"]) == 0
+    assert "sharing GPU 0 with compute processes (pids 777)" in capsys.readouterr().out
+
+
+def test_share_gpu_still_refuses_when_nvidia_smi_cannot_be_read(command, capsys):
+    rh, root = command
+    rh.smi["gpus"] = "garbage"
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--share-gpu"]) == 2
+    assert "nvidia-smi" in capsys.readouterr().err
+    assert not (root / "direct").exists()
+
+
+def test_share_gpu_still_refuses_an_index_nvidia_smi_does_not_list(command, capsys):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--gpu", "7", "--share-gpu"]) == 2
+    assert "no GPU with index 7" in capsys.readouterr().err
+
+
+def test_share_gpu_still_refuses_when_cuda_is_already_initialized(command, capsys, monkeypatch):
+    rh, root = command
+    monkeypatch.setattr(rh, "_cuda_initialized", lambda: True)
+    rh.smi["apps"] = "GPU-aaa, 4242\n"
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--share-gpu"]) == 2
+    assert "CUDA is already initialized" in capsys.readouterr().err
+    assert not (root / "direct").exists()
+
+
+def test_share_gpu_does_not_delete_before_the_decision_is_made(command):
+    """With --share-gpu a forced retraining proceeds as usual (deletes, trains); the default path keeps refusing first."""
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
+    rh.smi["apps"] = "GPU-aaa, 4242\n"
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--force"]) == 2
+    assert _score_json(root).exists()
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--force", "--share-gpu"]) == 0
+
+
+@pytest.mark.parametrize("predictor", ["floor", "shrunk", "ridge"])
+def test_share_gpu_belongs_to_direct_only(command, capsys, predictor):
+    rh, root = command
+    assert rh.main(["--task", "task_1-2", "--predictor", predictor, "--split", "val_report", "--share-gpu"]) == 2
+    assert "--share-gpu" in capsys.readouterr().err
+
