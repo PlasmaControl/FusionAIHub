@@ -23,12 +23,20 @@ The published numbers are test-split numbers. With `--split test` the command ex
 row differs from them by more than 0.002 (the paper gives three decimals, so rounding alone
 allows 0.0005; 0.002 leaves room for a small benchmark-version difference and no more). With
 `--split val_report` there is no published value for those shots: the table shows our score
-beside the published test value, the diff column reads "n/a" and the exit code is 0, unless a score is not finite (that is
-outside on every split: exit 1).
+beside the published test value, the diff column reads "n/a" and the exit code is 0, unless a
+score is not finite (that is outside on every split: exit 1).
 
 A kept score must be the same score: `baselines.read_kept_score` accepts a stored `score.json`
 only if it names this task, predictor and split and was written with the current scoring code
 (sha256 of harness.py, tasks.py and baselines.py); otherwise the score is made again.
+
+The limit of that rule: the hash covers our three files only. A score's windows, statistics,
+splits, outlier file and metric come from TokaMark's source (`/models/tokamind/tokamark/src`) and
+its data from `IGNITE_MAST_TOKAMARK`, and neither the TokaMark revision nor the data root is
+recorded in `score.json` or compared. After a TokaMark update, or a move to another Zarr root, this
+command still prints "kept" for every row and exits 0 on the old scores. Run it with `--force` after
+either change. (Today the two agree: TokaMark's head is 146b0a0f8738, the revision in the cache
+manifest of v1. Recording both in `score.json` is left for the next change of `baselines.py`.)
 """
 
 from __future__ import annotations

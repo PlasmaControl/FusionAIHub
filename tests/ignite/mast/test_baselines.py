@@ -1,6 +1,7 @@
 """Tests of the mean and persistence baselines (`baselines.py` needs no `tokamark`)."""
 
 import json
+import re
 
 import numpy as np
 import pytest
@@ -78,7 +79,10 @@ def test_write_score_json(tmp_path):
     d = json.loads(path.read_text())
     assert (d["task"], d["predictor"], d["split"]) == ("task_x", "mean", "test")
     assert d["nrmse"] == 0.5 and d["n_shots"] == 3 and d["n_windows"] == 12
-    assert len(d["git_revision"]) == 40 and d["date"].endswith("+00:00")
+    # `_git_revision` answers "unknown" where git is absent, so the form is checked, not the length.
+    assert d["git_revision"] == baselines._GIT_REVISION
+    assert re.fullmatch(r"[0-9a-f]{40}|unknown", d["git_revision"])
+    assert d["date"].endswith("+00:00")
 
 
 # ---------------------------------------------------------------- the gate's verdict and kept scores
@@ -129,23 +133,32 @@ def _rewrite(path, **changes):
     path.write_text(json.dumps(d))
 
 
-@pytest.mark.parametrize("case", ["missing", "truncated", "other_predictor", "other_split", "no_hash", "other_hash"])
+@pytest.mark.parametrize("case", ["missing", "truncated", "other_task", "other_predictor", "other_split", "no_hash",
+                                  "other_hash", "right_hash_missing_key"])
 def test_a_stored_score_that_is_not_the_one_asked_for_is_not_kept(tmp_path, case):
     path = baselines.write_score_json(_score_result(tmp_path), "mean", "test")
     if case == "missing":
         path.unlink()
     elif case == "truncated":
         path.write_text(path.read_text()[:40])
+    elif case == "other_task":
+        _rewrite(path, task="task_y")
     elif case == "other_predictor":
         _rewrite(path, predictor="persistence")
     elif case == "other_split":
         _rewrite(path, split="val_report")
     elif case == "no_hash":
         _rewrite(path, code_sha256=None)
+    elif case == "right_hash_missing_key":
+        # The hash is the current one but the record lacks a key a reader needs (here the score itself).
+        assert json.loads(path.read_text())["code_sha256"] == baselines.scoring_code_sha256()
+        _rewrite(path, nrmse=None)
     else:
         _rewrite(path, code_sha256="0" * 64)
     stored, reason = baselines.read_kept_score(tmp_path, "task_x", "mean", "test")
     assert stored is None and reason
+    if case == "other_task":
+        assert "task_y/mean/test" in reason
     if case in ("no_hash", "other_hash"):
         assert "scoring code changed since" in reason
 
@@ -159,13 +172,13 @@ def test_the_hash_is_the_digest_of_the_files_of_an_unedited_tree():
 def test_the_hash_is_taken_at_import_not_when_a_score_is_written(tmp_path, monkeypatch):
     """A score computed by the code as loaded must not be stamped with files edited since."""
     loaded = baselines.scoring_code_sha256()
-    before = baselines.write_score_json(_score_result(tmp_path), "mean", "test")
+    before = json.loads(baselines.write_score_json(_score_result(tmp_path), "mean", "test").read_text())
     monkeypatch.setattr(baselines, "_hash_scoring_files", lambda: "0" * 64)
     assert baselines.scoring_code_sha256() == loaded
-    after = baselines.write_score_json(_score_result(tmp_path), "mean", "test")
-    assert json.loads(after.read_text())["code_sha256"] == loaded
-    before_again, reason = baselines.read_kept_score(tmp_path, "task_x", "mean", "test")
-    assert reason == "" and before_again["code_sha256"] == loaded and before == after
+    after = json.loads(baselines.write_score_json(_score_result(tmp_path), "mean", "test").read_text())
+    assert before["code_sha256"] == after["code_sha256"] == loaded
+    kept, reason = baselines.read_kept_score(tmp_path, "task_x", "mean", "test")
+    assert reason == "" and kept["code_sha256"] == loaded
 
 
 def test_the_git_revision_is_taken_at_import_not_when_a_score_is_written(tmp_path, monkeypatch):

@@ -302,6 +302,18 @@ def test_open_mast_dataset_refuses_shots_outside_the_splits():
         harness.open_mast_dataset({"task": t.name}, [tasks.split_shots("train")[0], 1])
 
 
+def test_iter_windows_refuses_duplicate_shots(toy_task):
+    """Raised at the call, before tokamark is imported or any data is opened (so it needs neither)."""
+    with pytest.raises(ValueError, match="duplicates"):
+        harness.iter_windows(toy_task, [12012, 12154, 12012], test_mode=True)
+
+
+@pytest.mark.parametrize("history_s", [0.0, -0.05])
+def test_iter_windows_refuses_a_history_that_is_not_positive(toy_task, history_s):
+    with pytest.raises(ValueError, match="history_s must be positive"):
+        harness.iter_windows(toy_task, [12012], test_mode=True, history_s=history_s)
+
+
 # ---------------------------------------------------------------- real data
 
 @pytest.mark.real_data
@@ -346,6 +358,17 @@ def test_real_shorter_history_is_the_tail_of_the_full_one():
         assert short.inputs[s.name].shape[-1] == n
         np.testing.assert_array_equal(short.inputs[s.name], full.inputs[s.name][..., -n:])
         np.testing.assert_array_equal(short.last_valid[s.name], full.last_valid[s.name])
+    # An actuator array is the input history followed by the future part (n_act), so the crop shortens
+    # its front too: the short one is the tail of the full one (checked 2026-11-22 on task_4-4, where
+    # the full array has 1000 samples and the 0.05 s one 600). The targets are not cropped.
+    assert t.actuators
+    for s in t.actuators:
+        n = t.n_act(s, 0.05)
+        assert n < t.n_act(s)
+        assert short.actuators[s.name].shape[-1] == n
+        np.testing.assert_array_equal(short.actuators[s.name], full.actuators[s.name][..., -n:])
+    for s in t.outputs:
+        np.testing.assert_array_equal(short.targets[s.name], full.targets[s.name])
 
 
 @pytest.mark.real_data
