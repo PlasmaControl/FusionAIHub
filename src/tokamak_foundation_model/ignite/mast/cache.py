@@ -1,25 +1,36 @@
-"""The standardized float16 cache of the 39 benchmark signals, one HDF5 file per shot.
+"""The standardized float32 cache of the 39 benchmark signals, one HDF5 file per shot.
 
 The tokenizers of the next stage train from this cache and never touch TokaMark's loader: every
-signal is already in model units (`transform.to_model`), in float16, with the validity of each
+signal is already in model units (`transform.to_model`), in float32, with the validity of each
 sample encoded as the NaN pattern. Scope of v1: the signals exactly as TokaMark's loader delivers
 them (the two Mirnov signals are therefore its spectrograms, not 500 kHz waveforms), for the
 shots of TokaMark's three splits.
 
-File ``shots/<shot>.h5``: one contiguous, uncompressed float16 dataset per signal, named
-``<source>-<signal>``, shape ``(*values_shape, T)``, attributes ``t0`` and ``dt`` (seconds) and
-``dead_nan`` / ``dead_const`` (see below); a boolean ``<name>__saturated`` beside a signal that has
+Why float32 and not float16: measured 2026-11-22 on the 150-shot trial, float16 gave 3.3e-3
+(magnetics-b_field_tor_probe_cc_field), 1.6e-3 (b_field_pol_probe_omv_voltage) and 1.5e-3
+(equilibrium-beta_pol) of TokaMark's std against a bound of 1e-3: the relative step of float16 on
+z becomes about 0.5% of x in the tails after the inverse of asinh. float32 keeps the compression
+choice open for the next stage, at about 12 MB per shot (about 135 GB for 11,188 shots).
+
+File ``shots/<shot>.h5``: one contiguous, uncompressed float32 dataset per signal, named
+``<source>-<signal>``, shape ``(*values_shape, T)``, attributes ``t0`` and ``dt`` (seconds),
+``dead_nan`` (number of dead channels) and ``const_channels`` (sorted flat indices of the constant
+channels, an int array, empty when none); a boolean ``<name>__saturated`` beside a signal that has
 a saturation limit; file attributes ``shot``, ``split``, ``cache_version``, ``stats_sha256`` and
 ``status`` (JSON, the status of every signal asked for, so that a signal the shot lacks reads back
 as None and not as a missing key). The file is written as ``<shot>.h5.tmp`` and renamed.
+`read_shot` raises ``ValueError`` on a values dataset that is not float32 (a stale file).
 
 A sample is not valid (NaN) when the loader gave a non-finite value, when the value is non-finite
-after the cast to float16 (overflow), or when it belongs to a channel that is dead in this shot:
-all NaN (any channel) or all finite samples equal (a constant sensor). An *actuator* held at one
-value (a beam at 0 W all shot) is information, so the constant rule skips channels whose registry
-roles contain ``act``. Saturated samples (``|x| >= sat_abs``, physical units) stay valid and are
-flagged: TokaMark scores them as targets, so a model that never saw them would miss every clipped
-peak. (The spec says "not valid"; this is a deviation the project owner confirms.)
+after the cast to float32 (overflow), or when it belongs to a channel that is dead in this shot:
+no finite sample at all. A channel whose finite samples (at least 2) are all equal stays valid and
+is only flagged (``const_channels``): measured 2026-11-22 on 30 validation shots, the all-equal rule
+caught boundary points that are 0 by construction and are benchmark targets
+(equilibrium-lcfs_z channels 0 and 169) and programmed references held constant, while the dead
+sensors arrive as all-NaN channels. The flag is for a reader that wants to ignore them. Saturated
+samples (``|x| >= sat_abs``, physical units) also stay valid and are flagged: TokaMark scores them
+as targets, so a model that never saw them would miss every clipped peak. (The spec says "not
+valid" for saturation; this is a deviation the project owner confirms.)
 
 `write_shot` and `read_shot` need only numpy, pandas and h5py. `tokamark` and `zarr` are reached
 through `transform.load_shot` and `registry.build_registry`, which `build` calls.
@@ -35,7 +46,7 @@ import re
 import subprocess
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -65,10 +76,12 @@ STATUSES = ("ok", "all_invalid", "absent", "dt_mismatch", "shape_mismatch")
 
 @dataclass
 class CachedSignal:
-    values: np.ndarray                      # float16, (*values_shape, T), model units, NaN = not valid
+    values: np.ndarray                      # float32, (*values_shape, T), model units, NaN = not valid
     t0: float                               # seconds
     dt: float
     saturated: np.ndarray | None = None     # bool, same shape; only for signals with a saturation limit
+    const_channels: np.ndarray = field(     # sorted flat indices of the channels held constant (valid)
+        default_factory=lambda: np.zeros(0, dtype=np.int64))
 
     @property
     def valid(self) -> np.ndarray:
@@ -77,8 +90,8 @@ class CachedSignal:
 
 # ------------------------------------------------------------------------------------ writing
 
-def _tables(registry: pd.DataFrame, signals: Sequence[SignalSpec]) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    """Per signal ``(actuator (C,) bool, sat_abs (C,) float)`` in channel order, from the registry."""
+def _tables(registry: pd.DataFrame, signals: Sequence[SignalSpec]) -> dict[str, np.ndarray]:
+    """Per signal ``sat_abs (C,)`` (NaN: no limit) in channel order, from the registry."""
     out = {}
     groups = {k: g for k, g in registry.groupby("signal", sort=False)}
     for spec in signals:
@@ -86,9 +99,7 @@ def _tables(registry: pd.DataFrame, signals: Sequence[SignalSpec]) -> dict[str, 
         g = groups.get(spec.name)
         if g is None or len(g) != n or sorted(g["channel"]) != list(range(n)):
             raise ValueError(f"the registry does not describe the {n} channels of {spec.name}")
-        g = g.sort_values("channel")
-        act = np.array(["act" in str(r).split("+") for r in g["roles"]], dtype=bool)
-        out[spec.name] = (act, g["sat_abs"].to_numpy(dtype=np.float64))
+        out[spec.name] = g.sort_values("channel")["sat_abs"].to_numpy(dtype=np.float64)
     return out
 
 
@@ -108,27 +119,26 @@ def _signal_status(spec: SignalSpec, d: dict) -> tuple[str, np.ndarray | None, n
     return "ok", values.astype(np.float64), time_
 
 
-def _convert(spec: SignalSpec, x: np.ndarray, st: ChannelStats, act: np.ndarray, sat: np.ndarray):
-    """``(float16 values, saturated or None, dead_nan, dead_const)`` of one signal, shape (*values_shape, T)."""
+def _convert(x: np.ndarray, st: ChannelStats, sat: np.ndarray):
+    """``(float32 values, saturated or None, dead_nan, const_channels)`` of one signal, shape (*values_shape, T)."""
     shape = x.shape
     flat = x.reshape(-1, shape[-1])
     finite = np.isfinite(flat)
     count = finite.sum(axis=1)
     hi = np.where(finite, flat, -np.inf).max(axis=1)
     lo = np.where(finite, flat, np.inf).min(axis=1)
-    dead_nan = count == 0
-    dead_const = (count > 0) & (hi == lo) & ~act
+    dead = count == 0                           # all NaN already; counted, not changed
+    const = np.flatnonzero((count >= 2) & (hi == lo))
     z = transform.to_model(x, st).reshape(flat.shape)
-    z[dead_nan | dead_const] = np.nan
     with np.errstate(over="ignore", invalid="ignore"):
-        half = z.astype(np.float16)
-    half[~np.isfinite(half)] = np.nan             # overflow (inf) and anything non-finite: not valid
+        out = z.astype(np.float32)
+    out[~np.isfinite(out)] = np.nan             # overflow (inf) and anything non-finite: not valid
     saturated = None
     if np.isfinite(sat).any():
         with np.errstate(invalid="ignore"):
-            saturated = np.isfinite(half) & (np.abs(flat) >= sat[:, None])
+            saturated = np.isfinite(out) & (np.abs(flat) >= sat[:, None])
         saturated = saturated.reshape(shape)
-    return half.reshape(shape), saturated, int(dead_nan.sum()), int(dead_const.sum())
+    return out.reshape(shape), saturated, int(dead.sum()), const.astype(np.int64)
 
 
 def _write_shot(path: Path, shot: int, split: str, raw: dict, signals: Sequence[SignalSpec],
@@ -152,16 +162,15 @@ def _write_shot(path: Path, shot: int, split: str, raw: dict, signals: Sequence[
                 if x is None:
                     status[spec.name] = state
                     continue
-                act, sat = tables[spec.name]
-                half, saturated, dead_nan, dead_const = _convert(spec, x, stats[spec.name], act, sat)
-                ds = f.create_dataset(spec.name, data=half, dtype=np.float16)
+                data, saturated, dead_nan, const = _convert(x, stats[spec.name], tables[spec.name])
+                ds = f.create_dataset(spec.name, data=data, dtype=np.float32)
                 ds.attrs["t0"] = float(time_[0])
                 ds.attrs["dt"] = float(spec.dt)
                 ds.attrs["dead_nan"] = dead_nan
-                ds.attrs["dead_const"] = dead_const
+                ds.attrs["const_channels"] = const
                 if saturated is not None:
                     f.create_dataset(spec.name + _SAT_SUFFIX, data=saturated)
-                status[spec.name] = "ok" if np.isfinite(half).any() else "all_invalid"
+                status[spec.name] = "ok" if np.isfinite(data).any() else "all_invalid"
             f.attrs["status"] = json.dumps(status)
         os.replace(tmp, path)
     except BaseException:
@@ -175,7 +184,7 @@ def write_shot(path: Path, shot: int, split: str, raw: dict, signals: Sequence[S
     """Write one shot's cache file and return ``{signal: status}``.
 
     ``raw`` is `transform.load_shot`'s output (physical units); ``registry`` supplies, per
-    channel, the roles (``act`` exempts a channel from the constant-channel rule) and ``sat_abs``.
+    channel, ``sat_abs`` (NaN where there is no saturation limit).
     Status: ``"ok"``; ``"all_invalid"`` (dataset written, all NaN); ``"absent"`` (no data, no
     dataset); ``"dt_mismatch"`` (the median time step differs from the spec's by more than 1e-6
     relative, or fewer than 2 samples: no dataset); ``"shape_mismatch"`` (the values are not
@@ -195,8 +204,12 @@ def _read_signal(f: h5py.File, name: str) -> CachedSignal | None:
     if name not in f:
         return None
     ds = f[name]
+    if ds.dtype != np.float32:
+        raise ValueError(f"{f.filename}: {name} is {ds.dtype}, not float32 (a file of an older cache; "
+                         "rebuild it)")
     sat = f[name + _SAT_SUFFIX][...] if name + _SAT_SUFFIX in f else None
-    return CachedSignal(ds[...], float(ds.attrs["t0"]), float(ds.attrs["dt"]), sat)
+    return CachedSignal(ds[...], float(ds.attrs["t0"]), float(ds.attrs["dt"]), sat,
+                        np.asarray(ds.attrs["const_channels"], dtype=np.int64))
 
 
 def read_shot(path: Path, names: Sequence[str] | None = None) -> dict[str, CachedSignal | None]:
@@ -212,19 +225,24 @@ def read_shot(path: Path, names: Sequence[str] | None = None) -> dict[str, Cache
 
 
 def summarize_shot(path: Path) -> dict:
-    """``{"status": {signal: status}, "dead": {signal: (dead_nan, dead_const)}}`` from the file's attributes."""
+    """``{"status": {signal: status}, "channels": {signal: (dead_nan, n_const)}}`` from the file's attributes."""
     with h5py.File(path, "r") as f:
         status = _file_status(f)
-        dead = {n: (int(f[n].attrs["dead_nan"]), int(f[n].attrs["dead_const"])) for n in status if n in f}
-    return {"status": status, "dead": dead}
+        channels = {n: (int(f[n].attrs["dead_nan"]), int(f[n].attrs["const_channels"].size))
+                    for n in status if n in f}
+    return {"status": status, "channels": channels}
 
 
 def _is_current(path: Path, stats_sha: str) -> bool:
-    """The file exists, is readable, and was made by this cache version from these statistics."""
+    """The file exists, is readable, and was made by this cache layout from these statistics."""
     try:
         with h5py.File(path, "r") as f:
-            return (f.attrs["cache_version"] == CACHE_VERSION and f.attrs["stats_sha256"] == stats_sha
-                    and "status" in f.attrs)
+            if not (f.attrs["cache_version"] == CACHE_VERSION and f.attrs["stats_sha256"] == stats_sha
+                    and "status" in f.attrs):
+                return False
+            # a file of an older layout (float16, no const_channels) is not current whatever its hash
+            return all(f[n].dtype == np.float32 and "const_channels" in f[n].attrs
+                       for n in f if not n.endswith(_SAT_SUFFIX))
     except Exception:       # missing, half-written by an older crash, not HDF5: write it again
         return False
 
@@ -415,7 +433,7 @@ def build(root: Path, shots: dict[str, list[int]], *, workers: int, force: bool 
     jobs = [(int(s), split) for split, lst in shots.items() for s in sorted({int(x) for x in lst})]
     counts = {split: {"requested": len({int(x) for x in lst}), "files": 0, "written": 0, "skipped": 0, "failed": 0}
               for split, lst in shots.items()}
-    sig = {s.name: {"status": dict.fromkeys(STATUSES, 0), "dead_nan": 0, "dead_const": 0} for s in signals}
+    sig = {s.name: {"status": dict.fromkeys(STATUSES, 0), "dead_nan": 0, "const": 0} for s in signals}
     errors: dict[str, str] = {}
     for i, (shot, split, summary, wrote, err) in enumerate(_run_jobs(jobs, state, workers), 1):
         if err is not None:
@@ -426,9 +444,9 @@ def build(root: Path, shots: dict[str, list[int]], *, workers: int, force: bool 
             counts[split]["written" if wrote else "skipped"] += 1
             for name, status in summary["status"].items():
                 sig[name]["status"][status] += 1
-            for name, (n_nan, n_const) in summary["dead"].items():
+            for name, (n_nan, n_const) in summary["channels"].items():
                 sig[name]["dead_nan"] += n_nan
-                sig[name]["dead_const"] += n_const
+                sig[name]["const"] += n_const
         if i % 500 == 0 or i == len(jobs):
             print(f"[ignite.mast] cache: {i} of {len(jobs)} shots done, {len(errors)} errors, "
                   f"{time.time() - start:.0f} s", flush=True)

@@ -123,7 +123,7 @@ def test_build_registry_from_a_small_store(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, "_roles", lambda: {"summary-ip": "inp+out", "equilibrium-psi": "out",
                                                      "thomson_scattering-t_e": "inp+out"})
 
-    def load(shot, signals):          # 101: Thomson missing; 102: one dead and one NaN channel; 103: all fine
+    def load(shot, signals):          # 101: Thomson missing; 102: one constant and one half-NaN channel; 103: one all-NaN channel
         rng = np.random.default_rng(shot)
         out = {"summary-ip": {"time": np.arange(10.0), "values": rng.standard_normal((1, 10))},
                "equilibrium-psi": {"time": np.arange(4.0), "values": rng.standard_normal((2, 3, 4))},
@@ -131,8 +131,10 @@ def test_build_registry_from_a_small_store(tmp_path, monkeypatch):
         if shot == 101:
             out["thomson_scattering-t_e"] = {"time": np.zeros((0,)), "values": np.zeros((0,))}
         if shot == 102:
-            out["thomson_scattering-t_e"]["values"][0] = 5.0
+            out["thomson_scattering-t_e"]["values"][0] = 5.0            # constant: not dead
             out["thomson_scattering-t_e"]["values"][1, :2] = np.nan
+        if shot == 103:
+            out["thomson_scattering-t_e"]["values"][2] = np.nan         # no finite sample: dead
         return out
     monkeypatch.setattr(transform, "load_shot", load)
     df = registry.build_registry(tmp_path, shots)
@@ -148,8 +150,10 @@ def test_build_registry_from_a_small_store(tmp_path, monkeypatch):
     assert (ip.tm_mean, ip.tm_std) == (3.0, 4.0) and ip.valid_fraction == 1.0 and ip.dead_fraction == 0.0
     te = df[df.signal == "thomson_scattering-t_e"].sort_values("channel")
     assert list(te.r) == [0.3, 0.4, 0.5] and te.z.isna().all() and (te.units == "eV").all()
-    # shot 101 has no Thomson (dead: no finite sample), shot 102 channel 0 is constant: 2 of 3 shots dead
-    assert te.dead_fraction.iloc[0] == pytest.approx(2 / 3) and te.dead_fraction.iloc[2] == pytest.approx(1 / 3)
+    # dead = no finite sample: shot 101 has no Thomson (all three channels), shot 103 channel 2 is all NaN;
+    # the constant channel 0 of shot 102 is not dead
+    assert te.dead_fraction.iloc[0] == pytest.approx(1 / 3) and te.dead_fraction.iloc[1] == pytest.approx(1 / 3)
+    assert te.dead_fraction.iloc[2] == pytest.approx(2 / 3)
     # valid fraction: shot-weighted finite fraction, a missing signal counting 0
     assert te.valid_fraction.iloc[1] == pytest.approx((0 + 0.5 + 1.0) / 3)
     assert (df.compress == "").all() and df[["scale", "mean", "std"]].isna().all(axis=None)   # not fitted yet

@@ -1,4 +1,4 @@
-"""Tests of the standardized float16 cache.
+"""Tests of the standardized float32 cache.
 
 The synthetic tests (tiny `ChannelStats`, hand-made `raw` dictionaries) need neither `tokamark`
 nor `zarr`; the fidelity test needs the real cache and TokaMark's loader.
@@ -63,18 +63,24 @@ def _write(tmp_path, raw, signals=SIGNALS, stats=None, reg=None, shot=7, split="
 
 # ---------------------------------------------------------------------------- write and read
 
-def test_roundtrip_within_float16(tmp_path):
+@pytest.mark.parametrize("compress", ["none", "asinh"])
+def test_roundtrip_within_float32(tmp_path, compress):
     raw = {FLUX.name: _raw(FLUX)}
-    stats = _all_stats()
-    p, status = _write(tmp_path, raw, [FLUX])
+    if compress == "asinh":
+        stats = {FLUX.name: _stats(FLUX, mean=0.0, std=1.5, compress="asinh", scale=FLUX.std)}
+    else:
+        stats = _all_stats()
+    p = tmp_path / "7.h5"
+    status = cache.write_shot(p, 7, "train", raw, [FLUX], stats, _registry([FLUX]))
     assert status == {FLUX.name: "ok"}
     got = cache.read_shot(p)[FLUX.name]
-    assert got.values.dtype == np.float16 and got.values.shape == (15, T)
+    assert got.values.dtype == np.float32 and got.values.shape == (15, T)
     back = transform.to_physical(got.values.astype(np.float64), stats[FLUX.name])
     err = np.abs(back - raw[FLUX.name]["values"]).max() / FLUX.std
-    assert err < 4e-3
+    assert err < 1e-5
     assert got.t0 == pytest.approx(0.1, abs=1e-12) and got.dt == pytest.approx(FLUX.dt, rel=1e-12)
     assert got.valid.all() and got.saturated is None
+    assert got.const_channels.dtype.kind == "i" and got.const_channels.size == 0
 
 
 def test_file_attributes_and_dataset_layout(tmp_path):
@@ -87,8 +93,9 @@ def test_file_attributes_and_dataset_layout(tmp_path):
         assert f.attrs["shot"] == 42 and f.attrs["split"] == "val" and f.attrs["cache_version"] == cache.CACHE_VERSION
         assert set(f.keys()) == {s.name for s in SIGNALS}
         d = f[FLUX.name]
-        assert d.dtype == np.float16 and d.chunks is None and d.compression is None
+        assert d.dtype == np.float32 and d.chunks is None and d.compression is None
         assert d.attrs["t0"] == pytest.approx(0.1) and d.attrs["dt"] == pytest.approx(FLUX.dt)
+        assert d.attrs["dead_nan"] == 0 and d.attrs["const_channels"].size == 0 and "dead_const" not in d.attrs
     with h5py.File(p2, "r") as f:
         assert f.attrs["stats_sha256"] == stats_sha and f.attrs["split"] == "test"
     assert sorted(x.name for x in tmp_path.iterdir()) == ["42.h5", "43.h5"]    # no .tmp left
@@ -134,31 +141,38 @@ def test_writer_refuses_wrong_shape(tmp_path):
 
 # ----------------------------------------------------------------------------- validity
 
-def test_dead_channel_is_invalid(tmp_path):
+def test_dead_channel_is_invalid_and_constant_channel_is_flagged(tmp_path):
     raw = _raw(FLUX)
-    raw["values"][3] = 0.5                      # constant: dead
+    raw["values"][3] = 0.5                      # constant: valid, flagged
     raw["values"][7] = np.nan                   # all NaN: dead
     raw["values"][9, :50] = np.nan              # partly NaN: live
+    raw["values"][11] = np.nan
+    raw["values"][11, 20] = 0.25                # exactly one finite sample: neither dead nor constant
     p, status = _write(tmp_path, {FLUX.name: raw}, [FLUX])
     assert status[FLUX.name] == "ok"
-    valid = cache.read_shot(p)[FLUX.name].valid
-    assert not valid[3].any() and not valid[7].any()
-    live = [c for c in range(15) if c not in (3, 7, 9)]
+    got = cache.read_shot(p)[FLUX.name]
+    valid = got.valid
+    assert not valid[7].any()
+    assert valid[3].all()
+    assert valid[11].sum() == 1 and valid[11, 20]
+    live = [c for c in range(15) if c not in (3, 7, 9, 11)]
     assert valid[live].all()
     assert not valid[9, :50].any() and valid[9, 50:].all()
-
-
-def test_dead_counts_are_recorded(tmp_path):
-    raw = _raw(FLUX)
-    raw["values"][3] = 0.5
-    raw["values"][4] = -1.0
-    raw["values"][7] = np.nan
-    p, _ = _write(tmp_path, {FLUX.name: raw}, [FLUX])
+    assert list(got.const_channels) == [3]
     with h5py.File(p, "r") as f:
-        assert f[FLUX.name].attrs["dead_nan"] == 1 and f[FLUX.name].attrs["dead_const"] == 2
-    summary = cache.summarize_shot(p)
-    assert summary["status"] == {FLUX.name: "ok"}
-    assert summary["dead"] == {FLUX.name: (1, 2)}
+        assert f[FLUX.name].attrs["dead_nan"] == 1 and list(f[FLUX.name].attrs["const_channels"]) == [3]
+    assert cache.summarize_shot(p)["channels"] == {FLUX.name: (1, 1)}
+
+
+def test_const_channels_are_sorted_flat_indices_of_a_map(tmp_path):
+    spec = SignalSpec("equilibrium-psi", 0.005, (2, 3), 0.0, 1.0)
+    raw = _raw(spec, n=20)
+    raw["values"][1, 0] = 2.0                   # flat channel 3
+    raw["values"][0, 2] = -1.0                  # flat channel 2
+    p = tmp_path / "1.h5"
+    cache.write_shot(p, 1, "train", {spec.name: raw}, [spec], {spec.name: _stats(spec)}, _registry([spec]))
+    got = cache.read_shot(p)[spec.name]
+    assert list(got.const_channels) == [2, 3] and got.valid.all()
 
 
 def test_constant_actuator_stays_valid(tmp_path):
@@ -168,23 +182,23 @@ def test_constant_actuator_stays_valid(tmp_path):
     raw["values"][2] = np.nan                   # all NaN: invalid whatever the role
     reg = _registry([COIL], roles={COIL.name: "act"})
     p, status = _write(tmp_path, {COIL.name: raw}, [COIL], reg=reg)
-    valid = cache.read_shot(p)[COIL.name].valid
+    got = cache.read_shot(p)[COIL.name]
+    valid = got.valid
     assert valid[1].all() and not valid[2].any() and valid[0].all() and valid[3].all()
-    held = cache.read_shot(p)[COIL.name].values[1].astype(np.float64)
+    held = got.values[1].astype(np.float64)
     assert np.allclose(held * COIL.std, 0.0)                # stored as the standardized 0 W
-    assert cache.summarize_shot(p)["dead"] == {COIL.name: (1, 0)}
-    # the same data as an input is dead (a constant sensor)
-    p2, _ = _write(tmp_path, {COIL.name: raw}, [COIL], reg=_registry([COIL], roles={COIL.name: "inp"}), shot=8)
-    assert not cache.read_shot(p2)[COIL.name].valid[1].any()
-    assert cache.summarize_shot(p2)["dead"] == {COIL.name: (1, 1)}
+    assert list(got.const_channels) == [1]
+    assert cache.summarize_shot(p)["channels"] == {COIL.name: (1, 1)}
 
 
-def test_actuator_role_among_several_counts(tmp_path):
+def test_a_constant_channel_is_valid_whatever_its_role(tmp_path):
     raw = _raw(COIL)
     raw["values"][0] = 1.0
-    reg = _registry([COIL], roles={COIL.name: "act+inp"})
-    p, _ = _write(tmp_path, {COIL.name: raw}, [COIL], reg=reg)
-    assert cache.read_shot(p)[COIL.name].valid[0].all()
+    for role in ("inp", "act+inp", "out"):
+        reg = _registry([COIL], roles={COIL.name: role})
+        p, _ = _write(tmp_path, {COIL.name: raw}, [COIL], reg=reg, shot=len(role))
+        got = cache.read_shot(p)[COIL.name]
+        assert got.valid[0].all() and list(got.const_channels) == [0]
 
 
 def test_all_invalid_status(tmp_path):
@@ -213,14 +227,14 @@ def test_saturated_samples_are_flagged_and_kept(tmp_path):
     assert got.saturated.dtype == bool and got.saturated.shape == got.values.shape
     assert got.saturated[0, 10] and got.saturated[0, 11] and got.saturated.sum() == 2
     assert got.valid[0, 10] and got.valid[0, 11] and not got.valid[0, 13] and not got.saturated[0, 13]
-    assert float(got.values[0, 10]) == 5.0 and float(got.values[0, 11]) == -5.0
+    assert float(got.values[0, 10]) == pytest.approx(5.0, abs=1e-6) and float(got.values[0, 11]) == pytest.approx(-5.0, abs=1e-6)
     with h5py.File(p, "r") as f:
         assert f[spec.name + "__saturated"].shape == f[spec.name].shape
 
 
 def test_overflow_becomes_invalid(tmp_path):
     raw = _raw(IP)
-    raw["values"][0, 5] = IP.mean + IP.std * 1e6        # z = 1e6 > float16 max (65504)
+    raw["values"][0, 5] = IP.mean + IP.std * 1e39        # z = 1e39 > float32 max (3.4e38)
     raw["values"][0, 6] = np.inf
     p, status = _write(tmp_path, {IP.name: raw}, [IP])
     got = cache.read_shot(p)[IP.name]
@@ -237,7 +251,20 @@ def test_asinh_signal_roundtrip(tmp_path):
     got = cache.read_shot(p)[IP.name]
     back = transform.to_physical(got.values.astype(np.float64), st)
     assert np.isfinite(back).all()
-    assert np.abs(np.arcsinh(back / 1000.0) - np.linspace(-4, 4, T)[None]).max() < 4e-3 * 2.0
+    assert np.abs(back - raw["values"]).max() / 1000.0 < 1e-5
+
+
+def test_read_shot_refuses_a_float16_file(tmp_path):
+    """A stale float16 file must not be read as if it were current."""
+    p = tmp_path / "1.h5"
+    with h5py.File(p, "w") as f:
+        d = f.create_dataset(FLUX.name, data=np.zeros((15, 10), dtype=np.float16))
+        d.attrs["t0"], d.attrs["dt"] = 0.0, FLUX.dt
+        f.attrs["status"] = json.dumps({FLUX.name: "ok"})
+    with pytest.raises(ValueError, match="float32"):
+        cache.read_shot(p)
+    with pytest.raises(ValueError, match="float32"):
+        cache.read_shot(p, [FLUX.name])
 
 
 # --------------------------------------------------------------------------------- the build
@@ -298,7 +325,7 @@ def test_build_writes_every_shot_and_the_manifest(tmp_path, fake_env):
     assert m["cache_version"] == cache.CACHE_VERSION and m["tokamark_revision"] == "tm-rev"
     assert m["counts"]["train"]["files"] == 4 and m["counts"]["val"]["files"] == 2 and m["counts"]["test"]["files"] == 1
     assert m["signals"][FLUX.name]["status"] == {"ok": 7}
-    assert m["signals"][FLUX.name]["dead_nan"] == 0 and m["signals"][FLUX.name]["dead_const"] == 0
+    assert m["signals"][FLUX.name]["dead_nan"] == 0 and m["signals"][FLUX.name]["const"] == 0
     assert m["errors"] == {} and m["size_bytes"] > 0 and m["wall_seconds"] >= 0
     assert (tmp_path / "registry.csv").exists()
     reg = registry.load_registry(tmp_path / "registry.csv")
@@ -318,8 +345,8 @@ def test_build_counts_absent_and_dead_per_signal(tmp_path, fake_env, monkeypatch
     monkeypatch.setattr(transform, "load_shot", load)
     m = cache.build(tmp_path, SHOTS, workers=1)
     assert m["signals"][IP.name]["status"] == {"ok": 4, "absent": 3}
-    assert m["signals"][FLUX.name]["dead_nan"] == 7 and m["signals"][FLUX.name]["dead_const"] == 7
-    assert m["signals"][COIL.name]["dead_nan"] == 0
+    assert m["signals"][FLUX.name]["dead_nan"] == 7 and m["signals"][FLUX.name]["const"] == 7
+    assert m["signals"][COIL.name]["dead_nan"] == 0 and "dead_const" not in m["signals"][COIL.name]
 
 
 def test_build_statistics_draw_and_registry_sample(tmp_path, fake_env):
@@ -411,6 +438,18 @@ def test_build_rewrites_a_file_made_with_other_statistics(tmp_path, fake_env):
     assert m["counts"]["train"]["written"] == 1
     with h5py.File(tmp_path / "shots" / "1.h5", "r") as f:
         assert f.attrs["stats_sha256"] == m["stats_sha256"]
+
+
+def test_build_rewrites_a_float16_file_with_the_current_hash(tmp_path, fake_env):
+    m = cache.build(tmp_path, {"train": [1]}, workers=1)
+    p = tmp_path / "shots" / "1.h5"
+    with h5py.File(p, "r+") as f:           # an older float16 file that carries the current hash
+        shape = f[FLUX.name].shape
+        del f[FLUX.name]
+        f.create_dataset(FLUX.name, data=np.zeros(shape, dtype=np.float16))
+    m = cache.build(tmp_path, {"train": [1]}, workers=1)
+    assert m["counts"]["train"]["written"] == 1
+    assert cache.read_shot(p)[FLUX.name].values.dtype == np.float32
 
 
 def test_a_failing_shot_is_recorded_and_the_others_are_written(tmp_path, fake_env, monkeypatch):

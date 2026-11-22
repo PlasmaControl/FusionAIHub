@@ -140,7 +140,8 @@ def _read_attributes(zarr_root: Path, specs: list[SignalSpec], sample_shots: lis
 def _validity_shot(args: tuple) -> tuple[int, dict | None, str | None]:
     """Per channel of one shot: the finite fraction of its samples and whether it is dead.
 
-    Dead: no finite sample, or the finite samples are all equal. A signal the shot does not
+    Dead: no finite sample (the cache's definition: a channel held at one value is valid and
+    only flagged there, and counts as live here). A signal the shot does not
     have, or has with another shape, is ``None``.
     """
     shot, signals = args
@@ -156,9 +157,7 @@ def _validity_shot(args: tuple) -> tuple[int, dict | None, str | None]:
             continue
         fin = np.isfinite(v)
         cnt = fin.sum(axis=1)
-        hi = np.where(fin, v, -np.inf).max(axis=1)
-        lo = np.where(fin, v, np.inf).min(axis=1)
-        out[spec.name] = (cnt / v.shape[1], (cnt == 0) | (hi == lo))
+        out[spec.name] = (cnt / v.shape[1], cnt == 0)
     return shot, out, None
 
 
@@ -229,7 +228,8 @@ def build_registry(zarr_root: Path, sample_shots: list[int], *, workers: int = 1
 
     ``sample_shots`` is used exactly as given (the caller passes training shots). Units, IMAS
     paths, channel names, r and z come from the Zarr store at ``zarr_root``; ``valid_fraction``
-    and ``dead_fraction`` are measured through `transform.load_shot`, i.e. on the data the
+    and ``dead_fraction`` (the fraction of sampled shots in which the channel has no finite sample,
+    or the shot lacks the signal) are measured through `transform.load_shot`, i.e. on the data the
     model sees (outliers replaced, derived signals included). ``workers`` is a process count for
     that pass. `attach_stats` fills the rest.
     """

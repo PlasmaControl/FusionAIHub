@@ -1,4 +1,4 @@
-"""Build the standardized float16 cache of the 39 benchmark signals (one HDF5 file per shot).
+"""Build the standardized float32 cache of the 39 benchmark signals (one HDF5 file per shot).
 
 Run through `scripts/mast/py.sh`:
 
