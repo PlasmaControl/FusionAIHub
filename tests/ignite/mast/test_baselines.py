@@ -79,3 +79,72 @@ def test_write_score_json(tmp_path):
     assert (d["task"], d["predictor"], d["split"]) == ("task_x", "mean", "test")
     assert d["nrmse"] == 0.5 and d["n_shots"] == 3 and d["n_windows"] == 12
     assert len(d["git_revision"]) == 40 and d["date"].endswith("+00:00")
+
+
+# ---------------------------------------------------------------- the gate's verdict and kept scores
+
+@pytest.mark.parametrize("ours", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("published", [None, 1.027])
+def test_a_nonfinite_score_is_outside_tolerance(ours, published):
+    assert baselines.outside_tolerance(ours, published, 0.002)
+
+
+def test_outside_tolerance_compares_with_the_published_value():
+    assert not baselines.outside_tolerance(1.0271, 1.027, 0.002)
+    assert baselines.outside_tolerance(1.0300, 1.027, 0.002)
+    assert not baselines.outside_tolerance(0.5, None, 0.002)
+
+
+def _score_result(out_dir):
+    import pandas as pd
+    from tokamak_foundation_model.ignite.mast.harness import ScoreResult
+
+    return ScoreResult(task="task_x", task_nrmse=0.5, per_signal=pd.DataFrame(), n_windows=12,
+                       per_shot=pd.DataFrame({"shot_id": [1, 2], "NRMSE": [0.4, 0.6]}), out_dir=out_dir)
+
+
+def test_scoring_code_sha256_is_a_stable_hex_digest():
+    h = baselines.scoring_code_sha256()
+    assert len(h) == 64 and int(h, 16) >= 0 and h == baselines.scoring_code_sha256()
+
+
+def test_write_score_json_records_the_scoring_code(tmp_path):
+    d = json.loads(baselines.write_score_json(_score_result(tmp_path), "mean", "test").read_text())
+    assert d["code_sha256"] == baselines.scoring_code_sha256() and len(d) == 9
+
+
+def test_a_score_written_now_is_kept(tmp_path):
+    baselines.write_score_json(_score_result(tmp_path), "mean", "test")
+    stored, reason = baselines.read_kept_score(tmp_path, "task_x", "mean", "test")
+    assert reason == "" and stored["nrmse"] == 0.5 and stored["n_windows"] == 12
+
+
+def _rewrite(path, **changes):
+    d = json.loads(path.read_text())
+    for k, v in changes.items():
+        if v is None:
+            d.pop(k)
+        else:
+            d[k] = v
+    path.write_text(json.dumps(d))
+
+
+@pytest.mark.parametrize("case", ["missing", "truncated", "other_predictor", "other_split", "no_hash", "other_hash"])
+def test_a_stored_score_that_is_not_the_one_asked_for_is_not_kept(tmp_path, case):
+    path = baselines.write_score_json(_score_result(tmp_path), "mean", "test")
+    if case == "missing":
+        path.unlink()
+    elif case == "truncated":
+        path.write_text(path.read_text()[:40])
+    elif case == "other_predictor":
+        _rewrite(path, predictor="persistence")
+    elif case == "other_split":
+        _rewrite(path, split="val_report")
+    elif case == "no_hash":
+        _rewrite(path, code_sha256=None)
+    else:
+        _rewrite(path, code_sha256="0" * 64)
+    stored, reason = baselines.read_kept_score(tmp_path, "task_x", "mean", "test")
+    assert stored is None and reason
+    if case in ("no_hash", "other_hash"):
+        assert "scoring code changed since" in reason

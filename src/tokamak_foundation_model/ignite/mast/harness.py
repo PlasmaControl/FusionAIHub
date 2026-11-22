@@ -333,13 +333,21 @@ def score_batches(task_name: str, batches: Iterable[WindowBatch], predict_fn: Pr
     )
     task_nrmse = float(table.loc[task_name, "NRMSE_mean"])
     signals = table.drop(index=task_name)["NRMSE_mean"]
+    if not np.isfinite(task_nrmse):
+        not_finite = [str(n) for n in signals.index[~np.isfinite(signals.to_numpy(dtype=float))]]
+        raise RuntimeError(
+            f"task {task_name}: TokaMark's task score is not finite ({task_nrmse}); signals whose score is "
+            f"not finite: {not_finite or 'none (the shot-level aggregation produced it)'}"
+        )
     per_signal = pd.DataFrame({"feature_name": signals.index.astype(str), "NRMSE": signals.to_numpy()})
     # compute_metrics returns no per-shot table; TokaMark's own aggregation gives it, from the same windows.
     _, shots_table, _ = aggregate_windows_metrics(accumulator.to_dataframe())
     per_shot = pd.DataFrame({"shot_id": shots_table.index.to_numpy(), "NRMSE": shots_table["NRMSE"].to_numpy()})
-    if abs(per_shot["NRMSE"].mean() - task_nrmse) > 1e-9 * max(1.0, abs(task_nrmse)):
+    shot_mean = per_shot["NRMSE"].mean()
+    # `not (a <= b)` rather than `a > b`: a NaN must fail the check, not pass it.
+    if not abs(shot_mean - task_nrmse) <= 1e-9 * max(1.0, abs(task_nrmse)):
         raise RuntimeError(
-            f"task {task_name}: the mean of the per-shot scores ({per_shot['NRMSE'].mean()}) differs from "
+            f"task {task_name}: the mean of the per-shot scores ({shot_mean}) differs from "
             f"TokaMark's task score ({task_nrmse})"
         )
     return ScoreResult(task=task_name, task_nrmse=task_nrmse, per_signal=per_signal, per_shot=per_shot,

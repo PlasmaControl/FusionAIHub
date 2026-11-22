@@ -12,7 +12,9 @@ Nothing here imports `tokamark`; the predictors work on a `WindowBatch` alone.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,6 +64,63 @@ def persistence_predictor(task: TaskSpec) -> PredictFn:
     return predict
 
 
+def outside_tolerance(ours: float, published: float | None, tolerance: float) -> bool:
+    """The gate's verdict on one score.
+
+    True when `ours` is not finite (a NaN must never read as agreement: `abs(nan - x) > tol` is
+    False). False when `published` is None (no difference is judged) and `ours` is finite.
+    Otherwise True when `|ours - published| > tolerance`.
+    """
+    if not math.isfinite(ours):
+        return True
+    if published is None:
+        return False
+    return abs(ours - published) > tolerance
+
+
+# The code that determines a baseline score: the harness (windows, scoring), the task specs
+# (statistics, step counts, splits) and this module (the predictors).
+_SCORING_FILES = ("harness.py", "tasks.py", "baselines.py")
+
+
+def scoring_code_sha256() -> str:
+    """sha256 over the bytes of the scoring code, each file preceded by its name.
+
+    A stored score is the same score only if this value is unchanged.
+    """
+    h = hashlib.sha256()
+    for name in _SCORING_FILES:
+        h.update(name.encode() + b"\n")
+        h.update((Path(__file__).parent / name).read_bytes())
+    return h.hexdigest()
+
+
+_SCORE_KEYS = ("task", "predictor", "split", "nrmse", "n_shots", "n_windows", "git_revision", "date",
+               "code_sha256")
+
+
+def read_kept_score(out_dir: Path, task: str, predictor: str, split: str) -> tuple[dict | None, str]:
+    """The stored ``score.json`` of `out_dir` if it is the score asked for, else ``(None, reason)``.
+
+    Kept only if the file exists, parses, has every key, names this task, predictor and split,
+    and was written with the scoring code as it is now (`scoring_code_sha256`).
+    """
+    path = Path(out_dir) / "score.json"
+    if not path.exists():
+        return None, "no score.json"
+    try:
+        stored = json.loads(path.read_text())
+        if not isinstance(stored, dict) or any(k not in stored for k in ("task", "predictor", "split")):
+            raise ValueError("not a score record")
+    except (OSError, ValueError):
+        return None, "unreadable score.json"
+    if (stored["task"], stored["predictor"], stored["split"]) != (task, predictor, split):
+        return None, f"score.json is for {stored['task']}/{stored['predictor']}/{stored['split']}"
+    if stored.get("code_sha256") != scoring_code_sha256() or any(k not in stored for k in _SCORE_KEYS):
+        return None, f"scoring code changed since {stored.get('git_revision', 'unknown')}"
+    return stored, ""
+
+
 def _git_revision() -> str:
     try:
         done = subprocess.run(["git", "-C", str(_REPO), "rev-parse", "HEAD"],
@@ -83,6 +142,7 @@ def write_score_json(result: ScoreResult, predictor: str, split: str) -> Path:
         "n_windows": int(result.n_windows),
         "git_revision": _git_revision(),
         "date": datetime.now(timezone.utc).isoformat(),
+        "code_sha256": scoring_code_sha256(),
     }
     path.write_text(json.dumps(record, indent=2) + "\n")
     return path

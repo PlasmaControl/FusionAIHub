@@ -67,6 +67,26 @@ def test_nonfinite_prediction_is_fine_where_the_target_is_nan(toy_task, toy_batc
     assert harness.score_batches("task_4-4", [b], predict, tmp_path).task_nrmse < 1e-9
 
 
+def test_score_batches_raises_on_a_nonfinite_task_score(toy_task, toy_batch, tmp_path, monkeypatch):
+    """A NaN task score must be an error: `abs(nan - x) > tol` is False, so it would read as agreement.
+
+    The real evaluator gives no NaN from a toy batch that passes the prediction checks, so the
+    evaluator's `compute_metrics` is replaced by one returning a NaN task row (the harness
+    calls it as `tokamark.evaluator.compute_metrics`).
+    """
+    pytest.importorskip("tokamark")
+    import pandas as pd
+    import tokamark.evaluator
+
+    s = toy_task.outputs[0]
+    monkeypatch.setattr(
+        tokamark.evaluator, "compute_metrics",
+        lambda **kw: pd.DataFrame({"NRMSE_mean": [np.nan, np.nan]}, index=["task_4-4", s.name]),
+    )
+    with pytest.raises(RuntimeError, match=r"task_4-4.*not finite.*summary-ip"):
+        harness.score_batches("task_4-4", [toy_batch(n=4, seed=0)], _const_pred(s, s.mean), tmp_path)
+
+
 def test_score_rejects_nonfinite_prediction(toy_task, toy_batch, tmp_path):
     b = toy_batch(n=4, seed=0)
     s = toy_task.outputs[0]

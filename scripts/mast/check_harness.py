@@ -7,14 +7,19 @@ If this harness reproduces the published columns, its scores can be believed. Ru
         2>&1 | tee /models/intermediate/mast/stage0/check_harness.log
 
 Each score goes to `<stage0>/scores/<task>/<predictor>/<split>/` (TokaMark's evaluator files in
-a `<task>` sub-directory, our `score.json` beside it). A score whose `score.json` exists is not
+a `<task>` sub-directory, our `score.json` beside it). A kept score (see below) is not
 repeated unless `--force`; it is still listed in the table.
 
 The published numbers are test-split numbers. With `--split test` the command exits 1 if any
 row differs from them by more than 0.002 (the paper gives three decimals, so rounding alone
 allows 0.0005; 0.002 leaves room for a small benchmark-version difference and no more). With
 `--split val_report` there is no published value for those shots: the table shows our score
-beside the published test value, the diff column reads "n/a" and the exit code is 0.
+beside the published test value, the diff column reads "n/a" and the exit code is 0, unless a score is not finite (that is
+outside on every split: exit 1).
+
+A kept score must be the same score: `baselines.read_kept_score` accepts a stored `score.json`
+only if it names this task, predictor and split and was written with the current scoring code
+(sha256 of harness.py, tasks.py and baselines.py); otherwise the score is made again.
 """
 
 from __future__ import annotations
@@ -70,11 +75,15 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for task_name, predictor, published in _rows_to_score(args.tasks):
         out_dir = root / "scores" / task_name / predictor / args.split
-        score_json = out_dir / "score.json"
-        if score_json.exists() and not args.force:
-            ours = float(json.loads(score_json.read_text())["nrmse"])
-            print(f"{task_name} {predictor} {args.split}: kept {score_json}", flush=True)
+        stored, reason = (None, "--force") if args.force else baselines.read_kept_score(
+            out_dir, task_name, predictor, args.split)
+        if stored is not None:
+            ours = float(stored["nrmse"])
+            print(f"kept {task_name} {predictor} {args.split} "
+                  f"(scored at {stored['git_revision']}, {stored['date']})", flush=True)
         else:
+            if reason != "no score.json":
+                print(f"re-scoring {task_name} {predictor} {args.split}: {reason}", flush=True)
             task = tasks.load_task(task_name)
             started = time.monotonic()
             result = harness.score(task, _predictor(predictor, task), out_dir, split=args.split,
@@ -89,10 +98,12 @@ def main(argv: list[str] | None = None) -> int:
     print(_format_table(results, args.split))
     if args.split != "test":
         print("\nThe published values are test-split values; there is none for these shots, so no diff.")
-        return 0
-    bad = [r for r in results if abs(r["ours"] - r["published"]) > TOLERANCE]
+    # No difference is judged off the test split, but a non-finite score is outside on every split.
+    judged = args.split == "test"
+    bad = [r for r in results
+           if baselines.outside_tolerance(r["ours"], r["published"] if judged else None, TOLERANCE)]
     for r in bad:
-        print(f"OUTSIDE {TOLERANCE}: {r['task']} {r['predictor']} ours {r['ours']:.4f} "
+        print(f"OUTSIDE {TOLERANCE}: {r['task']} {r['predictor']} ours {r['ours']} "
               f"published {r['published']:.3f}")
     return 1 if bad else 0
 
