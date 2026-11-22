@@ -1,8 +1,11 @@
 """Two cheap fitted predictors: shrunk persistence and ridge regression on frame means.
 
 They say how much of a task is predictable by trivial means, the second column of the headroom
-table (the first is TokaMind's representation floor, `floor.py`). Neither looks at a network, a
-spectrogram codec or more than the last 5 ms of each input. Both are fitted on the same 3,000
+table (the first is TokaMind's representation floor, `floor.py`). Neither uses a network or a
+spectrogram codec. Ridge looks at the last 5 ms of each non-spectrogram input and at the whole kept
+history of a spectrogram input (per bin); the anchor of `ShrunkPersistence` is `batch.last_valid`, the
+last finite sample over the whole delivered history (`harness.py`), and for a spectrogram the mean over
+the kept history. Both are fitted on the same 3,000
 training shots (`train_shots`), in TokaMark-standardized units (`(x - mean) / std` per signal),
 and return physical units. They are scored on `val_report` only, by `scripts/mast/run_headroom.py`.
 
@@ -34,14 +37,20 @@ acceptable for a cheap predictor and stated on the results page. The fit accumul
 target moments in float64 in one pass, solves `(X'X + lambda * n * D) W = X'Y` by Cholesky for each
 `lambdas` (D is the identity with a zero at the constant, so it is not penalised), and `select`
 keeps the lambda with the smallest mean squared error in standardized units on the finite
-validation frames. Centring by the training mean cannot be done while streaming (the mean is known
+validation frames of `select_shots()`: 200 shots evenly spaced over the sorted `val_select` list, the rule of
+`direct.validation_shots` (the first 200 shots are one old campaign). The candidates are the ten decades
+1e-8 ... 10. A penalty whose solve does not give finite weights is not a candidate and is printed. The fit
+prints and stores the chosen penalty, the candidates that solved and `at_edge` ("lower" or "upper" when the
+choice is the smallest or the largest candidate, so that the optimum is not bracketed; else none), and
+`run_headroom.py` copies the penalty, the edge flag and the two counts into `score.json`.
+Centring by the training mean cannot be done while streaming (the mean is known
 at the end), so the accumulator holds `X'(valid * y)` and `X'valid` and forms
 `X'Y_centred = X'(valid * y) - m * X'valid` at the end, which is exact.
 
-Measured 2026-11-22 on node13 with 48 loader workers (task_1-1, the task with the smallest F x Q: F = 231,
-Q = 17): 3,000 training shots give 266,854 windows at stride 5 ms; the one-pass fit takes about 90 to
-100 s (the data pass: the solve is six Cholesky factorizations of a 231 x 231 matrix); scoring the
-144,569 `val_report` windows takes about 32 s. No stage-0 task needs more than 25 MB for `X'Y`
+Measured 2026-11-22 on node13 with 48 loader workers (task_1-1, the task with the smallest F x Q:
+F = 231, Q = 17): 3,000 training shots give 266,854 windows at stride 5 ms; the one-pass fit takes about 90 to
+100 s (the data pass: the solve was six Cholesky factorizations of a 231 x 231 matrix, ten with today's
+grid); scoring the 144,569 `val_report` windows takes about 32 s. No stage-0 task needs more than 25 MB for `X'Y`
 (task_4-5: F = 2049, Q = 1536). task_1-1 has no output that is also an input, so `shrunk` is there only a
 per-channel training mean. The training mean differs from TokaMark's mean baseline because several
 outputs hold a pair of channels with opposite signs (the two x-points), for which TokaMark's one mean
@@ -50,15 +59,20 @@ per signal is far from each channel's mean.
 Fit files. `save_fit` writes one `.npz` per task and predictor (atomically: temporary name, then
 rename) holding the fitted arrays and a metadata record: the code hash (`PREDICTOR_SHA256`, this
 file as loaded), the digest of the training shot list, the stride, the scoring-code hash, the number of windows seen,
-the chosen lambda. `obtain` reuses a file only if every one of them matches the present code, shot
+the chosen lambda (ridge: also the grid, the candidates and `at_edge`), and returns the sha256 of the bytes it
+wrote. `obtain` reuses a file only if every one of them matches the present code, shot
 list, stride and scoring code, otherwise it fits again: a score is never computed from a fit made by other
-code. `current_fit_digest` is the sha256 of the file bytes when it is reusable, which
-`run_headroom.py` stores in `score.json` as `fit_sha256`.
+code. A file that cannot be read by this code (a fit from before the penalty record, a missing array) counts
+as no current fit, never as current and never as an error. `obtain` returns the predictor with the sha256
+of the bytes it was made from (the file is read once, or the digest is that of what `save_fit` wrote), which
+`run_headroom.py` stores in `score.json` as `fit_sha256`. `current_fit_digest` is the same digest, or
+`NO_CURRENT_FIT`, for the check before a stored score is kept.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 import os
@@ -80,7 +94,7 @@ PREDICTOR_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 FRAME_S = 0.005
 N_TRAIN_SHOTS = 3000          # fixed random sample of the training split (seed 0), the same for every task
 TRAIN_STRIDE_S = 0.005        # window stride of the training windows (the benchmark's own is task-dependent)
-N_SELECT_SHOTS = 200          # first shots of `val_select` that choose ridge's lambda
+N_SELECT_SHOTS = 200          # shots of `val_select`, evenly spaced over the sorted list, that choose ridge's lambda
 NO_CURRENT_FIT = "no current fit"
 
 
@@ -177,15 +191,17 @@ def window_features(batch: WindowBatch, task: TaskSpec) -> np.ndarray:
     """(B, F) float64. See the module docstring for the layout; every entry is finite."""
     n = len(batch.shot_ids)
     cols: list[np.ndarray] = []
-    for s in task.inputs:
-        x = batch.inputs[s.name]
-        m = _nanmean_last(x if _is_spectrogram(s) else x[..., -frame_len(s.dt):]).reshape(n, -1)
-        valid = np.isfinite(m)
-        cols.append(np.where(valid, s.standardize(m), 0.0))
-        cols.append((valid.any(axis=1, keepdims=True) if _flag_per_signal(s) else valid).astype(np.float64))
-    for s in task.actuators:
-        m = frame_means(batch.actuators[s.name], s.dt).reshape(n, -1)
-        cols.append(np.where(np.isfinite(m), s.standardize(m), 0.0))
+    # Finiteness is tested after `standardize`: a signal whose std is 0 would otherwise pass an inf into the solve.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for s in task.inputs:
+            x = batch.inputs[s.name]
+            z = s.standardize(_nanmean_last(x if _is_spectrogram(s) else x[..., -frame_len(s.dt):]).reshape(n, -1))
+            valid = np.isfinite(z)
+            cols.append(np.where(valid, z, 0.0))
+            cols.append((valid.any(axis=1, keepdims=True) if _flag_per_signal(s) else valid).astype(np.float64))
+        for s in task.actuators:
+            z = s.standardize(frame_means(batch.actuators[s.name], s.dt).reshape(n, -1))
+            cols.append(np.where(np.isfinite(z), z, 0.0))
     cols.append(np.ones((n, 1)))
     return np.concatenate(cols, axis=1)
 
@@ -245,6 +261,15 @@ class _Predictor:
         if meta:
             self.n_windows = int(meta["n_windows"])
             self.n_channels_without_target = int(meta["n_channels_without_target"])
+
+    def fit_record(self) -> dict:
+        """What the fit knows that the score should carry: `run_headroom.py` copies it into `score.json`."""
+        return {"fit_n_windows": int(self.n_windows),
+                "fit_n_channels_without_target": int(self.n_channels_without_target)}
+
+    def fit_meta(self) -> dict:
+        """Extra keys of the metadata record in the fit file (`save_fit`); `RidgeFrames` adds its penalty record."""
+        return {}
 
     def _mean_arrays(self) -> dict[str, np.ndarray]:
         if not self.mean:
@@ -341,11 +366,15 @@ class ShrunkPersistence(_Predictor):
 
 class RidgeFrames(_Predictor):
     NAME = "ridge"
-    lambdas = (1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0)
+    # The ten decades. The first grid (1e-4 ... 10) had its optimum at the lower edge on five of seven tasks, so
+    # the number was "ridge at the smallest penalty offered"; `select` now reports when the choice is at an edge.
+    lambdas = (1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0)
 
     def __init__(self, task: TaskSpec):
         super().__init__(task)
         self.W: np.ndarray | None = None
+        self.candidates: tuple[float, ...] = ()       # the penalties whose solve gave finite weights
+        self.at_edge: str | None = None               # "lower" / "upper" if the choice is the first / last candidate
         self._moments: tuple[np.ndarray, np.ndarray, int] | None = None   # X'X, X'Y centred, n
 
     # ---- layout of the Q regression targets: for each output signal, channel-major (C, K)
@@ -378,7 +407,7 @@ class RidgeFrames(_Predictor):
         self.n_windows = n
         self.mean, self.n_channels_without_target = means.means(self.task)
         self._moments = (xtx, a - b * self._centres()[None, :], n)
-        self.W, self.lam = None, None
+        self.W, self.lam, self.candidates, self.at_edge = None, None, (), None
         return self
 
     def _solve(self, lam: float) -> np.ndarray:
@@ -390,13 +419,35 @@ class RidgeFrames(_Predictor):
         m[idx, idx] += lam * n
         return cho_solve(cho_factor(m, lower=True, check_finite=False), xty, check_finite=False)
 
-    def use_lambda(self, lam: float) -> None:
-        self.lam, self.W = float(lam), self._solve(lam)
+    def _solved(self) -> dict[float, np.ndarray]:
+        """penalty -> weights for the penalties whose solve gives finite weights. The others (a Cholesky
+        failure, or a non-finite solution: the smallest penalties of a rank-deficient `X'X`) are printed and
+        are not candidates."""
+        weights, dropped = {}, []
+        for lam in self.lambdas:
+            try:
+                w = self._solve(lam)
+            except np.linalg.LinAlgError as e:
+                dropped.append(f"{lam:g} ({e})")
+                continue
+            if np.isfinite(w).all():
+                weights[lam] = w
+            else:
+                dropped.append(f"{lam:g} (non-finite weights)")
+        if dropped:
+            print(f"[cheap] ridge {self.task.name}: penalties that are not a candidate: {', '.join(dropped)}",
+                  flush=True)
+        return weights
 
     def select(self, val_batches: Iterable[WindowBatch]) -> float:
-        """Choose lambda by mean squared error in standardized units over the finite validation frames."""
-        weights = {lam: self._solve(lam) for lam in self.lambdas}
-        sse, count, centres = dict.fromkeys(self.lambdas, 0.0), 0, self._centres()
+        """Choose lambda by mean squared error in standardized units over the finite validation frames.
+
+        Among the penalties that solve (`candidates`); `at_edge` says whether the choice is the smallest
+        ("lower") or the largest ("upper") of them, in which case the optimum is not bracketed."""
+        weights = self._solved()
+        if not weights:
+            raise ValueError(f"no penalty of {self.lambdas} gives finite ridge weights")
+        sse, count, centres = dict.fromkeys(weights, 0.0), 0, self._centres()
         for batch in val_batches:
             x, ys = self._design(batch)
             y = np.concatenate(ys, axis=1)
@@ -407,15 +458,22 @@ class RidgeFrames(_Predictor):
                 sse[lam] += float((err * err).sum())
         if count == 0:
             raise ValueError("select received no finite validation targets")
-        best = min(self.lambdas, key=lambda lam: sse[lam])
-        self.lam, self.W = best, weights[best]
+        best = min(weights, key=lambda lam: sse[lam])
+        self.lam, self.W, self.candidates = best, weights[best], tuple(weights)
+        self.at_edge = "lower" if best == self.candidates[0] else "upper" if best == self.candidates[-1] else None
         return best
+
+    def fit_record(self) -> dict:
+        return {**super().fit_record(), "fit_lambda": None if self.lam is None else float(self.lam),
+                "fit_lambda_at_edge": self.at_edge}
+
+    def fit_meta(self) -> dict:
+        return {"lambda_grid": list(self.lambdas), "lambda_candidates": list(self.candidates),
+                "lambda_at_edge": self.at_edge}
 
     def predict(self, batch: WindowBatch) -> dict[str, np.ndarray]:
         if self.W is None:
-            if self.lam is None:
-                raise ValueError("RidgeFrames has no lambda: call select() or use_lambda() first")
-            self.W = self._solve(self.lam)
+            raise ValueError("RidgeFrames has no weights: call select() first")
         z = window_features(batch, self.task) @ self.W + self._centres()[None, :]
         out, start, n = {}, 0, len(batch.shot_ids)
         for s in self.task.outputs:
@@ -435,6 +493,8 @@ class RidgeFrames(_Predictor):
         p._mean_from(arrays)
         p.W, p.lam = np.asarray(arrays["W"], dtype=np.float64), float(arrays["lam"])
         p._restore_counts(meta)
+        if meta:
+            p.candidates, p.at_edge = tuple(float(v) for v in meta["lambda_candidates"]), meta["lambda_at_edge"]
         return p
 
 
@@ -449,6 +509,21 @@ def train_shots() -> list[int]:
     return sorted(int(s) for s in np.random.default_rng(0).choice(train, N_TRAIN_SHOTS, replace=False))
 
 
+def select_shots(n: int = N_SELECT_SHOTS) -> list[int]:
+    """`n` shots evenly spaced over the sorted `val_select` list, first and last included: the shots that
+    choose ridge's penalty.
+
+    This is the rule of `direct.validation_shots`, positions `linspace(0, len - 1, min(n, len)).round()`;
+    it is written twice because `direct.py` imports this module (and must not change, ten trainings run from
+    it). `test_select_shots_are_the_direct_models_validation_shots` pins the two equal. The list is sorted by
+    shot number, so its first 200 shots are one old campaign (measured 2026-11-22: only 65 of them have
+    windows for tasks 4-x, and `cc_field` is nearly constant there), which is why the selection is spread.
+    """
+    selection = tasks.split_shots("val_select")
+    positions = np.linspace(0, len(selection) - 1, num=min(n, len(selection))).round().astype(int)
+    return [selection[i] for i in positions]
+
+
 def training_meta() -> dict:
     """What, besides this file, defines a fit: the training shot list, the window stride and the scoring
     code (harness.py, tasks.py, baselines.py: the training windows and the standardization come from
@@ -461,55 +536,78 @@ def fit_path(root: Path, task_name: str, name: str) -> Path:
     return Path(root) / "cheap" / task_name / f"{name}.npz"
 
 
-def save_fit(path: Path, predictor: _Predictor, extra: dict) -> None:
-    """Write the fitted arrays and the metadata record atomically (temporary name, then rename)."""
+def save_fit(path: Path, predictor: _Predictor, extra: dict) -> str:
+    """Write the fitted arrays and the metadata record atomically (temporary name, then rename); return the
+    sha256 of the bytes written."""
     path = Path(path)
     meta = {"predictor": predictor.NAME, "task": predictor.task.name, "code_sha256": PREDICTOR_SHA256,
             "n_windows": int(predictor.n_windows),
             "n_channels_without_target": int(predictor.n_channels_without_target),
-            "lambda": None if predictor.lam is None else float(predictor.lam), **extra}
+            "lambda": None if predictor.lam is None else float(predictor.lam), **predictor.fit_meta(), **extra}
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     try:
         with open(tmp, "wb") as f:
             np.savez(f, **predictor.arrays(), meta=np.array(json.dumps(meta)))
+        digest = hashlib.sha256(tmp.read_bytes()).hexdigest()
         os.replace(tmp, path)
+        return digest
     finally:
         tmp.unlink(missing_ok=True)
 
 
-def load_fit(path: Path) -> tuple[dict[str, np.ndarray], dict]:
-    with np.load(path, allow_pickle=False) as z:
+def _parse_fit(data: bytes) -> tuple[dict[str, np.ndarray], dict]:
+    with np.load(io.BytesIO(data), allow_pickle=False) as z:
         return {k: z[k] for k in z.files if k != "meta"}, json.loads(str(z["meta"]))
 
 
+def load_fit(path: Path) -> tuple[dict[str, np.ndarray], dict]:
+    return _parse_fit(Path(path).read_bytes())
+
+
+# What a ridge fit file must hold to be read by this code (a file from before the penalty record is fitted again).
+_RIDGE_META = ("lambda_grid", "lambda_candidates", "lambda_at_edge")
+
+
 def _read_current_fit(path: Path, name: str, task_name: str):
-    """((arrays, meta), "") for a fit file that matches the present code, shot list, stride and scoring code,
-    else (None, why not)."""
+    """((arrays, meta, digest), "") for a fit file that matches the present code, shot list, stride and scoring
+    code, else (None, why not). The file is read once: the arrays, the metadata and the digest are of the same
+    bytes."""
     path = Path(path)
     if not path.exists():
         return None, "no fit file"
     try:
-        arrays, meta = load_fit(path)
+        data = path.read_bytes()
+        arrays, meta = _parse_fit(data)
     except Exception as e:  # a truncated or foreign file is fitted again, not a crash
         return None, f"unreadable fit file ({type(e).__name__})"
+    if not isinstance(meta, dict):
+        return None, "unreadable fit file (no metadata record)"
     expected = {"predictor": name, "task": task_name, "code_sha256": PREDICTOR_SHA256, **training_meta()}
     for key, value in expected.items():
         if meta.get(key) != value:
             return None, f"{'code' if key == 'code_sha256' else key} changed"
-    if name == "ridge" and meta.get("lambda") is None:
-        return None, "no lambda chosen"
-    return (arrays, meta), ""
+    if not any(k.startswith("mean/") for k in arrays):
+        return None, "no fitted arrays"
+    if name == "ridge":
+        if meta.get("lambda") is None:
+            return None, "no lambda chosen"
+        if any(k not in meta for k in _RIDGE_META) or "W" not in arrays or "lam" not in arrays:
+            return None, "fit record incomplete (a fit from before the penalty record)"
+    return (arrays, meta, hashlib.sha256(data).hexdigest()), ""
 
 
 def current_fit_digest(path: Path, name: str, task_name: str) -> str:
     """sha256 of the fit file's bytes if it is reusable now, else `NO_CURRENT_FIT` (which no stored score has)."""
     found, _ = _read_current_fit(path, name, task_name)
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest() if found else NO_CURRENT_FIT
+    return found[2] if found else NO_CURRENT_FIT
 
 
-def obtain(name: str, task: TaskSpec, root: Path, *, num_workers: int, batch_size: int, force: bool) -> _Predictor:
-    """The fitted predictor: from its fit file under `root` if that is current, else fitted now and saved."""
+def obtain(name: str, task: TaskSpec, root: Path, *, num_workers: int, batch_size: int,
+           force: bool) -> tuple[_Predictor, str]:
+    """(the fitted predictor, sha256 of the fit file's bytes): from its fit file under `root` if that is
+    current, else fitted now and saved. The digest is of the bytes the predictor was made from (read once, or
+    written by `save_fit`), never of a second read of the path."""
     cls = PREDICTOR_CLASSES[name]
     path = fit_path(root, task.name, name)
     if force:
@@ -517,8 +615,13 @@ def obtain(name: str, task: TaskSpec, root: Path, *, num_workers: int, batch_siz
     else:
         found, why = _read_current_fit(path, name, task.name)
         if found:
-            print(f"[cheap] reusing {path} ({found[1]['n_windows']} windows)", flush=True)
-            return cls.from_arrays(task, *found)
+            try:
+                predictor = cls.from_arrays(task, found[0], found[1])
+            except (KeyError, ValueError, TypeError) as e:   # the record passed, the arrays do not fit this task
+                why = f"unreadable fit file ({type(e).__name__}: {e})"
+            else:
+                print(f"[cheap] reusing {path} ({found[1]['n_windows']} windows)", flush=True)
+                return predictor, found[2]
     shots = train_shots()
     print(f"[cheap] fitting {name} on {task.name} ({why}): {len(shots)} training shots, stride {TRAIN_STRIDE_S} s",
           flush=True)
@@ -530,10 +633,14 @@ def obtain(name: str, task: TaskSpec, root: Path, *, num_workers: int, batch_siz
     print(f"[cheap] {name} {task.name}: {predictor.n_windows} training windows, {fitted - started:.0f} s; "
           f"{predictor.n_channels_without_target} output channels never have a finite target", flush=True)
     if isinstance(predictor, RidgeFrames):
-        select_shots = tasks.split_shots("val_select")[:N_SELECT_SHOTS]
-        lam = predictor.select(harness.iter_windows(task, select_shots, test_mode=True,
+        chosen_on = select_shots()
+        lam = predictor.select(harness.iter_windows(task, chosen_on, test_mode=True,
                                                     batch_size=batch_size, num_workers=num_workers))
-        print(f"[cheap] ridge {task.name}: lambda {lam:g} chosen on {len(select_shots)} val_select shots, "
-              f"{time.monotonic() - fitted:.0f} s", flush=True)
-    save_fit(path, predictor, training_meta())
-    return predictor
+        print(f"[cheap] ridge {task.name}: lambda {lam:g} chosen on {len(chosen_on)} val_select shots spread over "
+              f"the sorted list, {time.monotonic() - fitted:.0f} s; candidates "
+              f"{', '.join(f'{c:g}' for c in predictor.candidates)}", flush=True)
+        if predictor.at_edge:
+            print(f"[cheap] ridge {task.name}: the choice is at the {predictor.at_edge} edge of the candidates, so the "
+                  f"optimum is not bracketed; the score is ridge at the "
+                  f"{'smallest' if predictor.at_edge == 'lower' else 'largest'} penalty that solved", flush=True)
+    return predictor, save_fit(path, predictor, training_meta())

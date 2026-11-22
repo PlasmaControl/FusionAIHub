@@ -26,9 +26,13 @@ entry in `PREDICTORS` exits with status 2 ("not implemented yet").
 
 Fits. `shrunk` and `ridge` are fitted by this command, on 3,000 training shots, and the fit is saved
 as `<stage0>/cheap/<task>/<predictor>.npz`. A fit file is reused when its metadata (code hash,
-training shot list, stride) matches the present code, otherwise the command fits again; `--force`
-fits again and scores again. The score is tied to the file it was computed with by the extra
-provenance key `fit_sha256` (the sha256 of the file's bytes).
+training shot list, stride) matches the present code, otherwise the command fits again (a file this code
+cannot read counts as no fit); `--force` fits again and scores again. The score is tied to the file it was
+computed with by the extra provenance key `fit_sha256`: the sha256 of the bytes `cheap.obtain` loaded or
+wrote, not of a second read of the path; the command refuses to store the "no current fit" sentinel as a
+digest. `score.json` also records, without comparing them when a score is kept: `fit_n_windows` and
+`fit_n_channels_without_target` (both fits), and for ridge `fit_lambda` and `fit_lambda_at_edge` ("lower" or
+"upper" when the chosen penalty is the smallest or the largest candidate, null otherwise).
 
 `direct`. Needs `--gpu N`, the GPU's index as `nvidia-smi` numbers it. One `nvidia-smi` lookup gives the
 GPU's uuid and its compute processes. The command sets `CUDA_VISIBLE_DEVICES` to that uuid in the form
@@ -102,6 +106,9 @@ class Context:
     variant: str = "base"          # `direct`: which configuration of the model
     train: bool = False            # `direct`: train before scoring
     overrides: dict = field(default_factory=dict)   # `direct`: DirectConfig fields set on the command line
+    # What a builder learned that the provenance and the record must use: `fit_sha256` and `fit_record` of a
+    # cheap predictor (the digest of the bytes the fit was made from, read once by `cheap.obtain`).
+    built: dict = field(default_factory=dict, compare=False)
 
 
 # After CUDA_VISIBLE_DEVICES is set to the uuid of the one GPU asked for, that GPU is device 0 of the process.
@@ -257,15 +264,20 @@ def _floor_provenance(ctx: Context) -> dict[str, str]:
 
 def _cheap(name: str) -> Callable[[Context], harness.PredictFn]:
     def build(ctx: Context) -> harness.PredictFn:
-        return cheap.obtain(name, ctx.task, ctx.root, num_workers=ctx.num_workers,
-                            batch_size=ctx.batch_size, force=ctx.force).predict
+        predictor, digest = cheap.obtain(name, ctx.task, ctx.root, num_workers=ctx.num_workers,
+                                         batch_size=ctx.batch_size, force=ctx.force)
+        ctx.built.update(fit_sha256=digest, fit_record=predictor.fit_record())
+        return predictor.predict
     return build
 
 
 def _cheap_provenance(name: str) -> Callable[[Context], dict[str, str]]:
     def provenance(ctx: Context) -> dict[str, str]:
-        # The digest of the fit file that is on disk and reusable now; `cheap.NO_CURRENT_FIT` (which no
+        # After the predictor was built: the digest of the bytes it was made from (`cheap.obtain` reads them
+        # once). Before: the digest of the fit file on disk if it is reusable now, `cheap.NO_CURRENT_FIT` (which no
         # stored score carries) if there is none, so that a score is not kept without its fit.
+        if "fit_sha256" in ctx.built:
+            return {"fit_sha256": ctx.built["fit_sha256"]}
         return {"fit_sha256": cheap.current_fit_digest(cheap.fit_path(ctx.root, ctx.task_name, name),
                                                        name, ctx.task_name)}
     return provenance
@@ -471,7 +483,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     started = time.monotonic()
     predict_fn = build(ctx)  # a fitted predictor is fitted here if there is no current fit file
-    run_record = _direct_record(ctx) if is_direct else {}
+    run_record = _direct_record(ctx) if is_direct else dict(ctx.built.get("fit_record", {}))
     if is_direct and (run_record["trained_steps"] is None or run_record["trained_steps"] < run_record["max_steps"]):
         trained = ("an unknown number of steps (no readable last.pt)" if run_record["trained_steps"] is None
                    else f"{run_record['trained_steps']} of {run_record['max_steps']} steps")
@@ -479,6 +491,10 @@ def main(argv: list[str] | None = None) -> int:
               f"the run did not finish, so this score is not final (checkpoint scored: step "
               f"{run_record['checkpoint_step']})", file=sys.stderr, flush=True)
     provenance = provenance_of(args.predictor, ctx)  # now with the fit it uses
+    if no_digest := [k for k, v in provenance.items() if v == cheap.NO_CURRENT_FIT]:
+        print(f"refused: {args.predictor} has no current fit ({', '.join(no_digest)}), and the sentinel is not a digest "
+              "to store in a score", file=sys.stderr)
+        return 1
     result = harness.score(task, predict_fn, out_dir, split=args.split, history_s=getattr(predict_fn, "history_s", None),
                            batch_size=args.batch_size, num_workers=args.num_workers)
     path = baselines.write_score_json(result, name, args.split)

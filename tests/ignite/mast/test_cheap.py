@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from tokamak_foundation_model.ignite.mast import harness
-from tokamak_foundation_model.ignite.mast.headroom import cheap
+from tokamak_foundation_model.ignite.mast.headroom import cheap, direct
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "mast" / "run_headroom.py"
 N_FEATURES = 2 * (1 + 15) + 4 * 6 + 1  # the toy task: ip and 15 flux loops, 4 coils in 6 frames, a constant
@@ -162,6 +162,7 @@ def test_ridge_leaves_the_constant_unpenalized(toy_task, toy_batch):
     b.targets["summary-ip"] = np.full_like(b.targets["summary-ip"], spec.unstandardize(2.5))
     rf = cheap.RidgeFrames(toy_task).fit([b])
     rf.lam = max(cheap.RidgeFrames.lambdas)
+    rf.W = rf._solve(rf.lam)
     out = rf.predict(toy_batch(n=3, seed=1))["summary-ip"]
     np.testing.assert_allclose(spec.standardize(out.astype(np.float64)), 2.5, atol=1e-3)
 
@@ -245,18 +246,26 @@ def test_the_fit_file_round_trips(toy_task, toy_batch, tmp_path):
 
 @pytest.fixture
 def stub_data(monkeypatch, toy_task, toy_batch):
-    """Training and validation windows from the toy generator; counts how often each is read."""
-    calls = {"train": 0, "val": 0, "shots": []}
-    monkeypatch.setattr(cheap.tasks, "split_shots",
-                        lambda split: list(range(1, 6001)) if split == "train" else list(range(7000, 7400)))
+    """Training and validation windows from the toy generator; counts how often each is read.
+
+    Each split has its own shots, so a test can tell which split a selection was drawn from."""
+    calls = {"train": 0, "val": 0, "shots": [], "val_shots": [], "splits": []}
+    splits = {"train": list(range(1, 6001)), "val_select": list(range(7000, 7400))}
+
+    def split_shots(split):
+        calls["splits"].append(split)
+        return list(splits.get(split, range(9000, 9400)))
+
+    monkeypatch.setattr(cheap.tasks, "split_shots", split_shots)
 
     def train_windows(task, shots, **kw):
         calls["train"] += 1; calls["shots"].append(list(shots)); calls["stride"] = kw.get("stride_s")
         return iter([toy_batch(n=300, seed=0), toy_batch(n=300, seed=1)])
 
     def iter_windows(task, shots, *, test_mode, **kw):
-        assert test_mode and len(shots) == 200
+        assert test_mode
         calls["val"] += 1
+        calls["val_shots"] = list(shots)
         return iter([toy_batch(n=100, seed=2)])
 
     monkeypatch.setattr(cheap.harness, "train_windows", train_windows)
@@ -275,17 +284,18 @@ def test_the_training_shots_are_a_fixed_sorted_sample(monkeypatch):
 @pytest.mark.parametrize("name", ["shrunk", "ridge"])
 def test_obtain_fits_once_and_reuses_the_file(stub_data, toy_task, tmp_path, name, capsys):
     kw = dict(num_workers=2, batch_size=8, force=False)
-    p1 = cheap.obtain(name, toy_task, tmp_path, **kw)
+    p1, digest1 = cheap.obtain(name, toy_task, tmp_path, **kw)
     path = cheap.fit_path(tmp_path, toy_task.name, name)
     assert path.exists() and stub_data["train"] == 1 and stub_data["stride"] == 0.005
     assert stub_data["val"] == (1 if name == "ridge" else 0)
     assert len(stub_data["shots"][0]) == 3000
     digest = cheap.current_fit_digest(path, name, toy_task.name)
     assert digest == hashlib.sha256(path.read_bytes()).hexdigest()
-    p2 = cheap.obtain(name, toy_task, tmp_path, **kw)             # reused
+    p2, digest2 = cheap.obtain(name, toy_task, tmp_path, **kw)    # reused
+    assert digest1 == digest2 == digest
     assert stub_data["train"] == 1 and "reusing" in capsys.readouterr().out
     assert cheap.current_fit_digest(path, name, toy_task.name) == digest          # a reuse does not rewrite the file
-    p3 = cheap.obtain(name, toy_task, tmp_path, **{**kw, "force": True})
+    p3, _ = cheap.obtain(name, toy_task, tmp_path, **{**kw, "force": True})
     assert stub_data["train"] == 2 and p1 is not p2 and p3 is not None
 
 
@@ -377,7 +387,7 @@ def test_the_command_ties_the_stored_score_to_the_fit_file(command, stub_data, n
     assert stub_data["train"] == 1 and scored == ["val_report"]
     assert "kept task_1-2" in capsys.readouterr().out
 
-    predictor = cheap.obtain(name, rh.tasks.load_task("task_1-2"), root, num_workers=1, batch_size=1, force=False)
+    predictor, _ = cheap.obtain(name, rh.tasks.load_task("task_1-2"), root, num_workers=1, batch_size=1, force=False)
     assert stub_data["train"] == 1                                 # reused
     cheap.save_fit(fit, _perturbed(predictor), cheap.training_meta())                 # another fit file, with valid metadata
     assert rh.main(argv) == 0                                      # the fit on disk is not the one scored
@@ -463,3 +473,403 @@ def test_a_fit_file_without_the_scoring_code_hash_is_not_current(stub_data, toy_
     capsys.readouterr()
     cheap.obtain("shrunk", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
     assert stub_data["train"] == 2 and "scoring_code_sha256 changed" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ final fix wave: C1
+
+def _decades_selection(monkeypatch, shots):
+    monkeypatch.setattr(cheap.tasks, "split_shots", lambda split: list(shots) if split == "val_select" else [])
+
+
+@pytest.mark.parametrize("n", [1, 2, 7, 200, 399, 400, 401, 5000])
+def test_select_shots_are_the_direct_models_validation_shots(monkeypatch, n):
+    """The rule exists twice (`cheap` cannot import `direct`, which imports it); this pins them equal."""
+    shots = [7000 + 3 * i for i in range(400)]
+    _decades_selection(monkeypatch, shots)
+    chosen = cheap.select_shots(n)
+    assert chosen == direct.validation_shots(n)
+    assert len(chosen) == len(set(chosen)) == min(n, 400) and chosen == sorted(chosen)
+    assert chosen[0] == shots[0] and (n == 1 or chosen[-1] == shots[-1])
+    if n >= 400:
+        assert chosen == shots
+
+
+def test_select_shots_spread_over_the_whole_sorted_list(monkeypatch):
+    shots = [7000 + 3 * i for i in range(1000)]
+    _decades_selection(monkeypatch, shots)
+    assert cheap.select_shots(4) == [shots[0], shots[333], shots[666], shots[999]]
+    assert cheap.N_SELECT_SHOTS == 200 and len(cheap.select_shots()) == 200
+    assert cheap.select_shots()[-1] == shots[-1] and cheap.select_shots() != shots[:200]
+
+
+def test_ridges_penalty_is_chosen_on_evenly_spaced_val_select_shots(stub_data, toy_task, tmp_path):
+    cheap.obtain("ridge", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    expected = [7000 + int(i) for i in np.linspace(0, 399, 200).round()]
+    assert stub_data["val_shots"] == expected == cheap.select_shots()
+    assert expected[0] == 7000 and expected[-1] == 7399 and expected != list(range(7000, 7200))
+    assert set(stub_data["splits"]) == {"train", "val_select"}          # never val_report or test
+
+
+def test_the_penalty_grid_is_the_ten_decades():
+    assert cheap.RidgeFrames.lambdas == (1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0)
+
+
+def _selecting(toy_task, toy_batch, best, *, raises=(), not_finite=()):
+    """A fitted ridge whose solves are scripted: `best` gives the weights that fit the validation windows
+    best, every other penalty a worse set, those in `raises` a Cholesky failure, those in `not_finite` NaN."""
+    rf = cheap.RidgeFrames(toy_task).fit([toy_batch(n=300, seed=0)])
+    good = rf._solve(1e-3)
+
+    def solve(lam):
+        if lam in raises:
+            raise np.linalg.LinAlgError("the matrix is not positive definite")
+        if lam in not_finite:
+            w = good.copy(); w[0, 0] = np.nan
+            return w
+        return good if lam == best else good + 1.0
+
+    rf._solve = solve
+    return rf, [toy_batch(n=150, seed=1)]
+
+
+@pytest.mark.parametrize("best, edge", [(1e-8, "lower"), (1e-5, None), (1e-2, None), (10.0, "upper")])
+def test_the_selection_flags_a_choice_at_an_edge_of_the_grid(toy_task, toy_batch, best, edge):
+    rf, val = _selecting(toy_task, toy_batch, best)
+    assert rf.select(val) == best and rf.lam == best
+    assert rf.at_edge == edge and rf.candidates == cheap.RidgeFrames.lambdas
+
+
+def test_a_penalty_whose_solve_is_not_finite_is_not_a_candidate_and_is_printed(toy_task, toy_batch, capsys):
+    rf, val = _selecting(toy_task, toy_batch, 1e-5, raises=(1e-8, 1e-7), not_finite=(1e-6,))
+    assert rf.select(val) == 1e-5
+    assert rf.candidates == (1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0)
+    assert rf.at_edge == "lower"                  # relative to the candidates that solved, not to the grid
+    out = capsys.readouterr().out
+    for lam in ("1e-08", "1e-07", "1e-06"):
+        assert lam in out
+    assert "not a candidate" in out
+
+
+def test_a_selection_with_no_penalty_that_solves_is_an_error(toy_task, toy_batch):
+    rf, val = _selecting(toy_task, toy_batch, 1e-3, raises=cheap.RidgeFrames.lambdas)
+    with pytest.raises(ValueError, match="no penalty"):
+        rf.select(val)
+
+
+def test_a_real_selection_has_finite_weights_for_every_candidate(toy_task, toy_batch):
+    rf = cheap.RidgeFrames(toy_task).fit([toy_batch(n=400, seed=0)])
+    rf.select([toy_batch(n=200, seed=1)])
+    assert rf.lam in rf.candidates and set(rf.candidates) <= set(cheap.RidgeFrames.lambdas)
+    assert np.isfinite(rf.W).all() and rf.at_edge in (None, "lower", "upper")
+
+
+def test_the_fit_file_stores_the_penalty_the_candidates_and_the_edge(stub_data, toy_task, tmp_path, capsys):
+    cheap.obtain("ridge", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    path = cheap.fit_path(tmp_path, toy_task.name, "ridge")
+    arrays, meta = cheap.load_fit(path)
+    assert meta["lambda"] == float(arrays["lam"]) and meta["lambda"] in meta["lambda_candidates"]
+    assert meta["lambda_grid"] == list(cheap.RidgeFrames.lambdas)
+    assert set(meta["lambda_candidates"]) <= set(meta["lambda_grid"])
+    assert meta["lambda_at_edge"] in (None, "lower", "upper")
+    out = capsys.readouterr().out
+    assert f"lambda {meta['lambda']:g}" in out and "candidates" in out
+    # a reused fit carries the same record
+    capsys.readouterr()
+    reused, _ = cheap.obtain("ridge", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    assert reused.lam == meta["lambda"] and reused.at_edge == meta["lambda_at_edge"]
+    assert list(reused.candidates) == meta["lambda_candidates"]
+    assert reused.fit_record() == {"fit_lambda": meta["lambda"], "fit_lambda_at_edge": meta["lambda_at_edge"],
+                                   "fit_n_windows": 600, "fit_n_channels_without_target": 0}
+
+
+def test_obtain_prints_when_the_choice_is_at_an_edge(stub_data, toy_task, tmp_path, monkeypatch, capsys):
+    real = cheap.RidgeFrames.select
+
+    def at_the_lower_edge(self, val_batches):
+        real(self, val_batches)
+        self.lam, self.W, self.at_edge = self.candidates[0], self._solve(self.candidates[0]), "lower"
+        return self.lam
+
+    monkeypatch.setattr(cheap.RidgeFrames, "select", at_the_lower_edge)
+    cheap.obtain("ridge", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    assert "lower edge" in capsys.readouterr().out
+    assert cheap.load_fit(cheap.fit_path(tmp_path, toy_task.name, "ridge"))[1]["lambda_at_edge"] == "lower"
+
+
+def test_the_shrunk_record_has_the_two_counts_only(toy_task, toy_batch):
+    shrunk, ridge = _fitted(toy_task, toy_batch)
+    assert shrunk.fit_record() == {"fit_n_windows": 200, "fit_n_channels_without_target": 0}
+    assert set(ridge.fit_record()) == {"fit_n_windows", "fit_n_channels_without_target", "fit_lambda",
+                                       "fit_lambda_at_edge"}
+
+
+def test_ridge_has_no_lazy_solve(toy_task, toy_batch):
+    """`use_lambda` and the solve inside `predict` are gone: weights come from `select`, or `predict` says so."""
+    rf = cheap.RidgeFrames(toy_task).fit([toy_batch(n=100, seed=0)])
+    assert not hasattr(rf, "use_lambda")
+    with pytest.raises(ValueError, match="select"):
+        rf.predict(toy_batch(n=2, seed=1))
+
+
+# ---- the digest and the old fits
+
+def test_save_fit_returns_the_digest_of_the_bytes_it_wrote(toy_task, toy_batch, tmp_path):
+    shrunk, _ = _fitted(toy_task, toy_batch)
+    path = tmp_path / "cheap" / "task_toy" / "shrunk.npz"
+    digest = cheap.save_fit(path, shrunk, {})
+    assert digest == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("name", ["shrunk", "ridge"])
+def test_obtain_digests_the_bytes_it_loaded_from_one_read(stub_data, toy_task, tmp_path, monkeypatch, name):
+    cheap.obtain(name, toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    path = cheap.fit_path(tmp_path, toy_task.name, name)
+    reads = []
+    real = Path.read_bytes
+
+    def counting(self):
+        data = real(self)
+        if self == path:
+            reads.append(hashlib.sha256(data).hexdigest())
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", counting)
+    _, digest = cheap.obtain(name, toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    assert reads == [digest] and stub_data["train"] == 1       # one read, and the digest is of what it returned
+    assert digest != cheap.NO_CURRENT_FIT
+
+
+def test_a_forced_fit_returns_the_digest_of_the_file_it_wrote(stub_data, toy_task, tmp_path):
+    _, digest = cheap.obtain("ridge", toy_task, tmp_path, num_workers=2, batch_size=8, force=True)
+    path = cheap.fit_path(tmp_path, toy_task.name, "ridge")
+    assert digest == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _rewritten(path, *, drop_array=None, drop_meta=None):
+    arrays, meta = cheap.load_fit(path)
+    arrays.pop(drop_array, None)
+    meta.pop(drop_meta, None)
+    with open(path, "wb") as f:
+        np.savez(f, **arrays, meta=np.array(json.dumps(meta)))
+
+
+@pytest.mark.parametrize("damage", [dict(drop_meta="lambda_at_edge"), dict(drop_meta="lambda_candidates"),
+                                    dict(drop_array="W"), dict(drop_array="lam")])
+def test_a_ridge_fit_from_before_the_grid_change_is_fitted_again_not_an_error(stub_data, toy_task, tmp_path, damage,
+                                                                           capsys):
+    cheap.obtain("ridge", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    path = cheap.fit_path(tmp_path, toy_task.name, "ridge")
+    _rewritten(path, **damage)                  # the code hash is the present one: only the record is old
+    assert cheap.current_fit_digest(path, "ridge", toy_task.name) == cheap.NO_CURRENT_FIT
+    capsys.readouterr()
+    predictor, digest = cheap.obtain("ridge", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    assert stub_data["train"] == 2 and predictor.at_edge in (None, "lower", "upper")
+    assert digest == cheap.current_fit_digest(path, "ridge", toy_task.name)
+
+
+def test_a_fit_that_passes_the_record_check_but_cannot_be_restored_is_fitted_again(stub_data, toy_task, tmp_path,
+                                                                               monkeypatch):
+    cheap.obtain("shrunk", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    path = cheap.fit_path(tmp_path, toy_task.name, "shrunk")
+    _rewritten(path, drop_array="slope/summary-ip")
+    assert cheap.current_fit_digest(path, "shrunk", toy_task.name) != cheap.NO_CURRENT_FIT   # the name-free check
+    predictor, digest = cheap.obtain("shrunk", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    assert stub_data["train"] == 2 and "slope/summary-ip" in cheap.load_fit(path)[0]
+    assert digest == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+# ---- the features and the predictions
+
+def test_a_signal_with_a_zero_std_gives_finite_features_and_a_zero_flag(toy_task, toy_batch):
+    ip = dataclasses.replace(toy_task.inputs[0], std=0.0)
+    coil = dataclasses.replace(toy_task.actuators[0], std=0.0)
+    task = dataclasses.replace(toy_task, inputs=(ip, toy_task.inputs[1]), actuators=(coil,))
+    f = cheap.window_features(toy_batch(n=5, seed=0), task)          # -W error: no divide warning
+    assert f.shape == (5, N_FEATURES) and np.isfinite(f).all()
+    assert np.all(f[:, :2] == 0)                                      # value 0, flag 0: the signal is unusable
+    assert f[:, 17:32].min() == 1                                     # the flux flags are intact
+    assert np.all(f[:, 32:-1] == 0)                                   # the actuator block
+
+
+def test_predictions_do_not_depend_on_the_batch_targets(toy_task, toy_batch):
+    b = toy_batch(n=6, seed=3)
+    no_targets = dataclasses.replace(b, targets={})
+    nan_targets = dataclasses.replace(b, targets={k: np.full_like(v, np.nan) for k, v in b.targets.items()})
+    for predictor in _fitted(toy_task, toy_batch):
+        expected = predictor.predict(b)["summary-ip"]
+        for other in (no_targets, nan_targets):
+            np.testing.assert_array_equal(predictor.predict(other)["summary-ip"], expected)
+
+
+# ---- spectrogram outputs: the path behind the task 4-5 numbers
+
+def _spectrogram_task():
+    from tokamak_foundation_model.ignite.mast import tasks
+    name = tasks.SPECTROGRAM_SIGNALS[0]
+    spec = tasks.SignalSpec(name, 0.001024, (3, 4), 1.0, 2.0)
+    return spec, tasks.TaskSpec(name="task_spec", markovian=False, input_length=0.02, output_length=0.01,
+                                delta=0.0, stride=0.01, inputs=(spec,), actuators=(), outputs=(spec,),
+                                steps={"input": {spec.name: 20}, "actuator": {}, "output": {spec.name: 10}})
+
+
+def _spectrogram_batch(spec, n, seed, gain=3.0):
+    """Inputs random; each target is `gain` times the standardized per-bin input mean, held over the output."""
+    rng = np.random.default_rng(seed)
+    x = (spec.mean + spec.std * rng.standard_normal((n, 3, 4, 20))).astype(np.float32)
+    anchor = spec.standardize(x.astype(np.float64).mean(axis=-1))               # (n, 3, 4)
+    y = spec.unstandardize(gain * anchor[..., None] + np.zeros((n, 3, 4, 10))).astype(np.float32)
+    return harness.WindowBatch(np.arange(n), np.zeros(n, dtype=np.int64), {spec.name: x}, {}, {spec.name: y},
+                               {spec.name: x[..., -1].copy()})
+
+
+def test_shrunk_and_ridge_with_a_spectrogram_output_hold_one_frame_over_the_window():
+    spec, task = _spectrogram_task()
+    train = [_spectrogram_batch(spec, 400, 0), _spectrogram_batch(spec, 400, 1)]
+    test = _spectrogram_batch(spec, 50, 2)
+    assert cheap.target_count(task) == 12 and cheap.feature_count(task) == 12 + 1 + 1
+
+    shrunk = cheap.ShrunkPersistence(task).fit(train)
+    assert shrunk.slope[spec.name].shape == (1,)
+    assert abs(float(shrunk.slope[spec.name][0]) - 3.0) < 0.15                  # the slope of target on anchor
+    ridge = cheap.RidgeFrames(task).fit(train)
+    ridge.select([_spectrogram_batch(spec, 100, 3)])
+    for predictor in (shrunk, ridge):
+        out = predictor.predict(test)[spec.name]
+        assert out.shape == test.targets[spec.name].shape and out.dtype == np.float32
+        assert np.isfinite(out).all()
+        assert np.all(out == out[..., :1])                                     # one value per bin, held in time
+        z = spec.standardize(out[..., 0].astype(np.float64))
+        want = spec.standardize(test.targets[spec.name][..., 0].astype(np.float64))
+        assert np.sqrt(np.mean((z - want) ** 2)) < 0.12                        # the anchor is the information
+
+
+def test_ridge_with_a_spectrogram_output_recovers_a_map_that_shrunk_cannot():
+    """Targets that depend on the neighbouring bin: the per-bin slope of shrunk cannot, ridge can."""
+    spec, task = _spectrogram_task()
+
+    def batch(n, seed):
+        b = _spectrogram_batch(spec, n, seed, gain=0.0)
+        anchor = spec.standardize(b.inputs[spec.name].astype(np.float64).mean(axis=-1))
+        z = 4.0 * np.roll(anchor, 1, axis=-1)
+        b.targets[spec.name] = spec.unstandardize(z[..., None] + np.zeros((n, 3, 4, 10))).astype(np.float32)
+        return b
+
+    ridge = cheap.RidgeFrames(task).fit([batch(800, 0), batch(800, 1)])
+    ridge.select([batch(200, 2)])
+    shrunk = cheap.ShrunkPersistence(task).fit([batch(800, 0)])
+    test = batch(100, 3)
+    want = spec.standardize(test.targets[spec.name][..., 0].astype(np.float64))
+    err = {}
+    for name, p in (("ridge", ridge), ("shrunk", shrunk)):
+        got = spec.standardize(p.predict(test)[spec.name][..., 0].astype(np.float64))
+        err[name] = float(np.sqrt(np.mean((got - want) ** 2)))
+    assert err["ridge"] < 0.1 and err["shrunk"] > 0.5
+
+
+# ---- the streamed centring against a two-pass fit
+
+def test_streamed_centring_equals_a_two_pass_fit_when_targets_are_missing(toy_task, toy_batch):
+    spec = toy_task.outputs[0]
+    rng = np.random.default_rng(5)
+    batches = []
+    for seed in (0, 1, 2):
+        b = toy_batch(n=120, seed=seed)
+        t = b.targets["summary-ip"]
+        t[rng.random(t.shape) < 0.15] = np.nan                      # scattered missing samples
+        t[:10, :, 20:40] = np.nan                                   # a whole frame missing in ten windows
+        t[10:15] = np.nan                                           # ten windows with no target at all
+        batches.append(b)
+    rf = cheap.RidgeFrames(toy_task).fit(batches)
+
+    # two passes: the mean first, then the centred moments
+    z = np.concatenate([spec.standardize(b.targets["summary-ip"].astype(np.float64)) for b in batches])
+    m = np.nansum(z) / np.isfinite(z).sum()
+    np.testing.assert_allclose(rf.mean["summary-ip"], [m], rtol=1e-12)
+    x = np.concatenate([cheap.window_features(b, toy_task) for b in batches])
+    frames = z.reshape(len(z), 1, N_FRAMES, 20)
+    finite = np.isfinite(frames)
+    y = np.where(finite.any(axis=-1), np.where(finite, frames, 0.0).sum(axis=-1) / np.maximum(finite.sum(axis=-1), 1),
+                 np.nan).reshape(len(z), N_FRAMES)
+    valid = np.isfinite(y)
+    yc = np.where(valid, y - m, 0.0)
+    xtx_ref, xty_ref = x.T @ x, x.T @ yc
+    xtx, xty, n = rf._moments
+    assert n == len(z)
+    np.testing.assert_allclose(xtx, xtx_ref, rtol=1e-10, atol=1e-8)
+    np.testing.assert_allclose(xty, xty_ref, rtol=1e-9, atol=1e-8)
+    lam = 1e-3
+    penalty = np.eye(x.shape[1]) * lam * n
+    penalty[-1, -1] = 0.0
+    np.testing.assert_allclose(rf._solve(lam), np.linalg.solve(xtx_ref + penalty, xty_ref), rtol=1e-7, atol=1e-9)
+
+
+# ---- the direct model's two imports (C1-M3)
+
+def test_the_values_the_direct_model_imports_are_pinned():
+    """`direct.py` imports `FRAME_S` and `frame_len`, and its hash does not cover this file: a change here
+    would change the model's patches and every direct score silently."""
+    assert cheap.FRAME_S == 0.005
+    # the distinct sampling intervals of the 14 benchmark tasks' signals (read from TokaMark 2026-11-22)
+    assert {dt: cheap.frame_len(dt) for dt in (2e-05, 0.0002, 0.00025, 0.001024, 0.005)} == {
+        2e-05: 250, 0.0002: 25, 0.00025: 20, 0.001024: 5, 0.005: 1}
+    assert cheap.frame_len(0.02) == 1 and cheap.frame_len(1.0) == 1          # never below one sample
+    assert direct.FRAME_S is cheap.FRAME_S and direct.frame_len is cheap.frame_len
+
+
+# ---- the command: what the fit knows reaches score.json, and the digest is of the bytes that were used
+
+@pytest.mark.parametrize("name", ["shrunk", "ridge"])
+def test_score_json_carries_what_the_fit_knows(command, stub_data, name):
+    rh, scored, root = command
+    assert rh.main(["--task", "task_1-2", "--predictor", name, "--split", "val_report"]) == 0
+    stored = json.loads((root / "scores" / "task_1-2" / name / "val_report" / "score.json").read_text())
+    assert stored["fit_n_windows"] == 600 and stored["fit_n_channels_without_target"] == 0
+    if name == "ridge":
+        assert stored["fit_lambda"] in cheap.RidgeFrames.lambdas
+        assert "fit_lambda_at_edge" in stored and stored["fit_lambda_at_edge"] in (None, "lower", "upper")
+        meta = cheap.load_fit(root / "cheap" / "task_1-2" / "ridge.npz")[1]
+        assert stored["fit_lambda"] == meta["lambda"] and stored["fit_lambda_at_edge"] == meta["lambda_at_edge"]
+    else:
+        assert not {"fit_lambda", "fit_lambda_at_edge"} & set(stored)
+
+
+def test_a_reused_fit_gives_the_same_record(command, stub_data):
+    rh, scored, root = command
+    argv = ["--task", "task_1-2", "--predictor", "ridge", "--split", "val_report"]
+    out = root / "scores" / "task_1-2" / "ridge" / "val_report" / "score.json"
+    assert rh.main(argv) == 0
+    first = json.loads(out.read_text())
+    out.unlink()                                              # score again from the reused fit file
+    assert rh.main(argv) == 0 and stub_data["train"] == 1
+    again = json.loads(out.read_text())
+    for key in ("fit_n_windows", "fit_n_channels_without_target", "fit_lambda", "fit_lambda_at_edge", "fit_sha256"):
+        assert again[key] == first[key]
+
+
+def test_the_stored_digest_is_that_of_the_bytes_the_predictor_was_made_from(command, stub_data, monkeypatch):
+    """A writer that replaces the fit file after it was read must not change the digest that is stored."""
+    rh, scored, root = command
+    real = cheap.obtain
+    seen = {}
+
+    def obtain_then_replace(*a, **kw):
+        predictor, digest = real(*a, **kw)
+        path = cheap.fit_path(root, "task_1-2", "shrunk")
+        cheap.save_fit(path, _perturbed(predictor), cheap.training_meta())      # another writer, after the read
+        seen["digest"] = digest
+        return predictor, digest
+
+    monkeypatch.setattr(cheap, "obtain", obtain_then_replace)
+    assert rh.main(["--task", "task_1-2", "--predictor", "shrunk", "--split", "val_report"]) == 0
+    fit = root / "cheap" / "task_1-2" / "shrunk.npz"
+    stored = json.loads((root / "scores/task_1-2/shrunk/val_report/score.json").read_text())
+    assert stored["fit_sha256"] == seen["digest"] != hashlib.sha256(fit.read_bytes()).hexdigest()
+
+
+def test_the_no_current_fit_sentinel_is_never_stored_as_a_digest(command, stub_data, monkeypatch, capsys):
+    rh, scored, root = command
+    real = cheap.obtain
+    monkeypatch.setattr(cheap, "obtain", lambda *a, **kw: (real(*a, **kw)[0], cheap.NO_CURRENT_FIT))
+    assert rh.main(["--task", "task_1-2", "--predictor", "ridge", "--split", "val_report"]) == 1
+    assert "no current fit" in capsys.readouterr().err
+    assert scored == [] and not (root / "scores" / "task_1-2" / "ridge").exists()
