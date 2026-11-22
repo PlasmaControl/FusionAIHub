@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -252,15 +252,17 @@ def _unfinished(record: dict) -> str:
 
 
 def build_table(scores_dir: Path, tokamind_repl: dict[str, float | None],
-                stale_reason: Callable[[str, str, str], str] | None = None) -> pd.DataFrame:
-    """The headroom table of the stage-0 tasks (see the module docstring); index `task`.
+                stale_reason: Callable[[str, str, str], str] | None = None,
+                task_names: Sequence[str] = tasks.STAGE0_TASKS) -> pd.DataFrame:
+    """The headroom table of the tasks of `task_names` (default: the seven stage-0 tasks), one row each in
+    that order (see the module docstring); index `task`.
 
     `scores_dir` is `<stage0>/scores`. `stale_reason(task, predictor, split)` is asked once for each stored
     record and returns "" or why the record is not current; without it the scoring code is checked.
     """
     scores_dir = Path(scores_dir)
     rows = []
-    for task in tasks.STAGE0_TASKS:
+    for task in task_names:
         row: dict = {c: math.nan for c in COLUMNS}
         row.update(direct_variant="", verdict="missing", not_competitive="")
         stale, unfinished = [], []
@@ -304,14 +306,14 @@ def build_table(scores_dir: Path, tokamind_repl: dict[str, float | None],
             row["not_competitive"] = "yes"  # the promise of `direct.py`: worse than our replication on the task
         row["stale"], row["unfinished"] = " | ".join(stale), " | ".join(unfinished)
         rows.append(row)
-    return pd.DataFrame(rows, index=pd.Index(tasks.STAGE0_TASKS, name="task"), columns=list(COLUMNS))
+    return pd.DataFrame(rows, index=pd.Index(list(task_names), name="task"), columns=list(COLUMNS))
 
 
 def projected_mean(table: pd.DataFrame) -> float:
-    """The 14-task mean with the direct model's score on the stage-0 tasks and the best published score on
-    the other tasks. NaN while any stage-0 task has no direct score: a mean over a partial set would read as
-    a result. A stale or unfinished direct score counts (it is named in the table)."""
-    direct = table["direct_val"].reindex(list(tasks.STAGE0_TASKS))
+    """The 14-task mean with the direct model's score on the tasks that are rows of `table` and the best
+    published score on the tasks that are not. NaN while any row has no direct score: a mean over a partial
+    set would read as a result. A stale or unfinished direct score counts (it is named in the table)."""
+    direct = table["direct_val"]
     if direct.isna().any():
         return math.nan
     values = [float(direct[t]) if t in direct.index else tasks.best_published(t) for t in tasks.ALL_TASKS]
@@ -388,15 +390,16 @@ def to_markdown(table: pd.DataFrame) -> str:
     return "\n".join(lines) + "\n"
 
 
-def variants_markdown(scores_dir: Path, stale_reason: Callable[[str, str, str], str] | None = None) -> str:
-    """Every trained direct variant of each stage-0 task, as Markdown: what differs in its `config.json` from
-    the base variant, its best `val_nrmse` (on `val_select`, from `train_log.csv`), its `val_report` score
-    ("no score" when none is stored: the table cannot take it, which matters when its selection error is the
-    lowest) with the table's marks (`stale_reason` as for `build_table`: † stale, ‡ unfinished) and the reasons
-    below the block, and whether the table's direct cell is this variant. Empty if no task has a variant. A
-    legend follows when any mark is shown."""
+def variants_markdown(scores_dir: Path, stale_reason: Callable[[str, str, str], str] | None = None,
+                      task_names: Sequence[str] = tasks.STAGE0_TASKS) -> str:
+    """Every trained direct variant of each task of `task_names` (default: the seven stage-0 tasks), as
+    Markdown: what differs in its `config.json` from the base variant, its best `val_nrmse` (on `val_select`,
+    from `train_log.csv`), its `val_report` score ("no score" when none is stored: the table cannot take it,
+    which matters when its selection error is the lowest) with the table's marks (`stale_reason` as for
+    `build_table`: † stale, ‡ unfinished) and the reasons below the block, and whether the table's direct cell
+    is this variant. Empty if no task has a variant. A legend follows when any mark is shown."""
     blocks, marked = [], False
-    for task in tasks.STAGE0_TASKS:
+    for task in task_names:
         variants = direct_variants(scores_dir, task, stale_reason)
         if variants.empty:
             continue

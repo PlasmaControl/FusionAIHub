@@ -483,3 +483,39 @@ def test_a_provenance_error_of_any_kind_marks_the_cell_and_does_not_stop_the_tab
     monkeypatch.setattr(rh, "provenance_of", broken)
     reason = rh.stale_reason(stage0, "task_1-2", "direct", "val_report")
     assert reason.startswith("provenance cannot be computed now (RuntimeError: the fit file is a directory)")
+
+
+def test_the_table_can_cover_all_fourteen_tasks(tmp_path):
+    stage0 = tmp_path / "stage0"
+    write_score(stage0 / "scores", "task_2-3", "mean", "val_report", [0.4, 0.6])
+    write_score(stage0 / "scores", "task_2-3", "direct", "val_report", [0.07, 0.09], trained_steps=100, max_steps=100)
+    write_log(stage0, "task_2-3", "base", [0.09, 0.08])
+    t = table.build_table(stage0 / "scores", table.TOKAMIND_REPLICATION, task_names=tasks.ALL_TASKS)
+    assert list(t.index) == list(tasks.ALL_TASKS) and t.index.name == "task"
+    assert t.loc["task_2-3", "mean_val"] == pytest.approx(0.5)
+    assert t.loc["task_2-3", "direct_val"] == pytest.approx(0.08)
+    assert t.loc["task_2-3", "tokamind_repl"] == 0.0917
+    assert t.loc["task_2-3", "best_published"] == tasks.best_published("task_2-3")
+    for task in ("task_1-3", "task_4-2"):        # nothing stored: NaN cells and a verdict that says so
+        assert math.isnan(t.loc[task, "direct_val"]) and math.isnan(t.loc[task, "mean_val"])
+        assert t.loc[task, "verdict"] == "missing"
+
+
+def test_the_default_table_is_still_the_seven_stage0_tasks(tmp_path):
+    t = table.build_table(tmp_path / "scores", REPL)
+    assert list(t.index) == list(tasks.STAGE0_TASKS)
+
+
+def test_the_projection_of_a_table_is_over_its_own_rows():
+    t = pd.DataFrame({"direct_val": [0.1] * 14}, index=pd.Index(tasks.ALL_TASKS, name="task"))
+    assert table.projected_mean(t) == pytest.approx(0.1)          # 14 measured rows, no published score used
+    t.loc["task_3-2", "direct_val"] = np.nan
+    assert math.isnan(table.projected_mean(t))                    # not a silent fall-back to the published score
+
+
+def test_the_variants_listing_takes_the_task_list(tmp_path):
+    stage0 = tmp_path / "stage0"
+    write_score(stage0 / "scores", "task_2-3", "direct", "val_report", [0.08], trained_steps=100, max_steps=100)
+    write_log(stage0, "task_2-3", "base", [0.09, 0.08])
+    assert table.variants_markdown(stage0 / "scores") == ""
+    assert "Task 2-3:" in table.variants_markdown(stage0 / "scores", task_names=tasks.ALL_TASKS)
