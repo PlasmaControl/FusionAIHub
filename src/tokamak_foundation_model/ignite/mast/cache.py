@@ -2,7 +2,9 @@
 
 The tokenizers of the next stage train from this cache and never touch TokaMark's loader: every
 signal is already in model units (`transform.to_model`), in float32, with the validity of each
-sample encoded as the NaN pattern. Scope of v1: the signals exactly as TokaMark's loader delivers
+sample encoded as the NaN pattern. (One exception, not marked in a shot file: a channel the fit
+found degenerate has mean 0, std 1 and scale 1, so it holds physical units, or ``asinh(x)`` in an
+asinh signal; ``manifest.stats_fit.degenerate`` lists those channels.) Scope of v1: the signals exactly as TokaMark's loader delivers
 them (the two Mirnov signals are therefore its spectrograms, not 500 kHz waveforms), for the
 shots of TokaMark's three splits.
 
@@ -20,7 +22,9 @@ of the constant channels, an int array, empty when none); a boolean ``<name>__sa
 a saturation limit; file attributes ``shot``, ``split``, ``cache_version``, ``stats_sha256`` and
 ``status`` (JSON, the status of every signal asked for, so that a signal the shot lacks reads back
 as None and not as a missing key). The file is written as ``<shot>.h5.tmp`` and renamed.
-`read_shot` raises ``ValueError`` on a values dataset that is not float32 (a stale file).
+`read_shot` raises ``ValueError`` on a values dataset that is not float32 (a stale file), and, given
+the manifest's ``stats_sha256``, on a file made from other statistics; ``KeyError`` on a name the
+file was not written for.
 
 A sample is not valid (NaN) when the loader gave a non-finite value, when the value is non-finite
 after the cast to float32 (overflow), or when it belongs to a channel that is dead in this shot:
@@ -49,7 +53,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import h5py
 import numpy as np
@@ -215,15 +219,28 @@ def _read_signal(f: h5py.File, name: str) -> CachedSignal | None:
                         np.asarray(ds.attrs["const_channels"], dtype=np.int64))
 
 
-def read_shot(path: Path, names: Sequence[str] | None = None) -> dict[str, CachedSignal | None]:
+def read_shot(path: Path, names: Sequence[str] | None = None, *,
+              stats_sha256: str | None = None) -> dict[str, CachedSignal | None]:
     """The signals of one cache file; None for a signal the shot does not have.
 
     ``names=None`` returns every signal the file was written for (absent and refused ones too, as
-    None); a name the file knows nothing about is None as well.
+    None). A name the file was not written for (not in its status table) raises ``KeyError``: a
+    misspelled or renamed signal would otherwise read as "absent in every shot".
+
+    With ``stats_sha256`` (the manifest's), a file made from other statistics raises ``ValueError``:
+    its values are float32 in the units of other constants, as a file left by a failed forced rebuild
+    is, and nothing else in the file would show it. Without it nothing is checked.
     """
     with h5py.File(path, "r") as f:
+        if stats_sha256 is not None and f.attrs.get("stats_sha256") != stats_sha256:
+            raise ValueError(f"{path}: made from statistics {f.attrs.get('stats_sha256')!r}, not "
+                             f"{stats_sha256!r}; its values are in other model units")
+        status = _file_status(f)
         if names is None:
-            names = list(_file_status(f))
+            names = list(status)
+        unknown = [n for n in names if n not in status]
+        if unknown:
+            raise KeyError(f"{path} was not written for {unknown}; it has {sorted(status)}")
         return {n: _read_signal(f, n) for n in names}
 
 
@@ -267,20 +284,27 @@ def pick_evenly(shots: Sequence[int], n: int) -> list[int]:
 
 def _read_git_head(checkout: Path) -> str:
     """The commit a checkout is at, read as text (no ``git`` run inside downloaded material); "unknown" if not found."""
+    # The files are material under /models/tokamind, which is untrusted: HEAD may not be UTF-8
+    # (`UnicodeDecodeError` is a `ValueError`, and uncaught it ended a build after every shot file was
+    # written, before the manifest), the ref may name a file outside `.git` (a path with `..`, or an
+    # absolute one), and a ref's content may be anything. Only a 40-hex commit is ever returned.
     try:
         git = Path(checkout) / ".git"
         head = (git / "HEAD").read_text().strip()
         if re.fullmatch(r"[0-9a-f]{40}", head):
             return head
         ref = head.removeprefix("ref: ").strip()
+        if PurePosixPath(ref).is_absolute() or ".." in PurePosixPath(ref).parts:
+            return "unknown"
         ref_file = git / ref
         if ref_file.is_file():
-            return ref_file.read_text().strip()
+            content = ref_file.read_text().strip()
+            return content if re.fullmatch(r"[0-9a-f]{40}", content) else "unknown"
         for line in (git / "packed-refs").read_text().splitlines():
             parts = line.split()
             if len(parts) == 2 and parts[1] == ref and re.fullmatch(r"[0-9a-f]{40}", parts[0]):
                 return parts[0]
-    except OSError:
+    except (OSError, ValueError):
         pass
     return "unknown"
 
@@ -350,8 +374,10 @@ def _run_jobs(jobs: list, state: tuple, workers: int):
     ctx = multiprocessing.get_context("spawn")
     with concurrent.futures.ProcessPoolExecutor(min(workers, len(jobs)), mp_context=ctx,
                                                 initializer=_init_worker, initargs=(state,)) as ex:
+        futures = []        # bound before the first submit: if that raises, the finally clause must not hide it
         try:
-            futures = [ex.submit(_pool_job, job) for job in jobs]
+            for job in jobs:
+                futures.append(ex.submit(_pool_job, job))
             for fut in concurrent.futures.as_completed(futures):
                 yield fut.result()
         finally:
@@ -414,10 +440,16 @@ def build(root: Path, shots: dict[str, list[int]], *, workers: int, force: bool 
     outside the request that do not match its statistics are listed in ``stale_files``.
 
     Raises ``ValueError`` when ``manifest.json`` was made from other statistics (unless
-    ``force``), and when there are no statistics and no training shots; ``RuntimeError`` when a
-    fresh fit loaded less than 99% of its shots (nothing is written then).
+    ``force``), when it records more requested shots than this call asks for (a partial request
+    would replace the record of the whole cache; unless ``force``, as `shot_design build` does),
+    when a ``registry.csv`` that is reused disagrees with ``stats.npz`` or `registry.SAT_ABS`
+    (unless ``force``, which writes it again from them), and when there are no statistics and no
+    training shots; ``RuntimeError`` when a fresh fit loaded less than 99% of its shots (nothing is
+    written then).
     """
     start = time.time()
+    # Read now, before the shots: a checkout that moves during a build of hours must not name the new head.
+    repo_revision, tokamark_revision = _repo_revision(), _tokamark_revision()
     root = prepare_write_root(Path(root))
     manifest_path = root / "manifest.json"
     old = json.loads(manifest_path.read_text()) if manifest_path.exists() else None
@@ -428,9 +460,30 @@ def build(root: Path, shots: dict[str, list[int]], *, workers: int, force: bool 
     if fit_summary is None and old is not None and old.get("stats_sha256") == sha:
         fit_summary = old.get("stats_fit")
 
+    if old is not None and not force:
+        # After the statistics check, so that the more specific refusal comes first. `--splits val` on the
+        # production root would otherwise replace the record of 11,188 files by one of 1,115.
+        n_old = sum(c.get("requested", 0) for c in old.get("counts", {}).values())
+        n_new = sum(len({int(x) for x in lst}) for lst in shots.values())
+        if n_new < n_old:
+            raise ValueError(
+                f"{manifest_path} records {n_old} shots and this call asks for {n_new} shots; writing its "
+                "manifest would replace the record of the larger cache. Request every shot, use another "
+                "root, or pass force=True.")
+
     reg_path = root / "registry.csv"
     if reg_path.exists() and not fitted:
         reg = registry_mod.load_registry(reg_path)
+        # The shot files are written from stats.npz and from this file's sat_abs, so a registry left over
+        # from other statistics (stats.npz replaced, then a forced build) would write files in one set of
+        # units while it still shows another, and `build` used to take it without comparing.
+        problems = registry_mod.stats_mismatches(reg, stats)
+        if problems and not force:
+            raise ValueError(f"{reg_path} disagrees with stats.npz or registry.SAT_ABS: {'; '.join(problems)}. "
+                             "Remove it to measure it again, or pass force=True to write it again from them.")
+        if problems:
+            reg = registry_mod.reconciled(reg, stats)
+            registry_mod.save_registry(reg, reg_path)
     else:
         if not stats_shots:
             raise ValueError("no registry.csv and no training shots to measure it on")
@@ -478,8 +531,8 @@ def build(root: Path, shots: dict[str, list[int]], *, workers: int, force: bool 
     manifest = {
         "date": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "cache_version": CACHE_VERSION,
-        "repo_revision": _repo_revision(),
-        "tokamark_revision": _tokamark_revision(),
+        "repo_revision": repo_revision,
+        "tokamark_revision": tokamark_revision,
         "stats_sha256": sha,
         "stats_fit": fit_summary,
         "asinh_signals": asinh,

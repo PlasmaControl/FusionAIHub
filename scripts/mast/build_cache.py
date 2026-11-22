@@ -13,6 +13,10 @@ over the sorted split so that a trial spans the campaigns. A rerun skips shots a
 from the same statistics. Exit status 1 if any shot failed or a file in shots/ does not match the manifest's statistics
 (the manifest lists them).
 
+A call that asks for fewer shots than the manifest already records (`--splits val` or `--limit N` on
+the full cache) is refused without `--force`: its manifest would replace the record of the whole cache.
+Use another `IGNITE_MAST_ROOT` for a trial.
+
 The `__main__` guard is required: the shot-writing pool starts its workers with *spawn*, which
 imports this file in every worker.
 """
@@ -32,15 +36,16 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None, help="shots per split, evenly spaced (a trial)")
     ap.add_argument("--workers", type=int, default=96)
     ap.add_argument("--force", action="store_true",
-                    help="build over a manifest made from other statistics")
+                    help="build over a manifest made from other statistics or of more shots, and write a "
+                         "registry.csv that disagrees with stats.npz again from it")
     args = ap.parse_args()
 
-    root = paths.prepare_write_root(paths.cache_dir())
+    root = paths.prepare_write_root(paths.cache_dir(cache.CACHE_VERSION))
     train = tasks.split_shots("train")
     shots = {}
     for split in args.splits:
         lst = train if split == "train" else tasks.split_shots(split)
-        shots[split] = cache.pick_evenly(lst, args.limit) if args.limit else lst
+        shots[split] = cache.pick_evenly(lst, args.limit) if args.limit is not None else lst
     manifest = cache.build(root, shots, workers=args.workers, force=args.force, stats_pool=train)
 
     n_files = sum(c["files"] for c in manifest["counts"].values())

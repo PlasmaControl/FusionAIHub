@@ -5,6 +5,8 @@ nor `zarr`; the fidelity test needs the real cache and TokaMark's loader.
 """
 
 import json
+import sys
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -33,7 +35,7 @@ def _all_stats():
 
 
 def _registry(signals=SIGNALS, roles=None, sat=None):
-    """The columns `write_shot` reads: signal, channel, roles, sat_abs."""
+    """The columns `write_shot` reads are signal, channel and sat_abs; `roles` is only carried along (write_shot ignores it)."""
     roles = roles or {}
     sat = sat or {}
     rows = []
@@ -101,11 +103,41 @@ def test_file_attributes_and_dataset_layout(tmp_path):
     assert sorted(x.name for x in tmp_path.iterdir()) == ["42.h5", "43.h5"]    # no .tmp left
 
 
-def test_read_shot_names_and_none_for_unknown(tmp_path):
+def test_read_shot_names_and_none_for_a_signal_the_shot_lacks(tmp_path):
+    p, _ = _write(tmp_path, {FLUX.name: _raw(FLUX), IP.name: _absent()}, [FLUX, IP])
+    got = cache.read_shot(p, [FLUX.name])
+    assert list(got) == [FLUX.name] and got[FLUX.name].values.shape == (15, T)
+    assert cache.read_shot(p, [IP.name]) == {IP.name: None}      # written for, but the shot has no data
+
+
+def test_read_shot_refuses_a_name_the_file_was_not_written_for(tmp_path):
+    """A renamed or misspelled signal must not read as 'absent in every shot'."""
     p, _ = _write(tmp_path, {FLUX.name: _raw(FLUX), IP.name: _raw(IP)}, [FLUX, IP])
-    got = cache.read_shot(p, [IP.name])
-    assert list(got) == [IP.name] and got[IP.name].values.shape == (1, T)
-    assert cache.read_shot(p, ["nothing-here"]) == {"nothing-here": None}
+    with pytest.raises(KeyError, match="nothing-here"):
+        cache.read_shot(p, ["nothing-here"])
+    with pytest.raises(KeyError, match="summary-ip_"):
+        cache.read_shot(p, [FLUX.name, "summary-ip_"])
+
+
+def test_read_shot_checks_the_statistics_hash_when_given_one(tmp_path):
+    """A file left by a failed forced rebuild is float32 with the old constants and reads without an error."""
+    sha = "ab" * 32
+    p = tmp_path / "7.h5"
+    cache.write_shot(p, 7, "train", {FLUX.name: _raw(FLUX)}, [FLUX], _all_stats(), _registry([FLUX]), stats_sha=sha)
+    assert cache.read_shot(p, stats_sha256=sha)[FLUX.name] is not None
+    assert cache.read_shot(p, [FLUX.name], stats_sha256=sha)[FLUX.name] is not None
+    for names in (None, [FLUX.name]):
+        with pytest.raises(ValueError, match="statistics"):
+            cache.read_shot(p, names, stats_sha256="cd" * 32)
+    assert cache.read_shot(p)[FLUX.name] is not None             # no hash given: not checked
+
+
+def test_read_shot_refuses_a_file_without_a_statistics_hash_when_given_one(tmp_path):
+    p, _ = _write(tmp_path, {FLUX.name: _raw(FLUX)}, [FLUX])    # stats_sha defaults to ""
+    with h5py.File(p, "r+") as f:
+        del f.attrs["stats_sha256"]
+    with pytest.raises(ValueError, match="statistics"):
+        cache.read_shot(p, stats_sha256="ab" * 32)
 
 
 def test_missing_signal_is_absent_not_zero(tmp_path):
@@ -404,13 +436,31 @@ def test_build_without_train_and_without_statistics_raises(tmp_path, fake_env):
         cache.build(tmp_path, {"val": [5]}, workers=1)
     assert not (tmp_path / "stats.npz").exists()
     cache.build(tmp_path, SHOTS, workers=1)                 # the statistics now exist: val alone is fine
-    cache.build(tmp_path, {"val": [5]}, workers=1)
+    cache.build(tmp_path, {"val": [5]}, workers=1, force=True)   # (forced: it is a smaller request than SHOTS)
 
 
 def test_build_reuses_statistics_and_registry(tmp_path, fake_env):
     cache.build(tmp_path, SHOTS, workers=1)
     cache.build(tmp_path, SHOTS, workers=1)
     assert len(fake_env.fits) == 1 and len(fake_env.reg_calls) == 1
+
+
+def test_build_refuses_to_replace_the_manifest_of_more_shots_without_force(tmp_path, fake_env):
+    """`--splits val` on the production root once would have replaced the record of 11,188 files by one of 1,115."""
+    cache.build(tmp_path, SHOTS, workers=1)
+    before = (tmp_path / "manifest.json").read_text()
+    with pytest.raises(ValueError, match=r"7 shots.*2 shots.*force"):
+        cache.build(tmp_path, {"val": [5, 6]}, workers=1)
+    assert (tmp_path / "manifest.json").read_text() == before
+    m = cache.build(tmp_path, {"val": [5, 6]}, workers=1, force=True)
+    assert m["counts"] == {"val": {"requested": 2, "files": 2, "written": 0, "skipped": 2, "failed": 0}}
+
+
+def test_build_replaces_the_manifest_by_one_of_as_many_or_more_shots_and_a_trial_starts_fresh(tmp_path, fake_env):
+    cache.build(tmp_path / "trial", {"train": [1, 2]}, workers=1)             # no manifest yet: any size
+    cache.build(tmp_path / "trial", {"train": [3, 4]}, workers=1)             # as many (other shots)
+    m = cache.build(tmp_path / "trial", {"train": [1, 2, 3], "val": [5]}, workers=1)   # more
+    assert sum(c["requested"] for c in m["counts"].values()) == 4
 
 
 def test_failed_fit_does_not_become_a_cache(tmp_path, monkeypatch, fake_env):
@@ -514,6 +564,37 @@ def test_files_outside_the_request_with_other_statistics_are_listed(tmp_path, fa
             assert f.attrs["stats_sha256"] == m2["stats_sha256"]
 
 
+def test_build_refuses_a_registry_that_disagrees_with_the_statistics_unless_forced(tmp_path, fake_env):
+    """stats.npz replaced, manifest gone (or forced): registry.csv keeps the old constants and sat_abs."""
+    first = cache.build(tmp_path, SHOTS, workers=1)
+    _other_statistics(tmp_path)
+    (tmp_path / "manifest.json").unlink()                       # the manifest check would raise first
+    stale_registry = (tmp_path / "registry.csv").read_text()
+    with pytest.raises(ValueError, match=r"registry\.csv.*std differs in 15 rows"):
+        cache.build(tmp_path, SHOTS, workers=1)
+    assert (tmp_path / "registry.csv").read_text() == stale_registry     # refused before anything was written
+    m = cache.build(tmp_path, SHOTS, workers=1, force=True)
+    assert m["stats_sha256"] != first["stats_sha256"] and not cache.failed(m)
+    reg = registry.load_registry(tmp_path / "registry.csv")
+    assert registry.stats_mismatches(reg, transform.load_stats(tmp_path / "stats.npz")) == []
+    assert reg.loc[reg.signal == FLUX.name, "std"].eq(2 * FLUX.std).all()
+    for p in (tmp_path / "shots").glob("*.h5"):                  # and the shot files were rewritten from it
+        with h5py.File(p, "r") as f:
+            assert f.attrs["stats_sha256"] == m["stats_sha256"]
+
+
+def test_build_refuses_a_registry_whose_sat_abs_is_not_sat_abs(tmp_path, fake_env, monkeypatch):
+    """The shot files take their saturation limits from registry.csv; it must hold registry.SAT_ABS."""
+    cache.build(tmp_path, SHOTS, workers=1)
+    monkeypatch.setattr(registry, "SAT_ABS", {FLUX.name: 4.99})
+    with pytest.raises(ValueError, match=r"sat_abs differs in 15 rows \(first: magnetics-flux_loop_flux"):
+        cache.build(tmp_path, SHOTS, workers=1)
+    cache.build(tmp_path, SHOTS, workers=1, force=True)
+    reg = registry.load_registry(tmp_path / "registry.csv")
+    assert reg.loc[reg.signal == FLUX.name, "sat_abs"].eq(4.99).all()
+    assert reg.loc[reg.signal != FLUX.name, "sat_abs"].isna().all()
+
+
 def test_failed_is_true_for_a_shot_error_or_a_stale_file():
     base = {"errors": {}, "stale_files": {}}
     assert not cache.failed(base)
@@ -574,6 +655,143 @@ def test_git_revision_of_a_directory_without_git(tmp_path):
     assert cache._read_git_head(tmp_path) == "c" * 40
 
 
+def _checkout(tmp_path, head: bytes, refs: dict[str, bytes] | None = None):
+    """A directory with a .git holding HEAD and loose refs, as raw bytes (the input is untrusted)."""
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "HEAD").write_bytes(head)
+    for name, content in (refs or {}).items():
+        target = tmp_path / ".git" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    return tmp_path
+
+
+@pytest.mark.parametrize("head", [b"\xff\xfe\x80 not utf-8\n", b"ref: refs/heads/\xff\n"])
+def test_an_undecodable_git_head_is_unknown_not_an_error(tmp_path, head):
+    """A UnicodeDecodeError is a ValueError: it used to end the build after every shot file was written."""
+    assert cache._read_git_head(_checkout(tmp_path, head, {"refs/heads/main": b"a" * 40})) == "unknown"
+
+
+def test_an_undecodable_ref_or_packed_refs_file_is_unknown(tmp_path):
+    root = _checkout(tmp_path, b"ref: refs/heads/main\n", {"refs/heads/main": b"\xff\xfe"})
+    assert cache._read_git_head(root) == "unknown"
+    (root / ".git" / "refs" / "heads" / "main").unlink()
+    (root / ".git" / "packed-refs").write_bytes(b"\xff\xfe\n")
+    assert cache._read_git_head(root) == "unknown"
+
+
+@pytest.mark.parametrize("content", [b"hello\n", b"A" * 40, b"a" * 39, b"a" * 41, b"", b"a" * 40 + b" extra"])
+def test_a_ref_that_does_not_hold_a_40_hex_commit_is_unknown(tmp_path, content):
+    root = _checkout(tmp_path, b"ref: refs/heads/main\n", {"refs/heads/main": content})
+    assert cache._read_git_head(root) == "unknown"
+
+
+@pytest.mark.parametrize("ref", ["../outside", "refs/../../outside", "/abs/outside"])
+def test_a_ref_path_that_leaves_the_git_directory_is_refused(tmp_path, ref):
+    """HEAD is read from material under /models/tokamind, which is untrusted: it must not name another file."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    outside = checkout / "outside"          # what ".git/../outside" is; the absolute case names it by its full path
+    outside.write_text("a" * 40 + "\n")
+    if ref.startswith("/"):
+        ref = str(outside)
+    _checkout(checkout, f"ref: {ref}\n".encode(), {"refs/heads/placeholder": b"b" * 40})   # makes .git/refs exist
+    assert cache._read_git_head(checkout) == "unknown"
+
+
+def test_git_head_of_a_normal_checkout_still_reads(tmp_path):
+    root = _checkout(tmp_path, b"ref: refs/heads/feature/x\n", {"refs/heads/feature/x": b"d" * 40 + b"\n"})
+    assert cache._read_git_head(root) == "d" * 40
+
+
+def test_the_worker_pool_error_is_not_hidden_when_the_first_submit_raises(tmp_path, fake_env, monkeypatch):
+    """`futures` was unbound in the finally clause: the real error came out as a NameError."""
+    class Pool:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def submit(self, fn, *args):
+            raise RuntimeError("cannot start a worker")
+
+    monkeypatch.setattr(cache.concurrent.futures, "ProcessPoolExecutor", Pool)
+    with pytest.raises(RuntimeError, match="cannot start a worker"):
+        list(cache._run_jobs([(1, "train"), (2, "train")], (), workers=2))
+
+
+def test_both_revisions_are_read_before_any_shot_is_written(tmp_path, fake_env, monkeypatch):
+    """The manifest used to read them after the shots: a checkout moved during a long build named the new head."""
+    events = []
+    real = _fake_loader()
+    monkeypatch.setattr(transform, "load_shot", lambda shot, signals: events.append("shot") or real(shot, signals))
+    monkeypatch.setattr(cache, "_tokamark_revision", lambda: events.append("tokamark") or "tm-rev")
+    monkeypatch.setattr(cache, "_repo_revision", lambda: events.append("repo") or "repo-rev")
+    m = cache.build(tmp_path, SHOTS, workers=1)
+    assert events[:2] == ["repo", "tokamark"] or events[:2] == ["tokamark", "repo"]
+    assert events.count("repo") == events.count("tokamark") == 1 and "shot" in events[2:]
+    assert (m["repo_revision"], m["tokamark_revision"]) == ("repo-rev", "tm-rev")
+
+
+# ------------------------------------------------------------------------- the build command
+
+BUILD_SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "mast" / "build_cache.py"
+
+
+def _build_command(monkeypatch, tmp_path):
+    """build_cache.py's main() with `cache.build` and the splits stubbed; ``seen`` records what build got."""
+    import importlib.util
+
+    from tokamak_foundation_model.ignite.mast import tasks
+
+    spec = importlib.util.spec_from_file_location("build_cache_under_test", BUILD_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    seen = {}
+
+    def build(root, shots, **kw):
+        seen.update(root=root, shots=shots, **kw)
+        return {"counts": {s: {"files": len(v)} for s, v in shots.items()}, "size_bytes": 0, "wall_seconds": 0.0,
+                "stale_files": {}, "errors": {}}
+
+    monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path / "root"))
+    monkeypatch.setattr(cache, "build", build)
+    monkeypatch.setattr(tasks, "split_shots", lambda split: list(range(100 * len(split), 100 * len(split) + 20)))
+    return module, seen
+
+
+def test_build_command_builds_into_the_directory_of_the_cache_version(monkeypatch, tmp_path):
+    """paths.cache_dir() has its own default version; the command passes cache.CACHE_VERSION."""
+    module, seen = _build_command(monkeypatch, tmp_path)
+    monkeypatch.setattr(cache, "CACHE_VERSION", "v9")
+    monkeypatch.setattr(sys, "argv", ["build_cache.py", "--workers", "1"])
+    assert module.main() == 0
+    assert seen["root"] == tmp_path / "root" / "cache" / "v9"
+
+
+def test_build_command_limit_zero_is_refused_not_a_full_build(monkeypatch, tmp_path):
+    module, seen = _build_command(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "argv", ["build_cache.py", "--limit", "0"])
+    with pytest.raises(ValueError, match="at least 1"):
+        module.main()
+    assert seen == {}
+
+
+def test_build_command_limit_picks_evenly_and_no_limit_takes_every_shot(monkeypatch, tmp_path):
+    module, seen = _build_command(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "argv", ["build_cache.py", "--limit", "3", "--splits", "val"])
+    assert module.main() == 0
+    assert len(seen["shots"]["val"]) == 3 and set(seen["shots"]) == {"val"}
+    monkeypatch.setattr(sys, "argv", ["build_cache.py", "--splits", "val"])
+    module.main()
+    assert len(seen["shots"]["val"]) == 20
+
+
 # ------------------------------------------------------------------------------ real data
 
 def _fidelity_errors(cache_root, n_shots=5):
@@ -591,6 +809,8 @@ def _fidelity_errors(cache_root, n_shots=5):
     assert manifest["stats_sha256"] == transform.stats_sha256(cache_root / "stats.npz"), \
         "manifest and stats.npz disagree"
     stats = transform.load_stats(cache_root / "stats.npz")
+    # registry.csv must hold the constants of stats.npz and registry.SAT_ABS: the shot files are written from both.
+    assert registry.stats_mismatches(registry.load_registry(cache_root / "registry.csv"), stats) == []
     signals = registry.all_signals()
     val = []
     for p in sorted((cache_root / "shots").glob("*.h5")):
@@ -604,7 +824,7 @@ def _fidelity_errors(cache_root, n_shots=5):
     for p in chosen:
         shot = int(p.stem)
         truth = transform.load_shot(shot, signals)
-        got = cache.read_shot(p)
+        got = cache.read_shot(p, stats_sha256=manifest["stats_sha256"])
         with h5py.File(p, "r") as f:
             status = json.loads(f.attrs["status"])
         for spec in signals:
@@ -616,6 +836,16 @@ def _fidelity_errors(cache_root, n_shots=5):
                 continue
             x = np.asarray(t["values"], dtype=np.float64)
             assert c.values.shape == x.shape, f"{shot} {spec.name}: shape {c.values.shape} vs {x.shape}"
+            # The file stores t0 = time[0] and dt = spec.dt; the end of the grid is t0 + (T - 1) * dt. The writer
+            # checks the median step only, so a drifting or gapped grid would pass it; here the loader's own time
+            # is the reference. (Measured 2026-11-22 on 4 training shots, 138 (shot, signal) pairs: every step equals
+            # the spec's dt to 1.8e-12 relative and the end is within 7.3e-9 s of the loader's last sample;
+            # a tolerance of 1% of a step is far above that and far below one dropped sample.)
+            time_ = np.asarray(t["time"], dtype=np.float64)
+            assert time_.shape == (x.shape[-1],), f"{shot} {spec.name}: time {time_.shape} vs values {x.shape}"
+            assert c.t0 == pytest.approx(time_[0], abs=1e-12), f"{shot} {spec.name}: t0 {c.t0} vs {time_[0]}"
+            end = c.t0 + (x.shape[-1] - 1) * c.dt
+            assert abs(end - time_[-1]) < 0.01 * spec.dt, f"{shot} {spec.name}: grid ends at {end}, loader at {time_[-1]}"
             lost = int((~np.isfinite(c.values) & np.isfinite(x)).sum())
             assert lost == 0, f"{shot} {spec.name}: {lost} samples finite in the loader and NaN in the cache"
             back = transform.to_physical(c.values.astype(np.float64), stats[spec.name])
