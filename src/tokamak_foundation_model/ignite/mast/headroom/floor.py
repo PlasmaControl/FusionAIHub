@@ -7,6 +7,14 @@ turns them back into a signal. Even a network that predicted every kept coeffici
 returns the target with the discarded coefficients set to zero. The task score of that signal
 is the floor of TokaMind's output representation: no training of TokaMind's kind can go below it.
 
+Missing target samples are filled before the transform, as the replication runs do. All seven
+configs say `preprocess.embed_chunks.nan_imputation: interpolate` (read 2026-11-22), not the
+default `zero`: on the (H, W, T) view of the standardized signal, linear interpolation along T per
+(h, w) with the ends held, then along H per (w, t), then 0 for what is left
+(`mmt/data/nan_imputation.py`). For a (C, T) signal H is the channel axis, so a dead probe is
+filled from its neighbouring channels, which changes the kept coefficients at the valid channels.
+`fill_non_finite` reproduces that without importing `mmt`, on batches.
+
 The floor is the only headroom "predictor" that reads the targets, and it fits nothing, so it may
 be scored on the test split. Which coefficients are kept is read from TokaMind's replication run
 of the task (read-only): `<runs>/ft-<task>-ws-tokamind-base-v2-repl/embeddings/dct3d.yaml` and the
@@ -34,6 +42,10 @@ PREDICTOR_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 Indices = dict[str, tuple[np.ndarray, tuple[int, int, int]]]
 
+# The strategies of `mmt.data.nan_imputation` that a replication run may use here. A run with any
+# other value (None included) is refused, not given a default.
+NAN_IMPUTATIONS = ("interpolate", "zero")
+
 
 def _view3d(values_shape: tuple[int, ...], n_time: int) -> tuple[int, int, int]:
     """TokaMind's (H, W, T) view of a signal: `(T,)` -> (1, 1, T), `(C, T)` -> (C, 1, T), `(H, W, T)` as is."""
@@ -44,6 +56,65 @@ def _view3d(values_shape: tuple[int, ...], n_time: int) -> tuple[int, int, int]:
     if len(values_shape) == 2:
         return values_shape[0], values_shape[1], n_time
     raise ValueError(f"only 1-D, 2-D and 3-D signals have a DCT view, got values_shape {values_shape}")
+
+
+def _interpolate_across_h(view: np.ndarray) -> None:
+    """Fill, in place, each (b, w, t) column of `view` (B, H, W, T) that is partly non-finite by
+    linear interpolation along H (ends held), as `np.interp` does on that column.
+
+    Columns are grouped by which of the H entries are valid: a pattern's fill is a fixed linear map
+    of its valid entries (the weights are `np.interp` of unit vectors), so one matrix product serves
+    every column of the pattern instead of one `np.interp` call per column.
+    """
+    n_h = view.shape[1]
+    if n_h < 2:
+        return
+    columns = np.moveaxis(view, 1, -1).reshape(-1, n_h)  # a copy: (B*W*T, H)
+    valid = np.isfinite(columns)
+    n_valid = valid.sum(axis=1)
+    partial = np.flatnonzero((n_valid > 0) & (n_valid < n_h))
+    if partial.size == 0:
+        return
+    patterns, inverse = np.unique(valid[partial], axis=0, return_inverse=True)
+    positions = np.arange(n_h)
+    for k, pattern in enumerate(patterns):
+        keep = np.flatnonzero(pattern)
+        weights = np.stack([np.interp(positions, keep, np.eye(len(keep))[j]) for j in range(len(keep))], axis=1)
+        rows = partial[inverse.reshape(-1) == k]
+        columns[rows] = columns[rows][:, keep] @ weights.T
+    view[...] = np.moveaxis(columns.reshape(view.shape[0], *view.shape[2:], n_h), -1, 1)
+
+
+def fill_non_finite(x: np.ndarray, strategy: str) -> np.ndarray:
+    """A copy of `x` (B, *values_shape, T) with non-finite samples (NaN, inf, -inf) filled as `mmt` does.
+
+    `zero`: 0. `interpolate`: per window, on the (H, W, T) view, along T for each (h, w) and then
+    along H for each (w, t), linear with the ends held; whatever is still non-finite (a window or a
+    channel with nothing finite) becomes 0. Matches `mmt.data.nan_imputation.impute_non_finite`
+    (checked in `tests/ignite/mast/test_floor.py` when `mmt` is importable). Only the rows and
+    columns that are partly non-finite cost anything.
+    """
+    if strategy not in NAN_IMPUTATIONS:
+        raise ValueError(f"nan_imputation must be one of {NAN_IMPUTATIONS}, got {strategy!r}")
+    x = np.asarray(x, dtype=np.float64)
+    finite = np.isfinite(x)
+    if finite.all():
+        return x.copy()
+    if strategy == "zero":
+        return np.where(finite, x, 0.0)
+    if not (1 <= x.ndim - 1 <= 3):
+        raise ValueError(f"expected (B, *values_shape, T) with 1 to 3 axes after the batch, got {x.shape}")
+    view = np.where(finite, x, np.nan).reshape(x.shape[0], *_view3d(x.shape[1:-1], x.shape[-1]))
+    n_t = view.shape[-1]
+    t_idx = np.arange(n_t)
+    bad = ~np.isfinite(view)
+    n_bad = bad.sum(axis=-1)
+    for b, h, w in np.argwhere((n_bad > 0) & (n_bad < n_t)):  # along T per (b, h, w)
+        row = view[b, h, w]
+        ok = np.flatnonzero(~bad[b, h, w])
+        view[b, h, w] = np.interp(t_idx, ok, row[ok])
+    _interpolate_across_h(view)
+    return np.where(np.isfinite(view), view, 0.0).reshape(x.shape)
 
 
 def truncate_dct(x: np.ndarray, indices: np.ndarray, coeff_shape: tuple[int, int, int]) -> np.ndarray:
@@ -105,17 +176,52 @@ def tokamind_output_indices(task_name: str) -> Indices:
     return output_indices_from_run(embeddings, tasks.load_task(task_name))
 
 
-def floor_predictor(task: tasks.TaskSpec, indices: Indices) -> PredictFn:
+def nan_imputation_from_run(run_dir: Path, task_name: str) -> str:
+    """`preprocess.embed_chunks.nan_imputation` of the run's config, `interpolate` or `zero`.
+
+    Raises `ValueError` naming the file if the key is missing or has any other value; there is no default.
+    """
+    path = Path(run_dir) / f"ft-{task_name}-ws-tokamind-base-v2-repl.yaml"
+    config = yaml.safe_load(path.read_text())
+    try:
+        strategy = config["preprocess"]["embed_chunks"]["nan_imputation"]
+    except (KeyError, TypeError):
+        raise ValueError(f"{path} has no preprocess.embed_chunks.nan_imputation") from None
+    if strategy not in NAN_IMPUTATIONS:
+        raise ValueError(f"{path}: nan_imputation {strategy!r}, expected one of {NAN_IMPUTATIONS}")
+    return strategy
+
+
+def tokamind_nan_imputation(task_name: str) -> str:
+    """How TokaMind's replication run of the task fills missing samples before the DCT."""
+    return nan_imputation_from_run(paths.tokamind_runs_dir() / f"ft-{task_name}-ws-tokamind-base-v2-repl",
+                                   task_name)
+
+
+def representation_sha256(indices: Indices, nan_imputation: str) -> str:
+    """Digest of TokaMind's output representation: for each signal in name order its name,
+    coeff_shape and index array (int64, little endian), then the fill strategy."""
+    digest = hashlib.sha256()
+    for name in sorted(indices):
+        kept, coeff_shape = indices[name]
+        digest.update(name.encode() + b"\0")
+        digest.update(np.asarray(coeff_shape, dtype="<i8").tobytes())
+        digest.update(np.asarray(kept, dtype="<i8").tobytes())
+    digest.update(nan_imputation.encode())
+    return digest.hexdigest()
+
+
+def floor_predictor(task: tasks.TaskSpec, indices: Indices, nan_imputation: str) -> PredictFn:
     """The prediction of a network that gets every kept coefficient exactly right.
 
-    Reads `batch.targets`: standardize with TokaMark's mean and std, set non-finite samples to 0
-    (the standardized mean; the score ignores those samples), truncate the DCT, unstandardize.
+    Reads `batch.targets`: standardize with TokaMark's mean and std, fill missing samples with
+    `nan_imputation` as TokaMind's run does (`fill_non_finite`), truncate the DCT, unstandardize.
+    At a sample whose target is missing the prediction is some finite value; the score ignores it.
     """
     def predict(batch: WindowBatch) -> dict[str, np.ndarray]:
         out = {}
         for spec in task.outputs:
-            z = spec.standardize(batch.targets[spec.name].astype(np.float64))
-            z = np.where(np.isfinite(z), z, 0.0)
+            z = fill_non_finite(spec.standardize(batch.targets[spec.name].astype(np.float64)), nan_imputation)
             kept, coeff_shape = indices[spec.name]
             out[spec.name] = spec.unstandardize(truncate_dct(z, kept, coeff_shape)).astype(np.float32)
         return out
