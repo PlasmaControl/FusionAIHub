@@ -142,28 +142,34 @@ def test_the_floor_standardizes_with_the_signals_statistics(toy_task, toy_batch)
                                rtol=1e-4, atol=spec.std * 1e-4)
 
 
-def test_fitted_predictors_are_never_scored_on_test():
+def test_fitted_predictors_are_never_scored_on_test(monkeypatch):
     assert FITTED == ("shrunk", "ridge", "direct")
     run_headroom = _run_headroom()
+    _forbid_data(monkeypatch, run_headroom)
     for name in FITTED:
         assert run_headroom.main(["--task", "task_1-2", "--predictor", name, "--split", "test"]) == 2
 
 
-def test_a_fitted_predictor_without_an_implementation_exits_with_2(capsys):
-    run_headroom = _run_headroom()
-    assert run_headroom.main(["--task", "task_1-2", "--predictor", "ridge", "--split", "val_report"]) == 2
-    assert "not implemented yet" in capsys.readouterr().err
-
-
-def test_the_refusal_names_the_rule_and_opens_no_data(capsys, monkeypatch):
-    run_headroom = _run_headroom()
-
+def _forbid_data(monkeypatch, run_headroom):
     def forbidden(*a, **k):
         raise AssertionError("data opened")
 
     monkeypatch.setattr(run_headroom.harness, "score", forbidden)
     monkeypatch.setattr(run_headroom.tasks, "load_task", forbidden)
-    assert run_headroom.main(["--task", "task_1-2", "--predictor", "direct", "--split", "test"]) == 2
+
+
+def test_a_fitted_predictor_without_an_implementation_exits_with_2(capsys, monkeypatch):
+    run_headroom = _run_headroom()
+    _forbid_data(monkeypatch, run_headroom)
+    assert run_headroom.main(["--task", "task_1-2", "--predictor", "direct", "--split", "val_report"]) == 2
+    assert "not implemented yet" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("name", FITTED)
+def test_the_refusal_names_the_rule_and_opens_no_data(capsys, monkeypatch, name):
+    run_headroom = _run_headroom()
+    _forbid_data(monkeypatch, run_headroom)
+    assert run_headroom.main(["--task", "task_1-2", "--predictor", name, "--split", "test"]) == 2
     assert "validation" in capsys.readouterr().err
 
 
