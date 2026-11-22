@@ -16,8 +16,9 @@ By [the design](./ignite-mast-design.md) the bar therefore goes back to
 Nathaniel with this table before stage 2 is committed to it. It is not changed
 on this page ([What it says](#what-it-says)). Every finished test of the
 training budget lowered a score (three times the steps on tasks 1-1 and 2-1,
-four times the batch on task 4-4), so at least those rows are not converged
-models; the other four rows have no finished test of that kind. Three variant
+four times the batch on task 4-4). The rows of tasks 1-1 and 2-1 are therefore
+not converged models, and the batch-64 runs of task 4-4 were short of budget;
+the other rows have no finished test of that kind. Three variant
 runs were still training at 13:45 and are
 [named below](#runs-that-were-still-training-when-the-table-was-printed). This
 page records what was run, with the numbers read from the stored score files.
@@ -220,11 +221,30 @@ TokaMark-standardized units and scored on `val_report`. The command scores
 every fitted predictor blind: it hands the predictor a copy of each batch whose
 targets are NaN, so a predictor cannot read what it is scored on
 (`run_headroom.py`, `_blind_to_targets`). The command does this since
-`a34cd797` (08:21). Three direct scores were made before that and not again:
-the base run and the stopped `s90k` run of task 1-2 (07:38 and 07:44) and
-`h050` of task 4-4 (07:51). None of the three is the row of its task in the
-headroom table; they appear in the list of variants and in the paired
-comparisons.
+`a34cd797` (08:21). The second fit of the cheap predictors started after it
+(08:23), so every `shrunk` and `ridge` score on this page was made blind. A
+direct run is scored by the process that trained it, with the code loaded at
+its start. Of the 16 direct scores of the table of 13:45, 13 come from runs
+that started before that commit (05:08 to 07:42: the seven base runs, `h050`
+on tasks 4-1 and 4-4, `s90k` on 1-1, 1-2 and 2-1, `lr1e4` on 1-2) and were
+made without the blinding. Six of them are rows of the headroom table (tasks
+1-1, 1-2, 2-1, 3-1, 4-1 and 4-5). What is known about these 13:
+
+- *By the code:* the direct model's prediction function builds its tensors
+  from the inputs and actuators of a batch and never reads the targets
+  (`direct._predict_fn`, `_inputs_to_tensors`), and `direct.py` is
+  byte-identical at the commits involved (sha256 `b13327d2…`, the hash each
+  score stores).
+- *Measured on one of them, 2026-11-22 14:08 to 14:12:* the row of task 1-2
+  (`lr1e4`) was scored again with the blinding. With the 48 loader workers of
+  the original run the score is 0.036184312776439465, equal to the stored one
+  in every digit. With 64 workers it is 0.036184062141816686, twice. So the
+  blinding changes nothing for this predictor, and the number of loader
+  workers changes a score by 2.5e-7 here, which no table on this page shows.
+  The stored score of that row is now the blind one (same value, date 14:11).
+- The other 12 were not scored again.
+
+The two cheap predictors are:
 
 - **`shrunk`**: persistence shrunk toward the per-channel training mean.
   The prediction of output frame k is `m + a_k (p - m)`, with `m` the training
@@ -365,14 +385,16 @@ is given for each. In every case the table takes the variant by its
 
 Task 3-1 has no variant. Its `val_select` error was lowest at step 17,500
 (0.3503) and flat to slightly worse for the remaining 12,500 steps (0.3546 at
-the end), so more steps at this learning rate would not help. The reason to
-expect more on that task is the loss: its target tails are measured (below),
-their effect on the score was not tested, and a change of the loss is a change
-of the model's code and not a variant.
+the end). *Inferred, not tested:* more steps alone are unlikely to help a
+curve that turned at step 17,500, although task 2-1 below shows that a curve
+that looks flat under this schedule can still gain from three times the
+steps. A possible reason to expect more on that task is the loss: its target
+tails are measured (below), their effect on the score was not tested, and a
+change of the loss is a change of the model's code and not a variant.
 
 Two runs were stopped by hand. The `s90k` run of task 1-2 was stopped at about
 step 30,700 of 90,000 (the last line of its log). Its training loss had been
-above 0.7 since about step 17,000 and at 0.99 to 1.01, the loss of predicting
+above 0.7 since step 16,600 and at 0.99 to 1.01, the loss of predicting
 the mean, since about step 26,000 (4,700 steps); its
 `best.pt` (step 5,000) is scored and marked ‡. The `h050b256` run of task 4-1
 was stopped at step 1,300, with no checkpoint, when its speed (0.45
@@ -862,7 +884,8 @@ What the result shows and what it does not:
   tasks 1-1 and 3-1, and it has one size.
 - *Not shown either: that 0.183 can be reached.* Two rows of the table (tasks
   1-2 and 4-4) are below the best published score beyond their interval, by
-  0.005 and 0.026 in the score. The bar needs 0.153 below the best published
+  0.005 and 0.026 in the score, and for task 4-4 the difference between the
+  splits leaves that verdict undetermined. The bar needs 0.153 below the best published
   scores in sum, and tasks 1-1 and 2-1 are 0.076 above them.
 - *Inferred, not measured:* task 4-5 is where the most room is. It is 26% of
   GenToka's summed score, half of TokaMind's score there is its representation
@@ -924,9 +947,10 @@ so these runs are not expected to change the answer by themselves.
   its fit or checkpoint are the ones now loaded. TokaMark's own code and the
   data root are neither recorded in a score nor compared. The cache manifest
   records TokaMark at revision `146b0a0f8738` when the cache was built, and
-  the data root is `/models/mast/tokamark/v1`. This stage ran no update of
-  TokaMark after that, but no score records the revision it was computed
-  with; after an update of TokaMark or a move of the
+  the data root is `/models/mast/tokamark/v1`. No score records the TokaMark
+  revision it was computed with, so that the scores were made at the same
+  revision is not recorded anywhere; after an update of TokaMark or a move of
+  the
   data, the stored scores have to be computed again with `--force`.
 - **The hashes are of the code as loaded.** A training or scoring process
   stamps its results with the files it read at start, and its loader workers
