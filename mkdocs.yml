@@ -93,6 +93,7 @@ nav:
       - models/stage2-with-video-plan.md
       - models/ignite-rollout-quality-plan.md
       - models/ignite-v4-diagnosis.md
+      - models/ignite-mast-design.md
   - Shot Design:
       - shot-design/overview.md
       - shot-design/cli.md
