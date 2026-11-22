@@ -66,6 +66,7 @@ Other tools on the machine:
 | `mineru` 4.2.3 (`mineru[torch]`) | uv tool, `~/.local/bin` | PDF to markdown for the paper library |
 | TokaMind + TokaMark | uv venv `/models/tokamind/.venv` (Python 3.12, torch 2.15+cu132) | reproducing TokaMind's TokaMark scores |
 | FusionAIHub (`faith`) | uv venv `/models/envs/faith`, the same packages as the pixi env | superseded by the pixi `nvidia` environment; kept until that has run a training job |
+| IGNITE on MAST (`ignite-mast`) | uv venv `/models/envs/ignite-mast` (Python 3.12, torch 2.15.0+cu132, built 2026-11-22) | scoring on TokaMark with the IGNITE code in one interpreter. `scripts/mast/make_env.sh` builds it from the TokaMind environment's exact package versions plus einops, x-transformers, vector-quantize-pytorch, flash-attn-4 and pytest, and `scripts/mast/py.sh` runs it (`-I` plus the NVRTC preload). The pinned list is `scripts/mast/requirements-node13.txt`. It is a uv venv and not part of the pixi `nvidia` environment because adding `tokamark` and `zarr` there means re-locking, and the lock is knowingly out of sync with the manifest |
 
 ## Attention: FlashAttention-4
 
