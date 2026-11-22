@@ -85,8 +85,16 @@ class TaskSpec:
     def n_out(self, s: SignalSpec) -> int:
         return self.steps["output"][s.name]
 
-    def n_act(self, s: SignalSpec) -> int:
-        return self.steps["actuator"][s.name]
+    def n_act(self, s: SignalSpec, history_s: float | None = None) -> int:
+        """Actuator samples: the input history plus the future part (delta + output length).
+
+        For a non-markovian task `history_s` replaces the input length of the history part,
+        like `n_in`; the future part does not change.
+        """
+        n = self.steps["actuator"][s.name]
+        if self.markovian or history_s is None:
+            return n
+        return n - round(self.input_length / s.dt) + round(history_s / s.dt)
 
     def n_in(self, s: SignalSpec, history_s: float | None = None) -> int:
         """Markovian tasks: TokaMark's count. Non-markovian: the history in use, in samples."""
@@ -110,15 +118,41 @@ def load_task(name: str) -> TaskSpec:
             for key, m in meta[role].items()
         )
 
+    inputs, actuators, outputs = specs("input"), specs("actuator"), specs("output")
+    input_length, output_length, delta = (float(window[k]) for k in ("input_length", "output_length", "delta"))
+
+    def length(role: str, s: SignalSpec) -> int:
+        """Samples of a window of this role, TokaMark's formulas (`TokaMarkDataset._build_window`)."""
+        n_in, n_out, n_delta = (round(x / s.dt) for x in (input_length, output_length, delta))
+        return {"input": n_in, "actuator": n_in + n_delta + n_out, "output": n_out}[role]
+
+    # `get_task_metadata` hands the same dictionary to every role of a signal, so the last role
+    # that lists the signal overwrites `length_in_time_stamps` of the others: the input length of
+    # a signal that is also an output holds the output length (found 2026-11-22: 15 inputs in 7
+    # tasks, e.g. task_3-1 thomson_scattering-t_e input 10 instead of 1). The steps are therefore
+    # computed from seconds and dt; TokaMark's number is only used as a check where it is reliable,
+    # so that a change of its rule is noticed.
+    steps: dict[str, dict[str, int]] = {}
+    for role, specs_ in (("input", inputs), ("actuator", actuators), ("output", outputs)):
+        steps[role] = {}
+        for s in specs_:
+            steps[role][s.name] = length(role, s)
+            last_role = [r for r in _ROLES if s.name in meta[r]][-1]
+            if role == last_role and meta[role][s.name]["length_in_time_stamps"] != steps[role][s.name]:
+                raise ValueError(
+                    f"{name}: {role} {s.name}: TokaMark's length_in_time_stamps "
+                    f"{meta[role][s.name]['length_in_time_stamps']} differs from the {steps[role][s.name]} "
+                    "computed from seconds and dt; has TokaMark's rule changed?"
+                )
     return TaskSpec(
         name=name,
         markovian=config["task_type"] == "markovian",
-        input_length=float(window["input_length"]),
-        output_length=float(window["output_length"]),
-        delta=float(window["delta"]),
+        input_length=input_length,
+        output_length=output_length,
+        delta=delta,
         stride=float(config["stride_window"]),
-        inputs=specs("input"), actuators=specs("actuator"), outputs=specs("output"),
-        steps={r: {k: int(m["length_in_time_stamps"]) for k, m in meta[r].items()} for r in _ROLES},
+        inputs=inputs, actuators=actuators, outputs=outputs,
+        steps=steps,
     )
 
 

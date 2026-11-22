@@ -71,3 +71,41 @@ def test_toy_task_steps_cover_its_windows(toy_task):
     assert t.n_in(ip) * ip.dt == pytest.approx(t.input_length)
     assert t.n_out(ip) * ip.dt == pytest.approx(t.output_length)
     assert t.n_act(t.actuators[0]) * t.actuators[0].dt == pytest.approx(t.input_length + t.delta + t.output_length)
+
+
+def test_steps_of_a_signal_that_is_input_and_output_are_right():
+    """TokaMark's metadata overwrites the input length of such a signal with the output length."""
+    pytest.importorskip("tokamark")
+    t = tasks.load_task("task_3-1")  # markovian, 5 ms in, 50 ms out, dt 5 ms
+    s = next(x for x in t.inputs if x.name == "thomson_scattering-t_e")
+    assert (t.n_in(s), t.n_out(s)) == (1, 10)
+    t = tasks.load_task("task_2-1")  # markovian, 5 ms in, 25 ms out, dt 0.25 ms
+    s = next(x for x in t.inputs if x.name == "summary-ip")
+    assert (t.n_in(s), t.n_out(s)) == (20, 100)
+    t = tasks.load_task("task_3-2")
+    s = next(x for x in t.inputs if x.name == "spectrometer_visible-filter_spectrometer_dalpha_voltage")
+    assert t.n_in(s) == 250
+    t = tasks.load_task("task_4-4")  # non-markovian: 150 ms of history, 100 ms out
+    s = next(x for x in t.inputs if x.name == "summary-ip")
+    assert (t.n_in(s), t.n_out(s)) == (600, 400)
+    assert t.steps["input"]["summary-ip"] == 600
+
+
+def test_every_count_of_every_task_is_a_positive_integer():
+    pytest.importorskip("tokamark")
+    for name in tasks.ALL_TASKS:
+        t = tasks.load_task(name)
+        for role, specs in (("input", t.inputs), ("actuator", t.actuators), ("output", t.outputs)):
+            assert set(t.steps[role]) == {s.name for s in specs}, (name, role)
+            for s in specs:
+                n = t.steps[role][s.name]
+                assert isinstance(n, int) and n > 0, (name, role, s.name, n)
+
+
+def test_n_act_with_a_shorter_history_keeps_the_future_part(toy_task):
+    import dataclasses
+
+    t = dataclasses.replace(toy_task, markovian=False)
+    coil = t.actuators[0]
+    assert t.n_act(coil) == 120 and t.n_act(coil, history_s=0.0025) == 110
+    assert toy_task.n_act(coil, history_s=0.0025) == 120  # markovian: history_s is ignored

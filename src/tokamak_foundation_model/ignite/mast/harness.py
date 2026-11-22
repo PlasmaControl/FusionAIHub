@@ -17,7 +17,7 @@ output may still hold some NaN samples; the evaluator ignores them). The filled 
 (`filled_test_mode`) is not reachable through `initialize_TokaMark_dataset` and is not used.
 
 History. A markovian task delivers exactly round(input_length / dt) samples of each input
-(computed from seconds, not from `TaskSpec.steps`, see `_WindowTransform`). A
+(`TaskSpec.n_in`, which `tasks.load_task` computes from seconds and dt). A
 non-markovian task delivers the whole history since the shot's first valid sample; this module
 computes `last_valid` on that whole history and then keeps the last `history_s` seconds
 (default: the task's `input_length`), left-padding with NaN if less was delivered. Actuators
@@ -167,36 +167,22 @@ class _WindowTransform:
         self.task = task
         self.history_s = history_s
 
-    # Lengths in samples, from the task's seconds and the signal's dt with TokaMark's own
-    # formulas (`TokaMarkDataset._build_window`). `TaskSpec.steps` is not used: TokaMark's
-    # `get_task_metadata` shares one dict between the roles of a signal that is both an input
-    # and an output, so `length_in_time_stamps` of such an input holds the output's length
-    # (15 inputs in 7 tasks on 2026-11-22, e.g. task_3-1 thomson_scattering-t_e: 10, not 1).
-    def _n_input(self, s) -> int:
-        task = self.task
-        return round((task.input_length if task.markovian else (self.history_s or task.input_length)) / s.dt)
-
-    def _n_actuator(self, s) -> int:
-        """Actuator samples kept: the input history in use plus the future part (delta + output length)."""
-        task = self.task
-        return self._n_input(s) + round(task.delta / s.dt) + round(task.output_length / s.dt)
-
     def __call__(self, w: dict) -> dict:
         task, flexible = self.task, not self.task.markovian
         inputs, last_valid = {}, {}
         for s in task.inputs:
             a = _as_array(w["input"][s.name]["values"], s)
-            n = self._n_input(s)
+            n = task.n_in(s, self.history_s)
             last_valid[s.name] = _last_finite(a, tail=n)  # over the whole delivered history, before the crop
             inputs[s.name] = _fit_time(a, n, s.name, flexible=flexible)
         actuators = {
-            s.name: _fit_time(_as_array(w["actuator"][s.name]["values"], s), self._n_actuator(s),
+            s.name: _fit_time(_as_array(w["actuator"][s.name]["values"], s), task.n_act(s, self.history_s),
                               s.name, flexible=flexible)
             for s in task.actuators
         }
         targets = {
             s.name: _fit_time(_as_array(w["output"][s.name]["values"], s),
-                              round(task.output_length / s.dt), s.name, flexible=False)
+                              task.n_out(s), s.name, flexible=False)
             for s in task.outputs
         }
         return {"inputs": inputs, "actuators": actuators, "targets": targets, "last_valid": last_valid}

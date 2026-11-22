@@ -12,6 +12,15 @@ import pytest
 from tokamak_foundation_model.ignite.mast import harness, tasks
 
 
+# Python 3.12 warns when a multi-threaded process forks; torch's DataLoader forks its workers
+# (third-party, harmless here: the workers only read Zarr files). Only this message is silenced,
+# only on the tests that start workers.
+FORK_WARNING = pytest.mark.filterwarnings(
+    "ignore:This process .* is multi-threaded, use of fork\\(\\) may lead to deadlocks in the child"
+    ":DeprecationWarning"
+)
+
+
 def _const_pred(s, value):
     return lambda bb: {s.name: np.full_like(bb.targets[s.name], value)}
 
@@ -244,7 +253,7 @@ def test_real_windows_shapes_and_history_crop():
 @pytest.mark.real_data
 @pytest.mark.parametrize("name", ["task_3-1", "task_2-1", "task_4-5"])
 def test_real_signal_that_is_input_and_output_keeps_the_input_length(name):
-    """TaskSpec.steps holds the output's length for such an input (TokaMark aliases one dict); the windows must not."""
+    """TokaMark aliases one dict for such a signal; neither the windows nor the TaskSpec may take the output's length."""
     t = tasks.load_task(name)
     shots = tasks.split_shots("val")[:40]  # not every shot has every diagnostic: take the first window found
     b = next(iter(harness.iter_windows(t, shots, test_mode=False, batch_size=2, num_workers=0)))
@@ -290,6 +299,7 @@ def test_training_stride_thins_windows():
     assert 4.0 < n1 / n5 < 6.0
 
 
+@FORK_WARNING
 @pytest.mark.real_data
 def test_no_duplicate_windows_with_workers():
     t = tasks.load_task("task_1-1")
@@ -307,6 +317,7 @@ def test_no_duplicate_windows_with_workers():
     assert set(parallel) == set(serial)
 
 
+@FORK_WARNING
 @pytest.mark.real_data
 def test_persistence_scores_through_the_real_evaluator(tmp_path):
     """End to end on two validation shots: a persistence predictor gives a finite task score."""
