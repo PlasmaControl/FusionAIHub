@@ -1,8 +1,26 @@
 """Shared fixtures for the IGNITE-on-MAST tests. Later tasks add them here."""
 
+import importlib.util
+
+import numpy as np
 import pytest
 
-from tokamak_foundation_model.ignite.mast import tasks
+from tokamak_foundation_model.ignite.mast import paths, tasks
+
+
+@pytest.fixture(autouse=True)
+def _skip_real_data_without_data(request):
+    """`real_data` tests need TokaMark's Zarr store and the `tokamark` / `MAST_tools` packages.
+
+    The pixi environment sees the store but has no `tokamark`, so both are checked.
+    """
+    if request.node.get_closest_marker("real_data") is None:
+        return
+    if not paths.tokamark_zarr_root().exists():
+        pytest.skip(f"TokaMark data not found at {paths.tokamark_zarr_root()}")
+    for module in ("tokamark", "MAST_tools"):
+        if importlib.util.find_spec(module) is None:
+            pytest.skip(f"{module} is not importable in this environment")
 
 
 @pytest.fixture
@@ -28,3 +46,36 @@ def toy_task() -> tasks.TaskSpec:
             "output": {"summary-ip": 100},
         },
     )
+
+
+@pytest.fixture
+def toy_batch(toy_task):
+    """Factory ``toy_batch(n, seed)``: a `WindowBatch` of random finite float32 windows of `toy_task`.
+
+    Values are mean + std * standard normal (physical units). `last_valid` is the last input
+    sample, every (shot, window) pair is distinct. Needs no `tokamark`.
+    """
+    from tokamak_foundation_model.ignite.mast.harness import WindowBatch
+
+    def make(n: int, seed: int = 0) -> WindowBatch:
+        rng = np.random.default_rng(seed)
+
+        def draw(specs, length):
+            return {
+                s.name: (s.mean + s.std * rng.standard_normal((n, *s.values_shape, length(s)))).astype(
+                    np.float32
+                )
+                for s in specs
+            }
+
+        inputs = draw(toy_task.inputs, toy_task.n_in)
+        return WindowBatch(
+            shot_ids=(1000 + np.arange(n) // 4).astype(np.int64),
+            window_indices=(np.arange(n) % 4).astype(np.int64),
+            inputs=inputs,
+            actuators=draw(toy_task.actuators, toy_task.n_act),
+            targets=draw(toy_task.outputs, toy_task.n_out),
+            last_valid={name: a[..., -1].copy() for name, a in inputs.items()},
+        )
+
+    return make
