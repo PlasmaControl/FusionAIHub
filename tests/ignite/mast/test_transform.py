@@ -3,6 +3,8 @@
 Nothing here needs `tokamark` or data: the shot loader is monkeypatched where statistics are fitted.
 """
 
+import json
+
 import numpy as np
 import pytest
 
@@ -140,6 +142,64 @@ def test_missing_and_failing_shots_are_counted_not_dropped(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "6 shots failed to load" in out
     assert "gauss: 6 shots without the signal" in out
+
+
+def test_no_shot_loading_is_an_error_not_identity_constants(monkeypatch):
+    """Zero loaded shots must not return mean 0 / std 1 for everything (a silent unit change)."""
+    def load(shot, signals):
+        raise OSError(f"cannot read shot {shot}")
+    monkeypatch.setattr(transform, "load_shot", load)
+    with pytest.raises(RuntimeError, match=r"no shot could be loaded.*5 shots.*OSError: cannot read shot 0"):
+        transform.fit_stats(list(range(5)), [_spec("a")], workers=1)
+    with pytest.raises(RuntimeError, match="no shot could be loaded"):
+        transform.fit_stats_with_summary([], [_spec("a")], workers=1)
+
+
+def test_an_import_error_propagates_and_is_not_counted(monkeypatch):
+    def load(shot, signals):
+        raise ModuleNotFoundError("No module named 'tokamark'")
+    monkeypatch.setattr(transform, "load_shot", load)
+    with pytest.raises(ModuleNotFoundError, match="tokamark"):
+        transform.fit_stats(list(range(5)), [_spec("a")], workers=1)
+
+
+def _summary_loader():
+    good = _fake_loader()
+
+    def load(shot, signals):
+        if shot == 5:
+            raise RuntimeError("x" * 300)
+        out = good(shot, signals)
+        if shot == 8:
+            del out["spiky"]
+        return out
+    return load
+
+
+def test_summary_counts(monkeypatch):
+    monkeypatch.setattr(transform, "load_shot", _summary_loader())
+    signals = [_spec("gauss"), _spec("spiky")]
+    stats, summary = transform.fit_stats_with_summary(list(range(40)), signals, workers=1)
+    assert set(summary) == {"n_shots", "n_loaded", "failed", "missing", "degenerate"}
+    assert summary["n_shots"] == 40 and summary["n_loaded"] == 39
+    assert list(summary["failed"]) == [5]
+    assert summary["failed"][5].startswith("RuntimeError: x") and len(summary["failed"][5]) == len("RuntimeError: ") + 200
+    assert summary["missing"] == {"gauss": 0, "spiky": 1}
+    assert summary["degenerate"] == {"gauss": [], "spiky": []}
+    json.dumps(summary)                                   # serialisable as it is
+    assert stats["gauss"].compress == "none" and stats["spiky"].compress == "asinh"
+    assert abs(stats["gauss"].std[0] - 2.0) / 2.0 < 0.05   # fitted from the good shots
+    again = transform.fit_stats(list(range(40)), signals, workers=1)    # fit_stats returns the same statistics
+    for name in stats:
+        np.testing.assert_array_equal(stats[name].mean, again[name].mean)
+
+
+def test_summary_does_not_depend_on_the_shot_order(monkeypatch):
+    monkeypatch.setattr(transform, "load_shot", _summary_loader())
+    signals = [_spec("gauss"), _spec("spiky")]
+    _, a = transform.fit_stats_with_summary(list(range(40)), signals, workers=1)
+    _, b = transform.fit_stats_with_summary(list(range(39, -1, -1)), signals[::-1], workers=1)
+    assert a == b and json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
 
 
 def test_a_shot_outside_the_splits_is_an_error_not_a_miss(monkeypatch):

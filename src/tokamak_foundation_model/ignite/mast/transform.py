@@ -35,6 +35,7 @@ KURTOSIS_LIMIT = 10.0           # a signal whose median channel is above this ge
 MAD_TO_STD = 1.4826             # scaled median absolute deviation = std of a gaussian
 _CHANNEL_CHUNK = 256            # channels fitted at a time (bounds the float64 working set)
 _LISTED = 20                    # degenerate channels named in the printed summary
+_MESSAGE = 200                  # characters of a shot's error message kept in the summary
 
 
 @dataclass
@@ -116,8 +117,14 @@ def _sample_shot(args: tuple) -> tuple[int, dict | None, str | None]:
     shot, signals, n, seed = args
     try:
         item = load_shot(shot, signals)
+    except ImportError:     # no tokamark / MAST_tools here: a broken environment, not a bad shot
+        raise
+    except ValueError as e:
+        if "never loaded" in str(e):    # harness: the shot is outside TokaMark's splits, a bug in the caller
+            raise
+        return shot, None, f"{type(e).__name__}: {str(e)[:_MESSAGE]}"
     except Exception as e:  # a shot that cannot be read is counted by the caller, not hidden
-        return shot, None, f"{type(e).__name__}: {e}"
+        return shot, None, f"{type(e).__name__}: {str(e)[:_MESSAGE]}"
     out: dict[str, np.ndarray | None] = {}
     for spec in signals:
         v = _channels(item, spec)
@@ -230,6 +237,14 @@ def _fit_signal(pooled: np.ndarray) -> tuple[ChannelStats, np.ndarray]:
 
 def fit_stats(shots: Sequence[int], signals: Sequence[SignalSpec], *, samples_per_channel: int = 64,
               seed: int = 0, workers: int = 64) -> dict[str, ChannelStats]:
+    """The statistics of `fit_stats_with_summary` (see there); the counts are only printed."""
+    return fit_stats_with_summary(shots, signals, samples_per_channel=samples_per_channel, seed=seed,
+                                  workers=workers)[0]
+
+
+def fit_stats_with_summary(shots: Sequence[int], signals: Sequence[SignalSpec], *,
+                           samples_per_channel: int = 64, seed: int = 0,
+                           workers: int = 64) -> tuple[dict[str, ChannelStats], dict]:
     """Fit the constants of ``signals`` on ``shots`` (the caller passes training shots only).
 
     Per shot and channel, ``samples_per_channel`` finite samples are drawn without replacement
@@ -244,7 +259,17 @@ def fit_stats(shots: Sequence[int], signals: Sequence[SignalSpec], *, samples_pe
     statistics whatever the number of ``workers``, the order of ``shots`` and of ``signals``.
     ``workers <= 1`` runs in the calling process. A shot that cannot be loaded, and a shot that
     lacks a signal, contribute nothing for it; both are counted, as are the degenerate channels,
-    in one summary printed at the end. A shot outside TokaMark's splits raises ``ValueError``.
+    in one summary printed at the end and returned.
+
+    Raises ``RuntimeError`` when not one shot could be loaded (the constants would otherwise be
+    the identity, a silent change of units); ``ImportError`` (no ``tokamark`` in this
+    environment) and the ``ValueError`` of a shot outside TokaMark's splits propagate.
+
+    Returns ``(stats, summary)``; the summary is JSON-serialisable and independent of the
+    number of workers and the order of shots: ``n_shots`` (distinct shots asked for),
+    ``n_loaded``, ``failed`` (``{shot: "<Type>: <message, at most 200 characters>"}``),
+    ``missing`` (``{signal: loaded shots without it}``, every signal a key), ``degenerate``
+    (``{signal: sorted flat channel indices fitted as degenerate}``, every signal a key).
     """
     shots = sorted({int(s) for s in shots})
     signals = list(signals)
@@ -258,8 +283,6 @@ def fit_stats(shots: Sequence[int], signals: Sequence[SignalSpec], *, samples_pe
     results = map_shots(_sample_shot, shots, (signals, n, seed), workers)
     for i, (shot, out, err) in enumerate(results):
         if out is None:
-            if "ValueError" in err and "never loaded" in err:
-                raise ValueError(err.split(": ", 1)[1])     # the split rule is a bug in the caller
             failed.append((shot, err))
             continue
         for name, s in out.items():
@@ -268,6 +291,10 @@ def fit_stats(shots: Sequence[int], signals: Sequence[SignalSpec], *, samples_pe
             else:
                 pools[name][i] = s
 
+    if len(failed) == len(shots):
+        reasons = "; ".join(f"shot {sh}: {err}" for sh, err in failed[:3])
+        raise RuntimeError(f"fit_stats: no shot could be loaded ({len(shots)} shots tried"
+                           f"{', first failures: ' + reasons if reasons else ''})")
     stats: dict[str, ChannelStats] = {}
     degenerate: dict[str, list[int]] = {}
     for spec in signals:
@@ -290,7 +317,11 @@ def fit_stats(shots: Sequence[int], signals: Sequence[SignalSpec], *, samples_pe
             print(f"  {name}: degenerate channels {d}")
         elif d:
             print(f"  {name}: {len(d)} of {n_ch[name]} channels degenerate, first {_LISTED}: {d[:_LISTED]}")
-    return stats
+    summary = {"n_shots": len(shots), "n_loaded": len(shots) - len(failed),
+               "failed": {int(sh): err for sh, err in failed},
+               "missing": {k: without[k] for k in sorted(without)},
+               "degenerate": {k: degenerate[k] for k in sorted(degenerate)}}
+    return stats, summary
 
 
 # --------------------------------------------------------------------------------- the file
