@@ -49,9 +49,9 @@ per signal is far from each channel's mean.
 
 Fit files. `save_fit` writes one `.npz` per task and predictor (atomically: temporary name, then
 rename) holding the fitted arrays and a metadata record: the code hash (`PREDICTOR_SHA256`, this
-file as loaded), the digest of the training shot list, the stride, the number of windows seen,
+file as loaded), the digest of the training shot list, the stride, the scoring-code hash, the number of windows seen,
 the chosen lambda. `obtain` reuses a file only if every one of them matches the present code, shot
-list and stride, otherwise it fits again: a score is never computed from a fit made by other
+list, stride and scoring code, otherwise it fits again: a score is never computed from a fit made by other
 code. `current_fit_digest` is the sha256 of the file bytes when it is reusable, which
 `run_headroom.py` stores in `score.json` as `fit_sha256`.
 """
@@ -69,7 +69,7 @@ from pathlib import Path
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve
 
-from tokamak_foundation_model.ignite.mast import harness, tasks
+from tokamak_foundation_model.ignite.mast import baselines, harness, tasks
 from tokamak_foundation_model.ignite.mast.harness import WindowBatch
 from tokamak_foundation_model.ignite.mast.tasks import SPECTROGRAM_SIGNALS, SignalSpec, TaskSpec
 
@@ -321,7 +321,7 @@ class ShrunkPersistence(_Predictor):
                 p = np.where(np.isfinite(p), p, m)                     # no anchor: the training mean
                 frames = m + self.slope[s.name][None, None, :] * (p - m)
             else:
-                frames = np.broadcast_to(m, (n, m.shape[1], 1))
+                frames = np.broadcast_to(m, (n, m.shape[1], _n_frames(self.task, s)))
             out[s.name] = _physical(frames, s, self.task.n_out(s))
         return out
 
@@ -450,9 +450,11 @@ def train_shots() -> list[int]:
 
 
 def training_meta() -> dict:
-    """What, besides the code, defines a fit: the training shot list and the window stride."""
+    """What, besides this file, defines a fit: the training shot list, the window stride and the scoring
+    code (harness.py, tasks.py, baselines.py: the training windows and the standardization come from
+    them), as the hash `score.json` stores as `code_sha256`."""
     return {"shots_sha256": hashlib.sha256(",".join(map(str, train_shots())).encode()).hexdigest(),
-            "stride_s": TRAIN_STRIDE_S}
+            "stride_s": TRAIN_STRIDE_S, "scoring_code_sha256": baselines.scoring_code_sha256()}
 
 
 def fit_path(root: Path, task_name: str, name: str) -> Path:
@@ -482,7 +484,7 @@ def load_fit(path: Path) -> tuple[dict[str, np.ndarray], dict]:
 
 
 def _read_current_fit(path: Path, name: str, task_name: str):
-    """((arrays, meta), "") for a fit file that matches the present code, shot list and stride,
+    """((arrays, meta), "") for a fit file that matches the present code, shot list, stride and scoring code,
     else (None, why not)."""
     path = Path(path)
     if not path.exists():

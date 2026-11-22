@@ -412,3 +412,54 @@ def test_the_command_refits_when_the_code_changed(command, stub_data, monkeypatc
     stored = json.loads((root / "scores/task_1-2/shrunk/val_report/score.json").read_text())
     assert stored["predictor_sha256"] == "1" * 64
     assert cheap.load_fit(root / "cheap/task_1-2/shrunk.npz")[1]["code_sha256"] == "1" * 64
+
+
+# ------------------------------------------------------------------ fix round 1
+
+def test_shrunk_predicts_a_multi_frame_output_that_is_not_an_input(toy_task, toy_batch):
+    """Every output without an anchor is the training mean, in as many frames as the output spans."""
+    task = dataclasses.replace(toy_task, inputs=toy_task.inputs[1:])      # summary-ip is no longer an input
+    spec = task.outputs[0]
+    assert task.n_out(spec) > cheap.frame_len(spec.dt)                    # more than one frame: the case that failed
+    assert spec.name not in {s.name for s in task.inputs}
+    b = toy_batch(n=300, seed=3)
+    sp = cheap.ShrunkPersistence(task).fit([b])
+    pred = sp.predict(b)["summary-ip"]
+    assert pred.shape == b.targets["summary-ip"].shape and np.isfinite(pred).all()
+    expected = spec.unstandardize(sp.mean["summary-ip"])[0]
+    np.testing.assert_allclose(pred, expected, rtol=1e-5)
+    np.testing.assert_allclose(expected, np.nanmean(b.targets["summary-ip"].astype(np.float64)),
+                               atol=spec.std * 1e-3)
+
+
+def test_a_fit_is_reused_only_under_the_scoring_code_it_was_made_under(stub_data, toy_task, tmp_path, monkeypatch,
+                                                                     capsys):
+    kw = dict(num_workers=2, batch_size=8, force=False)
+    monkeypatch.setattr(cheap.baselines, "scoring_code_sha256", lambda: "a" * 64)
+    cheap.obtain("shrunk", toy_task, tmp_path, **kw)
+    path = cheap.fit_path(tmp_path, toy_task.name, "shrunk")
+    assert cheap.load_fit(path)[1]["scoring_code_sha256"] == "a" * 64
+    digest = cheap.current_fit_digest(path, "shrunk", toy_task.name)
+    assert digest != cheap.NO_CURRENT_FIT
+    cheap.obtain("shrunk", toy_task, tmp_path, **kw)                       # same hash: reused
+    assert stub_data["train"] == 1
+
+    monkeypatch.setattr(cheap.baselines, "scoring_code_sha256", lambda: "b" * 64)   # harness.py or tasks.py changed
+    assert cheap.current_fit_digest(path, "shrunk", toy_task.name) == cheap.NO_CURRENT_FIT
+    capsys.readouterr()
+    cheap.obtain("shrunk", toy_task, tmp_path, **kw)
+    assert stub_data["train"] == 2 and "scoring_code_sha256 changed" in capsys.readouterr().out
+    assert cheap.load_fit(path)[1]["scoring_code_sha256"] == "b" * 64
+
+
+def test_a_fit_file_without_the_scoring_code_hash_is_not_current(stub_data, toy_task, tmp_path, capsys):
+    cheap.obtain("shrunk", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    path = cheap.fit_path(tmp_path, toy_task.name, "shrunk")
+    arrays, meta = cheap.load_fit(path)
+    del meta["scoring_code_sha256"]
+    with open(path, "wb") as f:
+        np.savez(f, **arrays, meta=np.array(json.dumps(meta)))
+    assert cheap.current_fit_digest(path, "shrunk", toy_task.name) == cheap.NO_CURRENT_FIT
+    capsys.readouterr()
+    cheap.obtain("shrunk", toy_task, tmp_path, num_workers=2, batch_size=8, force=False)
+    assert stub_data["train"] == 2 and "scoring_code_sha256 changed" in capsys.readouterr().out
