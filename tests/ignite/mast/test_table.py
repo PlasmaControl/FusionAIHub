@@ -519,3 +519,49 @@ def test_the_variants_listing_takes_the_task_list(tmp_path):
     write_log(stage0, "task_2-3", "base", [0.09, 0.08])
     assert table.variants_markdown(stage0 / "scores") == ""
     assert "Task 2-3:" in table.variants_markdown(stage0 / "scores", task_names=tasks.ALL_TASKS)
+
+
+def _all_tasks_stage0(tmp_path, monkeypatch, direct_for):
+    rh = _run_headroom()
+    stage0 = tmp_path / "stage0"
+    for task in direct_for:
+        write_score(stage0 / "scores", task, "direct", "val_report", [0.1, 0.1], trained_steps=10, max_steps=10)
+        write_log(stage0, task, "base", [0.2, 0.1], config={"depth": 8, "max_steps": 10})
+    monkeypatch.setattr(rh.paths, "stage0_dir", lambda: stage0)
+    monkeypatch.setattr(rh.paths, "prepare_write_root", lambda p: Path(p))
+    monkeypatch.setattr(rh, "stale_reason", lambda root, task, name, split: "")
+    return rh, stage0
+
+
+def test_the_all_tasks_table_has_fourteen_rows_and_its_own_file(tmp_path, monkeypatch, capsys):
+    rh, stage0 = _all_tasks_stage0(tmp_path, monkeypatch, tasks.ALL_TASKS)
+    assert rh.main(["--table-all"]) == 0
+    out = capsys.readouterr().out
+    line = next(line for line in out.splitlines() if line.startswith("projected mean"))
+    assert "direct model on all 14 tasks" in line and "0.1000" in line and "0.183" in line
+    csv = pd.read_csv(stage0 / "headroom_table_all.csv", index_col="task")
+    assert list(csv.index) == list(tasks.ALL_TASKS)
+    assert not (stage0 / "headroom_table.csv").exists()
+
+
+def test_the_all_tasks_table_says_how_many_direct_scores_are_missing(tmp_path, monkeypatch, capsys):
+    rh, _ = _all_tasks_stage0(tmp_path, monkeypatch, tasks.STAGE0_TASKS)
+    assert rh.main(["--table-all"]) == 0
+    assert "projected mean: not computed, 7 of 14 tasks have no direct score" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("option", [["--task", "task_1-3"], ["--split", "test"], ["--force"], ["--table"]])
+def test_the_all_tasks_table_refuses_every_other_option(tmp_path, monkeypatch, capsys, option):
+    rh, _ = _all_tasks_stage0(tmp_path, monkeypatch, ())
+    with pytest.raises(SystemExit) as e:
+        rh.main(["--table-all", *option])
+    assert e.value.code == 2 and "takes no other option" in capsys.readouterr().err
+
+
+def test_the_stage0_table_is_unchanged_by_the_all_tasks_table(tmp_path, monkeypatch, capsys):
+    rh, stage0 = _all_tasks_stage0(tmp_path, monkeypatch, tasks.ALL_TASKS)
+    assert rh.main(["--table"]) == 0
+    out = capsys.readouterr().out
+    assert "direct model on the 7 stage-0 tasks, best published score on the other 7" in out
+    assert list(pd.read_csv(stage0 / "headroom_table.csv", index_col="task").index) == list(tasks.STAGE0_TASKS)
+    assert not (stage0 / "headroom_table_all.csv").exists()

@@ -18,7 +18,9 @@ the projected mean (not computed, with a count, while a stage-0 task has no dire
 rows whose direct score is stale, unfinished or not competitive). Whether a stored score is current is decided by
 `stale_reason`, which applies the rule of `_kept_score` that the command uses before it scores again, plus, for a
 direct score, a mark when the checkpoint was trained by other code than the code now loaded (see `direct`); a score
-that is not current is shown and named, not dropped.
+that is not current is shown and named, not dropped. `--table-all` does the same for all 14 tasks (the 7 stage-0 tasks
+and the 7 others), writes `<stage0>/headroom_table_all.csv` beside the stage-0 file, never over it, and its projected
+mean is the mean of the direct scores alone (not computed, with a count, while a task has none).
 
 Predictors: `floor` (TokaMind's output-representation floor, `headroom/floor.py`); `shrunk` and
 `ridge` (`headroom/cheap.py`: shrunk persistence and ridge regression on frame means); `direct` (`headroom/direct.py`:
@@ -122,7 +124,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 import numpy as np
 
@@ -541,32 +543,38 @@ def _direct_marked_rows(t) -> int:
     return int((on_direct("stale") | on_direct("unfinished") | (t["not_competitive"] == "yes")).sum())
 
 
-def print_table() -> int:
-    """`--table`: build the headroom table from the stored scores, write `<stage0>/headroom_table.csv` and print
-    it as Markdown with the projected mean. Scores nothing and writes nothing else."""
+def print_table(task_names: Sequence[str] = tasks.STAGE0_TASKS, csv_name: str = "headroom_table.csv") -> int:
+    """`--table` (the stage-0 tasks, `headroom_table.csv`) and `--table-all` (all 14 tasks,
+    `headroom_table_all.csv`): build the headroom table of `task_names` from the stored scores, write it as
+    `<stage0>/<csv_name>` and print it as Markdown with the projected mean. Scores nothing and writes nothing
+    else."""
     root = paths.prepare_write_root(paths.stage0_dir())
 
     def stale(task: str, name: str, split: str) -> str:
         return stale_reason(root, task, name, split)
 
-    t = headroom_table.build_table(root / "scores", headroom_table.TOKAMIND_REPLICATION, stale_reason=stale)
-    csv_path = root / "headroom_table.csv"
+    t = headroom_table.build_table(root / "scores", headroom_table.TOKAMIND_REPLICATION, stale_reason=stale,
+                                   task_names=task_names)
+    csv_path = root / csv_name
     t.to_csv(csv_path)
     print(f"Headroom table of {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC, from the scores under {root / 'scores'}\n")
     print(headroom_table.to_markdown(t))
-    variants = headroom_table.variants_markdown(root / "scores", stale_reason=stale)
+    variants = headroom_table.variants_markdown(root / "scores", stale_reason=stale, task_names=task_names)
     if variants:
         print("Direct variants (the table takes the one with the lowest best val_nrmse among those with a stored "
               "score):\n")
         print(variants)
     n_direct = int(t["direct_val"].notna().sum())
     projected = headroom_table.projected_mean(t)
+    stage0 = tuple(task_names) == tuple(tasks.STAGE0_TASKS)
     if math.isnan(projected):
-        print(f"projected mean: not computed, {len(t) - n_direct} of {len(t)} stage-0 tasks have no direct score")
+        print(f"projected mean: not computed, {len(t) - n_direct} of {len(t)} {'stage-0 ' if stage0 else ''}tasks "
+              "have no direct score")
     else:
         marked = _direct_marked_rows(t)
-        print(f"projected mean over the 14 tasks (direct model on the {len(t)} stage-0 tasks, best published score on "
-              f"the other {len(tasks.ALL_TASKS) - len(t)}): {projected:.4f}; the bar is 0.183, matching the best "
+        source = (f"direct model on the {len(t)} stage-0 tasks, best published score on the other "
+                  f"{len(tasks.ALL_TASKS) - len(t)}" if stage0 else f"direct model on all {len(t)} tasks")
+        print(f"projected mean over the 14 tasks ({source}): {projected:.4f}; the bar is 0.183, matching the best "
               f"published score everywhere would give 0.194"
               + (f"; {marked} row(s) have a direct score that is stale, unfinished or not competitive (see the "
                  "marks above)" if marked else ""))
@@ -612,6 +620,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--table", action="store_true",
                     help="build the headroom table from the stored scores (nothing is scored), write "
                          "<stage0>/headroom_table.csv and print it as Markdown; takes no other option")
+    ap.add_argument("--table-all", action="store_true",
+                    help="like --table for all 14 tasks: write <stage0>/headroom_table_all.csv and print it as "
+                         "Markdown; takes no other option")
     ap.add_argument("--task", choices=list(tasks.ALL_TASKS))
     ap.add_argument("--predictor", choices=sorted({*PREDICTORS, *FITTED}))
     ap.add_argument("--split", choices=("val_report", "test"))
@@ -632,13 +643,18 @@ def main(argv: list[str] | None = None) -> int:
                         help="`direct --train`: override the DirectConfig field "
                              f"{_CONFIG_FIELD.get(option, option)}")
     args = ap.parse_args(argv)
-    if args.table:
+    if args.table or args.table_all:
+        command = "--table" if args.table else "--table-all"
         given = [f"--{k.replace('_', '-')}" for k in ("task", "predictor", "split", "num_workers", "batch_size", "gpu",
                                                       "variant", *DIRECT_OPTIONS) if getattr(args, k) is not None]
         given += [f"--{k.replace('_', '-')}" for k in ("share_gpu", "force", "train") if getattr(args, k)]
+        if args.table and args.table_all:
+            given.append("--table-all")
         if given:
-            ap.error("--table builds the table of all stage-0 tasks from the stored scores and takes no other "
-                     f"option (got {', '.join(given)})")
+            ap.error(f"{command} builds a table from the stored scores and takes no other option "
+                     f"(got {', '.join(given)})")
+        if args.table_all:
+            return print_table(tasks.ALL_TASKS, "headroom_table_all.csv")
         return print_table()
     args.num_workers = 64 if args.num_workers is None else args.num_workers
     args.batch_size = 64 if args.batch_size is None else args.batch_size
