@@ -10,6 +10,15 @@ Each score goes to `<stage0>/scores/<task>/<predictor>/<split>/` (TokaMark's eva
 a `<task>` sub-directory, our `score.json` beside it). A kept score (see below) is not
 repeated unless `--force`; it is still listed in the table.
 
+Three predictors are scored. `mean` is scored on the task's own windows. `persistence` is
+scored on the windows of TokaMark's persistence script (`tasks.persistence_reference`: markovian,
+only the signals that are both input and output, no actuators), which is how the published column
+is made: in sparse test mode a window needs a finite input once there are no actuators, so these
+are the windows that have a finite input. `persistence_all` is the same predictor on the task's own
+windows (on those without a finite input it can only give the mean) and is never judged against a
+published value. Measured 2026-11-22 for task_3-1: 0.5364 on 285,885 windows (`persistence`)
+against 0.6868 on all 332,362 (`persistence_all`); published 0.536.
+
 The published numbers are test-split numbers. With `--split test` the command exits 1 if any
 row differs from them by more than 0.002 (the paper gives three decimals, so rounding alone
 allows 0.0005; 0.002 leaves room for a small benchmark-version difference and no more). With
@@ -32,21 +41,32 @@ import time
 from tokamak_foundation_model.ignite.mast import baselines, harness, paths, tasks
 
 TOLERANCE = 0.002
-PREDICTORS = ("mean", "persistence")
+PREDICTORS = ("mean", "persistence", "persistence_all")
 
 
 def _predictor(name: str, task: tasks.TaskSpec):
-    return {"mean": baselines.mean_predictor, "persistence": baselines.persistence_predictor}[name](task)
+    """(predict_fn, the task spec whose windows it is scored on)."""
+    if name == "mean":
+        return baselines.mean_predictor(task), task
+    if name == "persistence":
+        reference = tasks.persistence_reference(task)
+        return baselines.persistence_predictor(reference), reference
+    return baselines.persistence_predictor(task), task
 
 
-def _rows_to_score(task_names: list[str]) -> list[tuple[str, str, float]]:
-    """(task, predictor, published value) for every score that has a published value to compare with."""
+def _rows_to_score(task_names: list[str]) -> list[tuple[str, str, float | None]]:
+    """(task, predictor, published value or None) of every score to make.
+
+    `persistence` and `persistence_all` exist for the tasks that have a published persistence
+    value; `persistence_all` is never judged against it.
+    """
     rows = []
     for task in task_names:
-        for predictor in PREDICTORS:
-            published = tasks.PUBLISHED[task][predictor]
-            if published is not None:
-                rows.append((task, predictor, published))
+        persistence = tasks.PUBLISHED[task]["persistence"]
+        rows.append((task, "mean", tasks.PUBLISHED[task]["mean"]))
+        if persistence is not None:
+            rows.append((task, "persistence", persistence))
+            rows.append((task, "persistence_all", None))
     return rows
 
 
@@ -54,8 +74,10 @@ def _format_table(rows: list[dict], split: str) -> str:
     header = ("task", "predictor", "ours", "published", "diff")
     body = []
     for r in rows:
-        diff = "n/a" if split != "test" else f"{r['ours'] - r['published']:+.4f}"
-        body.append((r["task"], r["predictor"], f"{r['ours']:.4f}", f"{r['published']:.3f}", diff))
+        judged = split == "test" and r["published"] is not None
+        published = "n/a" if r["published"] is None else f"{r['published']:.3f}"
+        diff = f"{r['ours'] - r['published']:+.4f}" if judged else "n/a"
+        body.append((r["task"], r["predictor"], f"{r['ours']:.4f}", published, diff))
     widths = [max(len(str(line[i])) for line in [header, *body]) for i in range(len(header))]
     lines = ["  ".join(str(c).ljust(w) for c, w in zip(line, widths)).rstrip() for line in [header, *body]]
     return "\n".join(lines)
@@ -84,9 +106,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             if reason != "no score.json":
                 print(f"re-scoring {task_name} {predictor} {args.split}: {reason}", flush=True)
-            task = tasks.load_task(task_name)
+            predict_fn, scored_task = _predictor(predictor, tasks.load_task(task_name))
             started = time.monotonic()
-            result = harness.score(task, _predictor(predictor, task), out_dir, split=args.split,
+            result = harness.score(scored_task, predict_fn, out_dir, split=args.split,
                                    batch_size=args.batch_size, num_workers=args.num_workers)
             baselines.write_score_json(result, predictor, args.split)
             ours = result.task_nrmse
@@ -103,8 +125,8 @@ def main(argv: list[str] | None = None) -> int:
     bad = [r for r in results
            if baselines.outside_tolerance(r["ours"], r["published"] if judged else None, TOLERANCE)]
     for r in bad:
-        print(f"OUTSIDE {TOLERANCE}: {r['task']} {r['predictor']} ours {r['ours']} "
-              f"published {r['published']:.3f}")
+        published = "n/a" if r["published"] is None else f"{r['published']:.3f}"
+        print(f"OUTSIDE {TOLERANCE}: {r['task']} {r['predictor']} ours {r['ours']} published {published}")
     return 1 if bad else 0
 
 

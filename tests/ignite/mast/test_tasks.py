@@ -1,5 +1,7 @@
 """Task specs, split lists and published scores (docs/models/ignite-mast-design.md)."""
 
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -103,9 +105,34 @@ def test_every_count_of_every_task_is_a_positive_integer():
 
 
 def test_n_act_with_a_shorter_history_keeps_the_future_part(toy_task):
-    import dataclasses
-
     t = dataclasses.replace(toy_task, markovian=False)
     coil = t.actuators[0]
     assert t.n_act(coil) == 120 and t.n_act(coil, history_s=0.0025) == 110
     assert toy_task.n_act(coil, history_s=0.0025) == 120  # markovian: history_s is ignored
+
+
+# ---------------------------------------------------------------- the persistence reference windows
+
+def test_persistence_reference_keeps_only_signals_that_are_input_and_output(toy_task):
+    assert toy_task.windows == "task"
+    ref = tasks.persistence_reference(toy_task)
+    assert [s.name for s in ref.inputs] == ["summary-ip"]
+    assert ref.actuators == () and ref.markovian and ref.windows == "persistence_reference"
+    assert ref.outputs == toy_task.outputs
+    assert ref.n_in(ref.inputs[0]) == toy_task.steps["input"]["summary-ip"]
+    assert ref.steps["actuator"] == {} and set(ref.steps["output"]) == {"summary-ip"}
+    assert (ref.name, ref.input_length, ref.output_length, ref.delta, ref.stride) == (
+        toy_task.name, toy_task.input_length, toy_task.output_length, toy_task.delta, toy_task.stride)
+
+
+def test_persistence_reference_of_a_non_markovian_task_is_markovian(toy_task):
+    t = dataclasses.replace(toy_task, markovian=False)
+    assert tasks.persistence_reference(t).markovian and not t.markovian
+
+
+def test_persistence_reference_needs_an_output_that_is_an_input(toy_task):
+    coil = toy_task.actuators[0]
+    no_common = dataclasses.replace(toy_task, outputs=(coil,),
+                                    steps={**toy_task.steps, "output": {coil.name: 100}})
+    with pytest.raises(ValueError, match="no output that is also an input"):
+        tasks.persistence_reference(no_common)

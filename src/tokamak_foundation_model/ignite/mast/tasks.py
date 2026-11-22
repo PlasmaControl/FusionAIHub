@@ -9,7 +9,7 @@ need it: this module imports without it (the pixi environment has none), and
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 ALL_TASKS: tuple[str, ...] = tuple(
     f"task_{g}-{i}" for g, n in ((1, 3), (2, 3), (3, 3), (4, 5)) for i in range(1, n + 1)
@@ -81,6 +81,9 @@ class TaskSpec:
     # role ("input" | "actuator" | "output") -> signal name -> time stamps (TokaMark's
     # `length_in_time_stamps`); a hand-built spec passes them in.
     steps: Mapping[str, Mapping[str, int]]
+    # Which windows the task is scored on: "task" (the task's own) or "persistence_reference"
+    # (the windows of TokaMark's persistence script, see `persistence_reference`).
+    windows: str = "task"
 
     def n_out(self, s: SignalSpec) -> int:
         return self.steps["output"][s.name]
@@ -153,6 +156,37 @@ def load_task(name: str) -> TaskSpec:
         stride=float(config["stride_window"]),
         inputs=inputs, actuators=actuators, outputs=outputs,
         steps=steps,
+    )
+
+
+def persistence_reference(task: TaskSpec) -> TaskSpec:
+    """The task as TokaMark's persistence script scores it (`scripts/persistence.py`, lines 348-381).
+
+    The script edits the task's configuration before it builds the windows: markovian, inputs and
+    outputs reduced to the signals that are both, no actuators. In sparse test mode TokaMark drops
+    a window when all inputs and all actuators are entirely NaN, so without actuators a window needs
+    a finite input and the first cut moves to the first valid input. The published persistence
+    column is therefore scored on the windows that have a finite input. Input and output order is
+    kept; `windows` is "persistence_reference" and the rest (name, lengths, delta, stride, steps)
+    is the task's. Raises ``ValueError`` if no output is also an input.
+    """
+    input_names = {s.name for s in task.inputs}
+    output_names = {s.name for s in task.outputs}
+    common = input_names & output_names
+    if not common:
+        raise ValueError(f"task {task.name} has no output that is also an input; persistence is not defined")
+    return replace(
+        task,
+        markovian=True,
+        inputs=tuple(s for s in task.inputs if s.name in common),
+        actuators=(),
+        outputs=tuple(s for s in task.outputs if s.name in common),
+        steps={
+            "input": {n: v for n, v in task.steps["input"].items() if n in common},
+            "actuator": {},
+            "output": {n: v for n, v in task.steps["output"].items() if n in common},
+        },
+        windows="persistence_reference",
     )
 
 

@@ -220,6 +220,30 @@ def _to_window_batch(c: dict) -> WindowBatch:
     )
 
 
+def _persistence_reference_config(config: dict) -> None:
+    """Edit a task configuration in place the way TokaMark's persistence script does.
+
+    Mirrors `/models/tokamind/tokamark/scripts/persistence.py`, lines 348-381 (the
+    `target_model == "persistence"` branch): markovian; `input_name` and the segmenter's
+    `input_keys` reduced to the inputs that are also outputs; `output_name` and `output_keys`
+    reduced to the outputs that are also inputs; `actuator_name` and `actuator_keys` None.
+    """
+    config["task_type"] = "markovian"
+    sources = config["sources_and_signals"]
+    segmenter = config["task_window_segmenter"]
+    ins = [f"{source}-{signal}" for source, signal in sources["input_name"]]
+    outs = [f"{source}-{signal}" for source, signal in sources["output_name"]]
+    chosen = [name for name in outs if name in ins]
+    sources["input_name"] = [[source, signal] for source, signal in sources["input_name"]
+                             if f"{source}-{signal}" in chosen]
+    segmenter["input_keys"] = sources["input_name"]
+    sources["output_name"] = [[source, signal] for source, signal in sources["output_name"]
+                              if f"{source}-{signal}" in chosen]
+    segmenter["output_keys"] = sources["output_name"]
+    sources["actuator_name"] = None
+    segmenter["actuator_keys"] = None
+
+
 def iter_windows(task: TaskSpec, shots: list[int], *, test_mode: bool, history_s: float | None = None,
                  batch_size: int = 64, num_workers: int = 32, shuffle: bool = False,
                  stride_s: float | None = None) -> Iterator[WindowBatch]:
@@ -241,6 +265,10 @@ def iter_windows(task: TaskSpec, shots: list[int], *, test_mode: bool, history_s
     from torch.utils.data import DataLoader
 
     config = copy.deepcopy(get_task_config(task.name))
+    if task.windows == "persistence_reference":
+        _persistence_reference_config(config)
+    elif task.windows != "task":
+        raise ValueError(f"unknown windows {task.windows!r} in task {task.name}")
     if stride_s is not None:
         config["stride_window"] = float(stride_s)
     metadata = get_task_metadata(config)

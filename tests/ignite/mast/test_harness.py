@@ -4,6 +4,7 @@ The toy-batch tests need `tokamark` for the evaluator but no data; the `real_dat
 need TokaMark's Zarr store too (skipped when either is missing, see conftest.py).
 """
 
+import copy
 import dataclasses
 
 import numpy as np
@@ -254,6 +255,44 @@ def test_score_refuses_shots_outside_the_split(tmp_path):
         harness.score(t, lambda b: {}, tmp_path, split="train")
 
 
+def test_persistence_reference_config_edit_makes_exactly_the_six_changes():
+    """TokaMark's persistence script (scripts/persistence.py, lines 348-381) edits a task config this way."""
+    config = {
+        "task_type": "non_markovian",
+        "stride_window": 0.005,
+        "sources_and_signals": {
+            "input_name": [["summary", "ip"], ["magnetics", "flux_loop_flux"], ["ece", "te"]],
+            "output_name": [["magnetics", "flux_loop_flux"], ["summary", "ip"], ["thomson", "t_e"]],
+            "actuator_name": [["pf_active", "coil_voltage"]],
+            "other": 1,
+        },
+        "task_window_segmenter": {
+            "input_length": 0.15,
+            "input_keys": "old", "output_keys": "old", "actuator_keys": "old",
+        },
+    }
+    expected = copy.deepcopy(config)
+    harness._persistence_reference_config(config)
+
+    expected["task_type"] = "markovian"
+    expected["sources_and_signals"]["input_name"] = [["summary", "ip"], ["magnetics", "flux_loop_flux"]]
+    expected["task_window_segmenter"]["input_keys"] = expected["sources_and_signals"]["input_name"]
+    expected["sources_and_signals"]["output_name"] = [["magnetics", "flux_loop_flux"], ["summary", "ip"]]
+    expected["task_window_segmenter"]["output_keys"] = expected["sources_and_signals"]["output_name"]
+    expected["sources_and_signals"]["actuator_name"] = None
+    expected["task_window_segmenter"]["actuator_keys"] = None
+    assert config == expected
+
+
+def test_iter_windows_rejects_an_unknown_windows_value(toy_task):
+    pytest.importorskip("tokamark")
+    import dataclasses
+
+    t = dataclasses.replace(toy_task, name="task_1-1", windows="bogus")
+    with pytest.raises(ValueError, match="unknown windows"):
+        harness.iter_windows(t, [tasks.split_shots("val")[0]], test_mode=True)
+
+
 def test_open_mast_dataset_refuses_shots_outside_the_splits():
     """The shots in none of the three splits are never loaded; the check precedes any data access."""
     pytest.importorskip("tokamark")
@@ -365,3 +404,34 @@ def test_persistence_scores_through_the_real_evaluator(tmp_path):
     r = harness.score(t, persistence, tmp_path, split="val_select", shots=shots, num_workers=2)
     assert np.isfinite(r.task_nrmse) and r.n_windows > 0
     assert set(r.per_shot["shot_id"]) <= set(shots)
+
+
+@FORK_WARNING
+@pytest.mark.real_data
+def test_real_persistence_reference_windows_all_have_a_finite_input():
+    """task_3-1: the task's own test-mode windows include some with no finite input; the reference's do not.
+
+    Shots chosen by a scan of the first 60 validation shots on 2026-11-22 (most have no task_3-1
+    windows at all): 12012, 12154 and 12174 give 868 task windows, 150 of them with all inputs
+    NaN, and 712 reference windows, none of them.
+    """
+    t = tasks.load_task("task_3-1")
+    ref = tasks.persistence_reference(t)
+    shots = [12012, 12154, 12174]
+    assert set(shots) <= set(tasks.split_shots("val"))
+
+    def scan(task):
+        pairs, all_nan = set(), 0
+        for b in harness.iter_windows(task, shots, test_mode=True, batch_size=64, num_workers=3):
+            pairs.update(zip(b.shot_ids.tolist(), b.window_indices.tolist()))
+            finite = np.zeros(len(b.shot_ids), bool)
+            for a in b.inputs.values():
+                finite |= np.isfinite(a.reshape(len(a), -1)).any(axis=1)
+            all_nan += int((~finite).sum())
+        return pairs, all_nan
+
+    task_pairs, task_all_nan = scan(t)
+    ref_pairs, ref_all_nan = scan(ref)
+    assert task_all_nan > 0
+    assert ref_all_nan == 0
+    assert 0 < len(ref_pairs) < len(task_pairs)
