@@ -158,11 +158,11 @@ def _forbid_data(monkeypatch, run_headroom):
     monkeypatch.setattr(run_headroom.tasks, "load_task", forbidden)
 
 
-def test_a_fitted_predictor_without_an_implementation_exits_with_2(capsys, monkeypatch):
+def test_every_fitted_predictor_has_an_implementation():
+    # No name is unimplemented since `direct` was added; a name outside PREDICTORS would exit 2.
     run_headroom = _run_headroom()
-    _forbid_data(monkeypatch, run_headroom)
-    assert run_headroom.main(["--task", "task_1-2", "--predictor", "direct", "--split", "val_report"]) == 2
-    assert "not implemented yet" in capsys.readouterr().err
+    for name in FITTED:
+        assert name in run_headroom.PREDICTORS
 
 
 @pytest.mark.parametrize("name", FITTED)
