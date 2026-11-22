@@ -52,6 +52,41 @@ def test_matches_tokaminds_codec():
     np.testing.assert_allclose(ours, theirs, atol=1e-5)
 
 
+@pytest.mark.parametrize("native", [(50,), (18, 50), (4, 3, 10), (6, 2, 9)])
+@pytest.mark.parametrize("order", ["sorted", "shuffled"])
+def test_matches_tokaminds_codec_for_every_view(native, order):
+    """The 3-D views with W > 1 and indices in any order: a flattening or axis-order difference changes the
+    kept coefficients here, which the W = 1 case and a keep-everything round trip cannot show."""
+    pytest.importorskip("mmt")
+    import torch
+    from mmt.data.embeddings.dct3d import DCT3DCodec, DCT3DTorchDecoder
+
+    view = floor._view3d(native[:-1], native[-1])
+    n = int(np.prod(view))
+    rng = np.random.default_rng(sum(native) * 7 + len(native))
+    indices = rng.choice(n, size=max(2, n // 3), replace=False)
+    indices = np.sort(indices) if order == "sorted" else indices
+    x = rng.standard_normal((3, *native)).astype(np.float32)
+    codec = DCT3DCodec(keep_h=1, keep_w=1, keep_t=1, selection_mode="rank", coeff_indices=indices,
+                       coeff_shape=view)
+    z = torch.from_numpy(np.stack([codec.encode(w) for w in x]))
+    theirs = DCT3DTorchDecoder(codec, native)(z).numpy()
+    ours = floor.truncate_dct(x.astype(np.float64), indices, view)
+    np.testing.assert_allclose(ours, theirs, atol=1e-5)
+
+
+def test_the_flat_index_is_c_order_over_h_w_t():
+    """One basis function of the (2, 3, 4) view is kept by its C-order flat index and by no other (no mmt needed)."""
+    from scipy.fft import idctn
+
+    basis = np.zeros((2, 3, 4))
+    basis[1, 1, 2] = 1.0                                           # C-order flat index 1 * 12 + 1 * 4 + 2 = 18
+    x = idctn(basis, norm="ortho")[None]
+    np.testing.assert_allclose(floor.truncate_dct(x, np.array([18]), (2, 3, 4)), x, atol=1e-12)
+    for other in (1 + 1 * 2 + 2 * 6, 6, 3):                        # Fortran order gives 15; the others are not it
+        np.testing.assert_allclose(floor.truncate_dct(x, np.array([other]), (2, 3, 4)), 0.0, atol=1e-12)
+
+
 @pytest.mark.real_data
 def test_task_1_2_indices():
     idx = floor.tokamind_output_indices("task_1-2")
@@ -80,11 +115,13 @@ def test_truncation_rejects_a_shape_that_is_not_the_coefficient_shape():
         floor.truncate_dct(x, np.array([18 * 50]), (18, 1, 50))
 
 
-def _write_run(tmp_path: Path, name: str, indices: np.ndarray, coeff_shape) -> Path:
+def _write_run(tmp_path: Path, name: str, indices: np.ndarray, coeff_shape, *, selection_mode: str = "rank",
+               num_coeffs: int | None = None) -> Path:
     embeddings = tmp_path / f"ft-{name}-ws-tokamind-base-v2-repl" / "embeddings"
     (embeddings / "dct3d_indices").mkdir(parents=True)
     np.save(embeddings / "dct3d_indices" / "output_summary-ip.npy", indices.astype(np.int32))
-    kwargs = {"selection_mode": "rank", "coeff_shape": list(coeff_shape), "num_coeffs": len(indices),
+    kwargs = {"selection_mode": selection_mode, "coeff_shape": list(coeff_shape),
+              "num_coeffs": len(indices) if num_coeffs is None else num_coeffs,
               "coeff_indices_path": "dct3d_indices/output_summary-ip.npy"}
     config = {"embeddings": {"per_signal_overrides": {"output": {
         "summary-ip": {"encoder_name": "dct3d", "encoder_kwargs": kwargs}}}}}
@@ -103,6 +140,18 @@ def test_indices_are_read_from_the_run(toy_task, tmp_path):
 def test_indices_of_a_changed_chunking_raise(toy_task, tmp_path):
     embeddings = _write_run(tmp_path, "task_toy", np.array([0, 3, 7]), (1, 1, 50))
     with pytest.raises(ValueError, match="coeff_shape"):
+        floor.output_indices_from_run(embeddings, toy_task)
+
+
+def test_a_selection_mode_other_than_rank_raises(toy_task, tmp_path):
+    embeddings = _write_run(tmp_path, "task_toy", np.array([0, 3, 7]), (1, 1, 100), selection_mode="spatial")
+    with pytest.raises(ValueError, match="selection_mode 'spatial'"):
+        floor.output_indices_from_run(embeddings, toy_task)
+
+
+def test_a_num_coeffs_that_does_not_match_the_index_file_raises(toy_task, tmp_path):
+    embeddings = _write_run(tmp_path, "task_toy", np.array([0, 3, 7]), (1, 1, 100), num_coeffs=4)
+    with pytest.raises(ValueError, match="num_coeffs 4"):
         floor.output_indices_from_run(embeddings, toy_task)
 
 
@@ -132,7 +181,7 @@ def test_the_floor_is_finite_where_targets_are_missing_and_does_not_mutate_them(
     np.testing.assert_array_equal(batch.targets["summary-ip"], before)
 
 
-def test_the_floor_standardizes_with_the_signals_statistics(toy_task, toy_batch):
+def test_the_floor_with_dc_only_is_the_window_mean_under_any_standardization(toy_task, toy_batch):
     batch = toy_batch(4)
     spec = toy_task.outputs[0]
     # DC only: the standardized window mean, then back to physical units
@@ -140,6 +189,25 @@ def test_the_floor_standardizes_with_the_signals_statistics(toy_task, toy_batch)
     expected = batch.targets["summary-ip"].mean(axis=-1, keepdims=True)
     np.testing.assert_allclose(out["summary-ip"], np.broadcast_to(expected, out["summary-ip"].shape),
                                rtol=1e-4, atol=spec.std * 1e-4)
+
+
+def test_the_floor_standardizes_with_the_signals_statistics(toy_task, toy_batch):
+    """Without the DC coefficient the output is `P(x) + mean`: the transform kills constants, so the signal's mean
+    comes back only through the standardization. With a gap and the zero fill the gap is the signal's mean."""
+    spec = toy_task.outputs[0]
+    kept = np.array([1, 2, 5, 9])                                   # no DC
+    batch = toy_batch(4)
+    raw = batch.targets["summary-ip"].astype(np.float64)
+    out = floor.floor_predictor(toy_task, {"summary-ip": (kept, (1, 1, 100))}, "zero")(batch)["summary-ip"]
+    expected = floor.truncate_dct(raw, kept, (1, 1, 100)) + spec.mean
+    np.testing.assert_allclose(out, expected, rtol=0, atol=spec.std * 1e-4)
+    assert abs(float(out.mean()) - spec.mean) < spec.std * 0.1      # not near 0: a floor without the mean would be
+
+    batch.targets["summary-ip"][1, 0, 30:50] = np.nan
+    raw[1, 0, 30:50] = spec.mean                                    # zero in standardized units is the mean
+    out = floor.floor_predictor(toy_task, {"summary-ip": (kept, (1, 1, 100))}, "zero")(batch)["summary-ip"]
+    np.testing.assert_allclose(out, floor.truncate_dct(raw, kept, (1, 1, 100)) + spec.mean, rtol=0,
+                               atol=spec.std * 1e-4)
 
 
 def test_fitted_predictors_are_never_scored_on_test(monkeypatch):
@@ -323,6 +391,15 @@ def _gap_cases(shape):
     e[(0,) * k + (5,)] = -np.inf
     cases.append(e)  # (e)
     cases.append(np.full(shape, NAN))  # (f)
+    h = fresh()
+    h[(1,) * k + (slice(None),)] = NAN
+    h[(1,) * k + (6,)] = 0.5
+    cases.append(h)  # (h) a row with exactly one finite sample
+    if k >= 1:
+        i = fresh()
+        i[(slice(None),) + (1,) * (k - 1) + (4,)] = NAN
+        i[(2,) + (1,) * (k - 1) + (4,)] = 0.25
+        cases.append(i)  # (i) a column along H with exactly one valid channel
     g = fresh()
     g[rng.random(shape) < 0.2] = NAN
     if k >= 1:
