@@ -22,10 +22,17 @@ Missing, stale, unfinished.
   Whether a score is current is decided by one function. `build_table` takes it as `stale_reason(task,
   predictor, split) -> str` (empty: current), which `scripts/mast/run_headroom.py` supplies as
   `stale_reason`: the same `_kept_score` that makes the command score again, with the provenance of the
-  predictor as loaded (predictor hash, fit or checkpoint hash, TokaMind's coefficient indices). Without it
-  only the scoring code is checked, by `baselines.read_kept_score`, which the command's rule starts with.
+  predictor as loaded (predictor hash, fit or checkpoint hash, TokaMind's coefficient indices) and, for a
+  direct score, the code that trained the checkpoint (`trained_by.json`, copied into the record as
+  `trained_predictor_sha256` and `trained_code_sha256`: "trained by other code than the code now loaded", or
+  "training code not recorded"; a mark, not part of the rule that keeps a score). Without it only the scoring
+  code is checked, by `baselines.read_kept_score`, which the command's rule starts with. The rule covers our
+  code, the fit or checkpoint and TokaMind's files only: a score is NOT marked when TokaMark's code (windows,
+  statistics, splits, the metric) or the Zarr data root changed, because the record holds neither.
 - A direct score whose `trained_steps` is below `max_steps`, or that has no `trained_steps`, comes from a
   training that did not finish. It counts and is named in the `unfinished` column.
+- The variants listing (`direct_variants`, `variants_markdown`) carries the same two marks for every variant,
+  not only for the one the table takes: it is the evidence for whether the base run is under-trained.
 - The direct cell of a task is the variant whose `train_log.csv` has the lowest best `val_nrmse` (selection
   on `val_select`; the score is on `val_report`), `direct_variants` lists them all. A variant whose log
   cannot be read ranks last.
@@ -75,6 +82,17 @@ COLUMNS = (*(c for c, _, _ in CELLS), "direct_lo", "direct_hi", "direct_variant"
            "best_published", "best_published_by", "direct_over_best", "verdict", "not_competitive", "stale",
            "unfinished")
 BASE_VARIANT = "base"
+# What the † mark says (the table's legend and the variants listing use it). Every reason the command's rule
+# can give is named; the last sentence is the limit of the rule (the record holds no TokaMark revision or data
+# root, so a change of either is not seen).
+STALE_LEGEND = (
+    "† stale: the stored score is not the score of what is loaded now. The scoring code (harness, tasks, baselines), "
+    "the predictor's code, its fit or checkpoint, or TokaMind's coefficient files differ from those it was made "
+    "with; or the record or its provenance is unreadable or cannot be computed now; or the per-shot file does not "
+    "match the score; for a direct score also 'trained by other code than the code now loaded' (the checkpoint "
+    "was trained by other code than the predictor and scoring code now loaded) and 'training code not "
+    "recorded' (no `trained_by.json`). A score is not marked when TokaMark's code (windows, statistics, splits, "
+    "the metric) or the Zarr data root changed: the record holds neither.")
 _CONSISTENT = 1e-6   # the per-shot file's mean must equal the stored score to this
 
 
@@ -137,12 +155,31 @@ def _best_val_nrmse(run_dir: Path) -> float:
         return math.nan
 
 
-def _variant_of(predictor_name: str) -> str:
-    return BASE_VARIANT if predictor_name == "direct" else predictor_name.partition(".")[2]
+def predictor_name(predictor: str, variant: str) -> str:
+    """`direct` for the base variant, `direct.<variant>` for another; the other predictors have no variants.
+    `scripts/mast/run_headroom.py` imports this, so the two cannot disagree on a name."""
+    return predictor if variant == BASE_VARIANT else f"{predictor}.{variant}"
+
+
+def direct_run_dir(root: Path, task_name: str, variant: str) -> Path:
+    """`<stage0>/direct/<task>/<variant>`: a direct model's checkpoints, config and training log."""
+    return Path(root) / "direct" / task_name / variant
+
+
+def _variant_of(predictor: str) -> str:
+    return BASE_VARIANT if predictor == "direct" else predictor.partition(".")[2]
 
 
 def _predictor_of(variant: str) -> str:
-    return "direct" if variant == BASE_VARIANT else f"direct.{variant}"
+    return predictor_name("direct", variant)
+
+
+def _reason(scores_dir: Path, task: str, name: str, split: str,
+            stale_reason: Callable[[str, str, str], str] | None) -> str:
+    """Why the stored score of `name` is not current: the command's rule if given, else the scoring code's."""
+    if stale_reason is not None:
+        return stale_reason(task, name, split)
+    return baselines.read_kept_score(_score_dir(scores_dir, task, name, split), task, name, split)[1]
 
 
 def _config(run_dir: Path) -> dict:
@@ -153,33 +190,45 @@ def _config(run_dir: Path) -> dict:
     return cfg if isinstance(cfg, dict) else {}
 
 
-def direct_variants(scores_dir: Path, task: str) -> pd.DataFrame:
+def direct_variants(scores_dir: Path, task: str,
+                    stale_reason: Callable[[str, str, str], str] | None = None) -> pd.DataFrame:
     """Every direct variant of the task that has a training log or a `val_report` score.
 
     Columns: `variant`, `best_val_nrmse` (lowest of its log, on `val_select`), `val_report` (its stored
     score, NaN if none), `differs` (the `config.json` fields that differ from the base variant's, as
-    `name=value`; empty for the base, and for a variant when there is no base config to compare with).
-    The base variant comes first, the others by name.
+    `name=value`; empty for the base, and for a variant when there is no base config to compare with), `stale`
+    (why its stored score is not current, as `build_table` decides it with `stale_reason`; empty if current or
+    there is no score) and `unfinished` (as the table's column). The base variant comes first, the others by
+    name.
     """
     scores_dir = Path(scores_dir)
-    runs = scores_dir.parent / "direct" / task
+    stage0 = scores_dir.parent
+    runs = direct_run_dir(stage0, task, BASE_VARIANT).parent
     names = {p.name for p in runs.glob("*") if p.is_dir()} if runs.is_dir() else set()
     for p in (scores_dir / task).glob("direct*") if (scores_dir / task).is_dir() else ():
         if p.name == "direct" or p.name.startswith("direct."):
             if (p / "val_report" / "score.json").exists():
                 names.add(_variant_of(p.name))
-    base_cfg = _config(runs / BASE_VARIANT)
+    base_cfg = _config(direct_run_dir(stage0, task, BASE_VARIANT))
     rows = []
     for variant in sorted(names, key=lambda v: (v != BASE_VARIANT, v)):
-        record = _read_record(_score_dir(scores_dir, task, _predictor_of(variant), "val_report") / "score.json")
-        cfg = _config(runs / variant)
+        out_dir = _score_dir(scores_dir, task, _predictor_of(variant), "val_report")
+        record = _read_record(out_dir / "score.json")
+        cfg = _config(direct_run_dir(stage0, task, variant))
         differs = ""
         if variant != BASE_VARIANT and base_cfg and cfg:
             differs = ", ".join(f"{k}={cfg.get(k)}" for k in sorted({*base_cfg, *cfg})
                                 if cfg.get(k) != base_cfg.get(k))
-        rows.append({"variant": variant, "best_val_nrmse": _best_val_nrmse(runs / variant),
-                     "val_report": _nrmse(record) if record else math.nan, "differs": differs})
-    return pd.DataFrame(rows, columns=["variant", "best_val_nrmse", "val_report", "differs"])
+        stale = unfinished = ""
+        if record is not None:
+            stale = _reason(scores_dir, task, _predictor_of(variant), "val_report", stale_reason)
+            unfinished = _unfinished(record)
+        elif (out_dir / "score.json").exists():
+            stale = "unreadable score.json"
+        rows.append({"variant": variant, "best_val_nrmse": _best_val_nrmse(direct_run_dir(stage0, task, variant)),
+                     "val_report": _nrmse(record) if record else math.nan, "differs": differs,
+                     "stale": stale, "unfinished": unfinished})
+    return pd.DataFrame(rows, columns=["variant", "best_val_nrmse", "val_report", "differs", "stale", "unfinished"])
 
 
 def _chosen_direct(scores_dir: Path, task: str) -> str | None:
@@ -227,8 +276,7 @@ def build_table(scores_dir: Path, tokamind_repl: dict[str, float | None],
                 stale.append(f"{column}: unreadable score.json")
                 continue
             row[column] = _nrmse(record)
-            reason = (stale_reason(task, name, split) if stale_reason is not None
-                      else baselines.read_kept_score(out_dir, task, name, split)[1])
+            reason = _reason(scores_dir, task, name, split, stale_reason)
             if reason:
                 stale.append(f"{column}: {reason}")
             if predictor == "direct":
@@ -332,7 +380,7 @@ def to_markdown(table: pd.DataFrame) -> str:
              *_md(["task", "shrunk val", "ridge val", "direct val [95% interval]", "direct variant",
                    "TokaMind replication test", "best published test", "by", "direct / best", "verdict"], head), "",
              "missing: no score is stored. undefined: the benchmark defines no persistence for the task. "
-             "† stale: stored by other code than the code now loaded. ‡ unfinished: the direct model's training "
+             + STALE_LEGEND + " ‡ unfinished: the direct model's training "
              "stopped before `max_steps`. not competitive: the direct model's `val_report` score is worse than our "
              "TokaMind replication's test score on the task."]
     if notes:
@@ -340,22 +388,33 @@ def to_markdown(table: pd.DataFrame) -> str:
     return "\n".join(lines) + "\n"
 
 
-def variants_markdown(scores_dir: Path) -> str:
+def variants_markdown(scores_dir: Path, stale_reason: Callable[[str, str, str], str] | None = None) -> str:
     """Every trained direct variant of each stage-0 task, as Markdown: what differs in its `config.json` from
     the base variant, its best `val_nrmse` (on `val_select`, from `train_log.csv`), its `val_report` score
     ("no score" when none is stored: the table cannot take it, which matters when its selection error is the
-    lowest), and whether the table's direct cell is this variant. Empty if no task has a variant."""
-    blocks = []
+    lowest) with the table's marks (`stale_reason` as for `build_table`: † stale, ‡ unfinished) and the reasons
+    below the block, and whether the table's direct cell is this variant. Empty if no task has a variant. A
+    legend follows when any mark is shown."""
+    blocks, marked = [], False
     for task in tasks.STAGE0_TASKS:
-        variants = direct_variants(scores_dir, task)
+        variants = direct_variants(scores_dir, task, stale_reason)
         if variants.empty:
             continue
         chosen = _chosen_direct(scores_dir, task)
-        rows = [[r.variant, r.differs or "-",
-                 "unreadable" if math.isnan(r.best_val_nrmse) else f"{r.best_val_nrmse:.4f}",
-                 "no score" if math.isnan(r.val_report) else f"{r.val_report:.4f}",
-                 "yes" if r.variant == chosen else "no"] for r in variants.itertuples()]
+        rows, notes = [], []
+        for r in variants.itertuples():
+            mark = ("†" if r.stale else "") + ("‡" if r.unfinished else "")
+            score = "no score" if math.isnan(r.val_report) else f"{r.val_report:.4f}" + (f" {mark}" if mark else "")
+            rows.append([r.variant, r.differs or "-",
+                         "unreadable" if math.isnan(r.best_val_nrmse) else f"{r.best_val_nrmse:.4f}", score,
+                         "yes" if r.variant == chosen else "no"])
+            for text, kind in ((r.stale, "stale"), (r.unfinished, "unfinished")):
+                if text:
+                    notes.append(f"- {task.removeprefix('task_')} {r.variant} val_report: {text} ({kind})")
+        marked = marked or bool(notes)
         blocks += [f"Task {task.removeprefix('task_')}:", "",
                    *_md(["variant", "differs from base", "best val_nrmse (val_select)", "val_report", "in the table"],
-                        rows), ""]
+                        rows), "", *([*notes, ""] if notes else [])]
+    if marked:
+        blocks += [STALE_LEGEND + " ‡ unfinished: the training stopped before `max_steps`.", ""]
     return "\n".join(blocks)

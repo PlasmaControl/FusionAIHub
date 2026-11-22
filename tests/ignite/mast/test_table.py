@@ -321,3 +321,165 @@ def test_the_table_command_prints_the_variants(tmp_path, monkeypatch, capsys):
     assert run_headroom.main(["--table"]) == 0
     out = capsys.readouterr().out
     assert "Direct variants" in out and "| base " in out and "no score" in out
+
+
+# ------------------------------------------------------------------ final fix wave: C2
+
+def _variants_stage0(tmp_path):
+    """task_1-2 with the base run (finished), `s90k` (stopped at 30,000 of 90,000: the case that exists) and `old`
+    (a finished run whose score is stale)."""
+    stage0 = tmp_path / "stage0"
+    scores = stage0 / "scores"
+    write_score(scores, "task_1-2", "direct", "val_report", [0.040], trained_steps=30000, max_steps=30000)
+    write_score(scores, "task_1-2", "direct.s90k", "val_report", [0.038], trained_steps=30000, max_steps=90000)
+    write_score(scores, "task_1-2", "direct.old", "val_report", [0.045], trained_steps=100, max_steps=100)
+    write_log(stage0, "task_1-2", "base", [0.9, 0.050], {"depth": 8, "max_steps": 30000})
+    write_log(stage0, "task_1-2", "s90k", [0.9, 0.049], {"depth": 8, "max_steps": 90000})
+    write_log(stage0, "task_1-2", "old", [0.9, 0.060], {"depth": 8, "max_steps": 100})
+    return stage0, scores
+
+
+def _old_is_stale(task, predictor, split):
+    return "trained by other code than the code now loaded" if predictor == "direct.old" else ""
+
+
+def test_the_variants_have_the_stale_and_unfinished_marks_of_the_table(tmp_path):
+    stage0, scores = _variants_stage0(tmp_path)
+    by = table.direct_variants(scores, "task_1-2", stale_reason=_old_is_stale).set_index("variant")
+    assert by.loc["s90k", "unfinished"] == "trained 30000 of 90000 steps" and by.loc["s90k", "stale"] == ""
+    assert by.loc["old", "stale"] == "trained by other code than the code now loaded"
+    assert by.loc["old", "unfinished"] == "" and by.loc["base", "stale"] == "" == by.loc["base", "unfinished"]
+    # without a callback the scoring-code rule decides, as in `build_table`
+    plain = table.direct_variants(scores, "task_1-2").set_index("variant")
+    assert (plain["stale"] == "").all()
+    write_score(scores, "task_1-2", "direct.old", "val_report", [0.045], code="0" * 64, trained_steps=1, max_steps=1)
+    assert table.direct_variants(scores, "task_1-2").set_index("variant").loc["old", "stale"].startswith(
+        "scoring code changed since")
+
+
+def test_a_variant_without_a_score_or_with_an_unreadable_one_is_marked_correctly(tmp_path):
+    stage0, scores = _variants_stage0(tmp_path)
+    (scores / "task_1-2" / "direct.old" / "val_report" / "score.json").write_text("{not json")
+    write_log(stage0, "task_1-2", "fresh", [0.9, 0.5], {"depth": 8, "max_steps": 100})        # no score at all
+    by = table.direct_variants(scores, "task_1-2").set_index("variant")
+    assert by.loc["old", "stale"] == "unreadable score.json" and math.isnan(by.loc["old", "val_report"])
+    assert by.loc["fresh", "stale"] == "" == by.loc["fresh", "unfinished"] and math.isnan(by.loc["fresh", "val_report"])
+
+
+def test_the_variants_listing_prints_the_marks_and_their_reasons(tmp_path):
+    stage0, scores = _variants_stage0(tmp_path)
+    text = table.variants_markdown(scores, stale_reason=_old_is_stale)
+    rows = {line.split("|")[1].strip(): line for line in text.splitlines() if line.startswith("| ") and "variant" not in line}
+    assert "0.0380 ‡" in rows["s90k"] and "0.0450 †" in rows["old"] and "0.0400" in rows["base"]
+    assert "†" not in rows["base"] and "‡" not in rows["base"]
+    assert "- 1-2 s90k val_report: trained 30000 of 90000 steps (unfinished)" in text
+    assert "- 1-2 old val_report: trained by other code than the code now loaded (stale)" in text
+    assert "† stale" in text and "‡ unfinished" in text                       # the marks are explained where they occur
+
+
+def test_a_listing_without_marks_has_no_legend(tmp_path):
+    stage0 = tmp_path / "stage0"
+    write_score(stage0 / "scores", "task_3-1", "direct", "val_report", [0.4], trained_steps=10, max_steps=10)
+    write_log(stage0, "task_3-1", "base", [0.9, 0.5])
+    text = table.variants_markdown(stage0 / "scores")
+    assert "†" not in text and "‡" not in text and "stale" not in text
+
+
+def test_the_legend_states_every_reason_for_a_mark_and_the_limit_of_the_rule(tmp_path):
+    scores = tmp_path / "stage0" / "scores"
+    write_score(scores, "task_4-5", "direct", "val_report", [0.6], trained_steps=5, max_steps=10)
+    text = table.to_markdown(table.build_table(scores, REPL))
+    legend = " ".join(line for line in text.splitlines() if line.startswith("missing:"))
+    for reason in ("scoring code", "predictor's code", "fit", "checkpoint", "TokaMind", "unreadable", "per-shot",
+                   "cannot be computed", "trained by other code than the code now loaded",
+                   "training code not recorded"):
+        assert reason in legend, reason
+    assert "TokaMark" in legend and "Zarr" in legend and "not marked" in legend     # the limit of the rule (A-I1)
+
+
+def test_the_names_the_command_shares_are_the_tables():
+    rh = _run_headroom()
+    assert rh.BASE_VARIANT is table.BASE_VARIANT and rh.predictor_name is table.predictor_name
+    assert rh.direct_run_dir is table.direct_run_dir
+    assert table.predictor_name("direct", "base") == "direct" and table.predictor_name("direct", "wide") == "direct.wide"
+    assert table.direct_run_dir(Path("/x"), "task_1-2", "wide") == Path("/x/direct/task_1-2/wide")
+
+
+# ---- the table command
+
+def _table_stage0(tmp_path, monkeypatch, stale=None):
+    """All seven stage-0 tasks with a finished, competitive, current direct score. Returns (module, stage0)."""
+    rh = _run_headroom()
+    stage0 = tmp_path / "stage0"
+    for task in tasks.STAGE0_TASKS:
+        write_score(stage0 / "scores", task, "direct", "val_report", [table.TOKAMIND_REPLICATION[task] - 0.01],
+                    trained_steps=10, max_steps=10)
+    monkeypatch.setattr(rh.paths, "stage0_dir", lambda: stage0)
+    monkeypatch.setattr(rh.paths, "prepare_write_root", lambda p: Path(p))
+    monkeypatch.setattr(rh, "stale_reason", lambda root, task, name, split: (stale or {}).get((task, name), ""))
+    return rh, stage0
+
+
+def _rewrite(stage0, task, name, **changes):
+    path = stage0 / "scores" / task / name / "val_report" / "score.json"
+    record = json.loads(path.read_text())
+    record.update(changes)
+    path.write_text(json.dumps(record))
+
+
+def test_the_projected_mean_line_counts_rows_whose_direct_score_is_marked(tmp_path, monkeypatch, capsys):
+    stale = {("task_3-1", "direct"): "checkpoint_sha256 changed since abc1234",     # stale and unfinished: one row
+             ("task_1-1", "direct"): "trained by other code than the code now loaded",
+             ("task_1-2", "mean"): "scoring code changed since abc1234"}            # not the direct score: not counted
+    rh, stage0 = _table_stage0(tmp_path, monkeypatch, stale)
+    write_score(stage0 / "scores", "task_1-2", "mean", "test", [1.0])
+    _rewrite(stage0, "task_3-1", "direct", trained_steps=5)                          # unfinished as well
+    write_score(stage0 / "scores", "task_4-5", "direct", "val_report", [0.9], trained_steps=10, max_steps=10)  # worse
+    assert rh.main(["--table"]) == 0
+    out = capsys.readouterr().out
+    assert "projected mean over the 14 tasks" in out
+    line = next(line for line in out.splitlines() if line.startswith("projected mean"))
+    assert "3 row(s)" in line                                                       # 1-1, 3-1 (once), 4-5
+    assert "stale, unfinished or not competitive" in line
+
+
+def test_the_projected_mean_line_has_no_count_when_nothing_is_marked(tmp_path, monkeypatch, capsys):
+    rh, stage0 = _table_stage0(tmp_path, monkeypatch)
+    assert rh.main(["--table"]) == 0
+    line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("projected mean"))
+    assert "row(s)" not in line and "the bar is 0.183" in line
+
+
+def test_the_variants_listing_of_the_command_carries_the_marks(tmp_path, monkeypatch, capsys):
+    rh, stage0 = _table_stage0(tmp_path, monkeypatch, {("task_1-2", "direct.old"): "checkpoint_sha256 changed"})
+    write_score(stage0 / "scores", "task_1-2", "direct.old", "val_report", [0.05], trained_steps=1, max_steps=2)
+    write_log(stage0, "task_1-2", "base", [0.9, 0.5])
+    write_log(stage0, "task_1-2", "old", [0.9, 0.6])
+    assert rh.main(["--table"]) == 0
+    out = capsys.readouterr().out
+    assert "- 1-2 old val_report: checkpoint_sha256 changed (stale)" in out
+    assert "- 1-2 old val_report: trained 1 of 2 steps (unfinished)" in out
+
+
+@pytest.mark.parametrize("option", [["--force"], ["--train"], ["--gpu", "0"], ["--variant", "wide"], ["--share-gpu"],
+                                    ["--num-workers", "2"], ["--batch-size", "8"], ["--max-steps", "5"],
+                                    ["--variant", "base"], ["--num-workers", "64"]])
+def test_the_table_command_refuses_every_other_option(tmp_path, monkeypatch, capsys, option):
+    rh, stage0 = _table_stage0(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit) as e:
+        rh.main(["--table", *option])
+    assert e.value.code == 2
+    assert option[0] in capsys.readouterr().err and not (stage0 / "headroom_table.csv").exists()
+
+
+def test_a_provenance_error_of_any_kind_marks_the_cell_and_does_not_stop_the_table(tmp_path, monkeypatch):
+    rh = _run_headroom()
+    stage0 = tmp_path / "stage0"
+    write_score(stage0 / "scores", "task_1-2", "direct", "val_report", [0.03], trained_steps=1, max_steps=1)
+
+    def broken(predictor, ctx):
+        raise RuntimeError("the fit file is a directory")
+
+    monkeypatch.setattr(rh, "provenance_of", broken)
+    reason = rh.stale_reason(stage0, "task_1-2", "direct", "val_report")
+    assert reason.startswith("provenance cannot be computed now (RuntimeError: the fit file is a directory)")

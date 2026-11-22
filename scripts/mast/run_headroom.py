@@ -91,6 +91,8 @@ from typing import Callable
 from tokamak_foundation_model.ignite.mast import baselines, harness, paths, tasks
 from tokamak_foundation_model.ignite.mast.headroom import FITTED, cheap, floor
 from tokamak_foundation_model.ignite.mast.headroom import table as headroom_table
+# One definition of these three, in the table (which has to find the same directories and names).
+from tokamak_foundation_model.ignite.mast.headroom.table import BASE_VARIANT, direct_run_dir, predictor_name
 
 
 @dataclass(frozen=True)
@@ -113,7 +115,6 @@ class Context:
 
 # After CUDA_VISIBLE_DEVICES is set to the uuid of the one GPU asked for, that GPU is device 0 of the process.
 DEVICE = "cuda:0"
-BASE_VARIANT = "base"
 
 
 def _direct_module():
@@ -122,15 +123,6 @@ def _direct_module():
     it); what matters is that CUDA is not initialized before `main` has set CUDA_VISIBLE_DEVICES."""
     from tokamak_foundation_model.ignite.mast.headroom import direct
     return direct
-
-
-def direct_run_dir(root: Path, task_name: str, variant: str) -> Path:
-    return root / "direct" / task_name / variant
-
-
-def predictor_name(predictor: str, variant: str) -> str:
-    """`direct` for the base variant, `direct.<variant>` for another; the other predictors have no variants."""
-    return predictor if variant == BASE_VARIANT else f"{predictor}.{variant}"
 
 
 def _checkpoint(ctx: Context) -> Path:
@@ -338,27 +330,40 @@ def stale_reason(root: Path, task_name: str, name: str, split: str) -> str:
     predictor, _, variant = name.partition(".")
     if predictor not in PREDICTORS:
         return baselines.read_kept_score(out_dir, task_name, name, split)[1]
-    # No task spec: the provenance functions need the names and the root only, and loading the spec
-    # needs TokaMark.
-    ctx = Context(task_name, None, root, 0, 0, False, None, variant or BASE_VARIANT, False, {})
+    # No task spec: the provenance functions read the names, the root and the files they name (the floor's
+    # provenance loads the task spec, the cheap one reads the split file), and loading a spec needs TokaMark.
+    # Any error of one cell marks that cell; it does not stop the table.
+    ctx = Context(task_name=task_name, task=None, root=root, num_workers=0, batch_size=0, force=False,
+                  variant=variant or BASE_VARIANT)
     try:
         provenance = provenance_of(predictor, ctx)
-    except (OSError, ValueError, KeyError) as e:
+    except Exception as e:  # noqa: BLE001
         return f"provenance cannot be computed now ({type(e).__name__}: {e})"
     return _kept_score(out_dir, task_name, name, split, provenance, False)[1]
+
+
+def _direct_marked_rows(t) -> int:
+    """Rows whose direct score carries a stale or unfinished mark, or is not competitive: a row is counted once,
+    and a mark on another cell (the mean, the fits) is not the direct score's."""
+    def on_direct(column):
+        return t[column].map(lambda v: any(e.startswith("direct_val:") for e in str(v).split(" | ")))
+
+    return int((on_direct("stale") | on_direct("unfinished") | (t["not_competitive"] == "yes")).sum())
 
 
 def print_table() -> int:
     """`--table`: build the headroom table from the stored scores, write `<stage0>/headroom_table.csv` and print
     it as Markdown with the projected mean. Scores nothing and writes nothing else."""
     root = paths.prepare_write_root(paths.stage0_dir())
-    t = headroom_table.build_table(root / "scores", headroom_table.TOKAMIND_REPLICATION,
-                                   stale_reason=lambda task, name, split: stale_reason(root, task, name, split))
+    def stale(task: str, name: str, split: str) -> str:
+        return stale_reason(root, task, name, split)
+
+    t = headroom_table.build_table(root / "scores", headroom_table.TOKAMIND_REPLICATION, stale_reason=stale)
     csv_path = root / "headroom_table.csv"
     t.to_csv(csv_path)
     print(f"Headroom table of {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC, from the scores under {root / 'scores'}\n")
     print(headroom_table.to_markdown(t))
-    variants = headroom_table.variants_markdown(root / "scores")
+    variants = headroom_table.variants_markdown(root / "scores", stale_reason=stale)
     if variants:
         print("Direct variants (the table takes the one with the lowest best val_nrmse among those with a stored "
               "score):\n")
@@ -368,11 +373,12 @@ def print_table() -> int:
     if math.isnan(projected):
         print(f"projected mean: not computed, {len(t) - n_direct} of {len(t)} stage-0 tasks have no direct score")
     else:
-        marked = int((t["stale"] != "").sum() + (t["unfinished"] != "").sum())
+        marked = _direct_marked_rows(t)
         print(f"projected mean over the 14 tasks (direct model on the {len(t)} stage-0 tasks, best published score on "
               f"the other {len(tasks.ALL_TASKS) - len(t)}): {projected:.4f}; the bar is 0.183, matching the best "
               f"published score everywhere would give 0.194"
-              + (f"; {marked} row(s) carry stale or unfinished marks" if marked else ""))
+              + (f"; {marked} row(s) have a direct score that is stale, unfinished or not competitive (see the "
+                 "marks above)" if marked else ""))
     print(f"wrote {csv_path}")
     return 0
 
@@ -385,15 +391,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--task", choices=list(tasks.ALL_TASKS))
     ap.add_argument("--predictor", choices=sorted({*PREDICTORS, *FITTED}))
     ap.add_argument("--split", choices=("val_report", "test"))
-    ap.add_argument("--num-workers", type=int, default=64)
-    ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--num-workers", type=int, default=None, help="loader workers (default 64)")
+    ap.add_argument("--batch-size", type=int, default=None, help="scoring batch size (default 64)")
     ap.add_argument("--gpu", type=int, default=None, help="`direct`: the GPU index (required); the others use none")
     ap.add_argument("--share-gpu", action="store_true",
                     help="`direct`: use the GPU although other compute processes are on it (their pids are "
                          "printed); without it a busy GPU is refused")
-    ap.add_argument("--force", action="store_true", help="score again even if a score is kept (`direct --train`: "
-                                                         "train again over an existing best.pt)")
-    ap.add_argument("--variant", default=BASE_VARIANT, help="`direct`: the configuration, scored as direct.<variant>")
+    ap.add_argument("--force", action="store_true",
+                    help="without --train: score again even if a score is kept. With `direct --train`: train "
+                         "again over an existing best.pt (and score the new run)")
+    ap.add_argument("--variant", default=None,
+                    help=f"`direct`: the configuration, scored as direct.<variant> (default {BASE_VARIANT})")
     ap.add_argument("--train", action="store_true", help="`direct`: train, then score on --split val_report")
     for option, kind in DIRECT_OPTIONS.items():
         ap.add_argument("--" + option.replace("_", "-"), type=kind, default=None, dest=option,
@@ -401,10 +409,16 @@ def main(argv: list[str] | None = None) -> int:
                              f"{_CONFIG_FIELD.get(option, option)}")
     args = ap.parse_args(argv)
     if args.table:
-        if any(getattr(args, k) is not None for k in ("task", "predictor", "split")):
-            ap.error("--table builds the table of all stage-0 tasks from the stored scores; "
-                     "it takes no --task, --predictor or --split")
+        given = [f"--{k.replace('_', '-')}" for k in ("task", "predictor", "split", "num_workers", "batch_size", "gpu",
+                                                      "variant", *DIRECT_OPTIONS) if getattr(args, k) is not None]
+        given += [f"--{k.replace('_', '-')}" for k in ("share_gpu", "force", "train") if getattr(args, k)]
+        if given:
+            ap.error("--table builds the table of all stage-0 tasks from the stored scores and takes no other "
+                     f"option (got {', '.join(given)})")
         return print_table()
+    args.num_workers = 64 if args.num_workers is None else args.num_workers
+    args.batch_size = 64 if args.batch_size is None else args.batch_size
+    args.variant = BASE_VARIANT if args.variant is None else args.variant
     if args.task is None or args.predictor is None or args.split is None:
         ap.error("the following arguments are required: --task, --predictor, --split")
     is_direct = args.predictor == "direct"
