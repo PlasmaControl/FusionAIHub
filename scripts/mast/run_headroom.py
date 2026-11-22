@@ -24,19 +24,27 @@ training shot list, stride) matches the present code, otherwise the command fits
 fits again and scores again. The score is tied to the file it was computed with by the extra
 provenance key `fit_sha256` (the sha256 of the file's bytes).
 
-`direct`. Needs `--gpu N`: the command sets `CUDA_VISIBLE_DEVICES=N` before `torch` is imported (it is
-imported lazily, after the arguments are parsed) and the process then uses `cuda:0`. It refuses (exit
-status 2, naming the pids) a GPU on which `nvidia-smi` lists a compute process, and a GPU it cannot read
-`nvidia-smi` for. `--train` trains into `<stage0>/direct/<task>/<variant>/` (`best.pt`, `last.pt`,
+`direct`. Needs `--gpu N`, the GPU's index as `nvidia-smi` numbers it. One `nvidia-smi` lookup gives the
+GPU's uuid and its compute processes. The command sets `CUDA_VISIBLE_DEVICES` to that uuid in the form
+`nvidia-smi` prints (`GPU-<uuid>`), not to the index, so that nvidia-smi's index and CUDA's enumeration order
+need not agree, and the process then uses `cuda:0`. `torch` may already be imported (`harness.py`, which every
+predictor imports, imports it at module level): CUDA reads the variable when it is initialized, and the command
+refuses (exit status 2) if CUDA already is initialized in the process, so that `--gpu` could not take effect.
+It also refuses a GPU on which the lookup lists a compute process (naming the pids), and an index or output
+the lookup cannot resolve. `--train` trains into `<stage0>/direct/<task>/<variant>/` (`best.pt`, `last.pt`,
 `train_log.csv`, `config.json`; it refuses to overwrite an existing `best.pt` unless `--force`) and then
-scores it on `--split val_report`; without `--train` it scores the existing `best.pt` ("train first" if
+scores it on `--split val_report` (it first removes the stored score of that predictor name, so no number
+outlives the checkpoint it was computed from while the retraining runs); without `--train` it scores the existing `best.pt` ("train first" if
 there is none). `--variant NAME` (default `base`) selects another configuration: the base variant is
 scored as predictor `direct` into `scores/<task>/direct/<split>/`, another as `direct.<variant>` into
 `scores/<task>/direct.<variant>/<split>/`; both are fitted, so never scored on the test split. The
 configuration options (`--max-steps --d-model --depth --heads --history-s --train-batch-size --lr
 --val-every`) apply to `--train` only: scoring rebuilds the model from the `config.json` beside the
 checkpoint, never from the command line. Its provenance key is `checkpoint_sha256`, the sha256 of the
-`best.pt` the predictions come from.
+`best.pt` the predictions come from. Its `score.json` also records, without comparing them when a score is
+kept: `checkpoint_step` (the step of the `best.pt` scored), `trained_steps` (the step of `last.pt`, null if it
+cannot be read) and `max_steps` (from the run's `config.json`); a run whose `trained_steps` is below
+`max_steps`, or null, is scored with one warning line, since its number is for a run that did not finish.
 
 Provenance. `score.json`'s `code_sha256` covers the scoring code (harness.py, tasks.py,
 baselines.py), not the predictor. This command therefore adds `predictor_sha256`, the sha256 of
@@ -56,7 +64,9 @@ import hashlib
 import json
 import math
 import os
+import pickle
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -83,14 +93,15 @@ class Context:
     overrides: dict = field(default_factory=dict)   # `direct`: DirectConfig fields set on the command line
 
 
-# After CUDA_VISIBLE_DEVICES is set to the one GPU asked for, that GPU is device 0 of the process.
+# After CUDA_VISIBLE_DEVICES is set to the uuid of the one GPU asked for, that GPU is device 0 of the process.
 DEVICE = "cuda:0"
 BASE_VARIANT = "base"
 
 
 def _direct_module():
-    """`headroom.direct`, imported here and not at the top: it imports torch, which must not be imported
-    before `main` has set CUDA_VISIBLE_DEVICES."""
+    """`headroom.direct`, imported when a direct predictor is used and not at the top, so that the floor and
+    the cheap predictors do not load it. This does not keep torch out of the process (`harness.py` imports
+    it); what matters is that CUDA is not initialized before `main` has set CUDA_VISIBLE_DEVICES."""
     from tokamak_foundation_model.ignite.mast.headroom import direct
     return direct
 
@@ -116,10 +127,14 @@ def _direct_provenance(ctx: Context) -> dict[str, str]:
     return {"checkpoint_sha256": hashlib.sha256(_checkpoint(ctx).read_bytes()).hexdigest()}
 
 
-def _train_direct(ctx: Context) -> None:
+def _train_direct(ctx: Context, score_dir: Path) -> None:
     direct = _direct_module()
     cfg = dataclasses.replace(direct.default_config(ctx.task), **ctx.overrides)
     run_dir = direct_run_dir(ctx.root, ctx.task_name, ctx.variant)
+    # Whatever is stored for the predictor goes before the training starts: a score of a checkpoint that is
+    # gone, or of the run this one replaces, must not be readable for the hours the training takes (or for
+    # good if it dies).
+    shutil.rmtree(score_dir, ignore_errors=True)
     if ctx.force:  # a refused overwrite was checked before; --force starts the run again
         for name in ("best.pt", "last.pt"):
             (run_dir / name).unlink(missing_ok=True)
@@ -134,12 +149,13 @@ def _nvidia_smi(*args: str) -> str:
                           timeout=60).stdout
 
 
-def busy_pids(index: int, gpus_csv: str, apps_csv: str) -> list[int]:
-    """Pids of the compute processes on the GPU with this index.
+def gpu_state(index: int, gpus_csv: str, apps_csv: str) -> tuple[str, list[int]]:
+    """(uuid, pids of the compute processes) of the GPU with this index, from one nvidia-smi lookup.
 
     `gpus_csv` is `nvidia-smi --query-gpu=index,uuid --format=csv,noheader`, `apps_csv` is
-    `nvidia-smi --query-compute-apps=gpu_uuid,pid --format=csv,noheader`. Raises ValueError for
-    output that does not parse or does not list the GPU, so that nothing is started on a guess.
+    `nvidia-smi --query-compute-apps=gpu_uuid,pid --format=csv,noheader`. The uuid is in the form nvidia-smi
+    prints (`GPU-<uuid>`), which CUDA_VISIBLE_DEVICES accepts. Raises ValueError for output that does not
+    parse or does not list the GPU, so that nothing is started on a guess.
     """
     def rows(text: str, what: str) -> list[list[str]]:
         out = []
@@ -165,22 +181,49 @@ def busy_pids(index: int, gpus_csv: str, apps_csv: str) -> list[int]:
             raise ValueError(f"cannot parse nvidia-smi compute-app pid {pid!r}")
         if u == uuid:
             pids.append(int(pid))
-    return pids
+    return uuid, pids
 
 
-def _refuse_busy_gpu(gpu: int) -> bool:
-    """Print why and return True if the GPU has a compute process or its state cannot be read."""
+def busy_pids(index: int, gpus_csv: str, apps_csv: str) -> list[int]:
+    """Pids of the compute processes on the GPU with this index (see `gpu_state`)."""
+    return gpu_state(index, gpus_csv, apps_csv)[1]
+
+
+def _cuda_initialized() -> bool:
+    torch = sys.modules.get("torch")
+    return torch is not None and torch.cuda.is_initialized()
+
+
+def _look_up_gpu(gpu: int) -> tuple[str, list[int]] | None:
+    """(uuid, compute pids) of GPU `gpu`, or None after printing why the lookup failed."""
     try:
-        pids = busy_pids(gpu, _nvidia_smi("--query-gpu=index,uuid", "--format=csv,noheader"),
+        return gpu_state(gpu, _nvidia_smi("--query-gpu=index,uuid", "--format=csv,noheader"),
                          _nvidia_smi("--query-compute-apps=gpu_uuid,pid", "--format=csv,noheader"))
     except (OSError, subprocess.SubprocessError, ValueError) as e:
-        print(f"refused: cannot tell whether GPU {gpu} is free (nvidia-smi: {e})", file=sys.stderr)
-        return True
+        print(f"refused: cannot select GPU {gpu} or tell whether it is free (nvidia-smi: {e})", file=sys.stderr)
+        return None
+
+
+def _refuse_busy_gpu(gpu: int, pids: list[int]) -> bool:
+    """Print why and return True if the GPU has a compute process."""
     if pids:
         print(f"refused: GPU {gpu} has compute processes (pids {', '.join(map(str, pids))}); "
               "use a GPU without one", file=sys.stderr)
         return True
     return False
+
+
+def _direct_record(ctx: Context) -> dict:
+    """What the checkpoint files say about the run behind a direct score (records, not provenance)."""
+    import torch  # only reached for `direct`, after the GPU is selected
+    run = direct_run_dir(ctx.root, ctx.task_name, ctx.variant)
+    checkpoint_step = int(torch.load(run / "best.pt", map_location="cpu", weights_only=True)["step"])
+    try:
+        trained_steps = int(torch.load(run / "last.pt", map_location="cpu", weights_only=True)["step"])
+    except (OSError, KeyError, TypeError, ValueError, RuntimeError, EOFError, pickle.UnpicklingError):
+        trained_steps = None
+    max_steps = int(json.loads((run / "config.json").read_text())["cfg"]["max_steps"])
+    return {"checkpoint_step": checkpoint_step, "trained_steps": trained_steps, "max_steps": max_steps}
 
 
 def _floor(ctx: Context) -> harness.PredictFn:
@@ -286,12 +329,17 @@ def main(argv: list[str] | None = None) -> int:
             print("refused: the configuration options apply to --train; scoring rebuilds the model from "
                   "the config.json beside its checkpoint", file=sys.stderr)
             return 2
-        torch = sys.modules.get("torch")
-        if torch is not None and torch.cuda.is_initialized():
+        if _cuda_initialized():
             print("refused: CUDA is already initialized in this process, so --gpu cannot select the GPU",
                   file=sys.stderr)
             return 2
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)  # before torch is imported (by `_direct_module`)
+        looked_up = _look_up_gpu(args.gpu)  # one lookup serves the selection and the busy checks below
+        if looked_up is None:
+            return 2
+        gpu_uuid, gpu_pids = looked_up
+        # CUDA reads the variable when it initializes, which has not happened (checked above); torch itself
+        # may be imported already. The uuid in nvidia-smi's own form, not the index: the two orders may differ.
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_uuid
 
     build, code_sha256, extra_provenance = PREDICTORS[args.predictor]
     name = predictor_name(args.predictor, args.variant)
@@ -310,10 +358,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"refused: there is no checkpoint at {checkpoint}: train first (--train)", file=sys.stderr)
             return 2
         if args.train:
-            if _refuse_busy_gpu(args.gpu):
+            if _refuse_busy_gpu(args.gpu, gpu_pids):
                 return 2
             gpu_checked = True
-            _train_direct(ctx)
+            _train_direct(ctx, root / "scores" / args.task / name / args.split)
     provenance = {"predictor_sha256": code_sha256(), **extra_provenance(ctx)}
     out_dir = root / "scores" / args.task / name / args.split
     stored, reason = _kept_score(out_dir, args.task, name, args.split, provenance, args.force)
@@ -325,16 +373,24 @@ def main(argv: list[str] | None = None) -> int:
     if reason != "no score.json":
         print(f"re-scoring {args.task} {name} {args.split}: {reason}", flush=True)
 
-    if is_direct and not gpu_checked and _refuse_busy_gpu(args.gpu):
+    if is_direct and not gpu_checked and _refuse_busy_gpu(args.gpu, gpu_pids):
         return 2
     started = time.monotonic()
     predict_fn = build(ctx)  # a fitted predictor is fitted here if there is no current fit file
+    run_record = _direct_record(ctx) if is_direct else {}
+    if is_direct and (run_record["trained_steps"] is None or run_record["trained_steps"] < run_record["max_steps"]):
+        trained = ("an unknown number of steps (no readable last.pt)" if run_record["trained_steps"] is None
+                   else f"{run_record['trained_steps']} of {run_record['max_steps']} steps")
+        print(f"warning: {name} was trained for {trained}, short of max_steps {run_record['max_steps']}; "
+              f"the run did not finish, so this score is not final (checkpoint scored: step "
+              f"{run_record['checkpoint_step']})", file=sys.stderr, flush=True)
     provenance = {"predictor_sha256": code_sha256(), **extra_provenance(ctx)}  # now with the fit it uses
     result = harness.score(task, predict_fn, out_dir, split=args.split, history_s=getattr(predict_fn, "history_s", None),
                            batch_size=args.batch_size, num_workers=args.num_workers)
     path = baselines.write_score_json(result, name, args.split)
     record = json.loads(path.read_text())
     record.update(provenance)
+    record.update(run_record)  # records, not provenance: `_kept_score` does not compare them
     path.write_text(json.dumps(record, indent=2) + "\n")
     print(f"{args.task} {name} {args.split}: nrmse {result.task_nrmse:.4f}, "
           f"{result.n_windows} windows, {time.monotonic() - started:.0f} s", flush=True)

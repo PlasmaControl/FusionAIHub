@@ -10,6 +10,7 @@ import dataclasses
 import hashlib
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -169,6 +170,11 @@ def test_the_predictor_exposes_the_history_the_scorer_must_use(toy_task, tmp_pat
 
 # ------------------------------------------------------------------ the trainer, with data access stubbed
 
+def _log_rows(path: Path) -> list[dict]:
+    with path.open(newline="") as f:      # closed: an unclosed file is a ResourceWarning under -W error
+        return list(csv.DictReader(f))
+
+
 @pytest.fixture
 def stub_training(monkeypatch, toy_task, toy_batch):
     """Fake loader (four small batches per epoch, 4 shots each) and scorer; returns the call records."""
@@ -209,14 +215,16 @@ def test_train_direct_writes_checkpoints_config_and_log(toy_task, stub_training,
     config = json.loads((tmp_path / "run" / "config.json").read_text())
     assert config["task"] == toy_task.name and config["cfg"] == dataclasses.asdict(cfg)
     assert "git_revision" in config
-    rows = list(csv.DictReader((tmp_path / "run" / "train_log.csv").open()))
+    rows = _log_rows(tmp_path / "run" / "train_log.csv")
     assert list(rows[0]) == ["step", "train_loss", "val_nrmse", "seconds", "windows_per_s", "shots_per_batch"]
     assert [int(r["step"]) for r in rows] == [3, 6, 7]          # every val_every steps and the last step
     assert all(np.isfinite(float(r["val_nrmse"])) and float(r["windows_per_s"]) > 0 for r in rows)
     assert float(rows[0]["shots_per_batch"]) >= 1
     scored = stub_training["scored"]
     assert [s["split"] for s in scored] == ["val_select"] * 3
-    assert scored[0]["shots"] == list(range(1000, 1004)) and scored[0]["out_dir"].name == "step_000003"
+    # the stub's val_select is 1000..1009: four shots spread over it, first and last included (not the first four)
+    assert scored[0]["shots"] == [1000, 1003, 1006, 1009] and scored[0]["out_dir"].name == "step_000003"
+    assert all(s["shots"] == direct.validation_shots(4) for s in scored)
     assert stub_training["loader"][0]["stride_s"] == 0.005 and stub_training["loader"][0]["shuffle"] is True
     state = torch.load(tmp_path / "run" / "best.pt", weights_only=True)
     assert state["cfg"] == dataclasses.asdict(cfg) and state["step"] in (3, 6, 7)
@@ -224,6 +232,30 @@ def test_train_direct_writes_checkpoints_config_and_log(toy_task, stub_training,
     # best.pt is the lowest validation
     best_row = min(rows, key=lambda r: float(r["val_nrmse"]))
     assert state["step"] == int(best_row["step"])
+
+
+def test_validation_shots_are_spread_over_the_sorted_list(monkeypatch):
+    shots = [7000 + 3 * i for i in range(1000)]                       # ascending, like split_shots
+    monkeypatch.setattr(tasks, "split_shots", lambda split: shots if split == "val_select" else [])
+    assert direct.validation_shots(4) == [shots[0], shots[333], shots[666], shots[999]]
+    chosen = direct.validation_shots(200)
+    assert len(chosen) == len(set(chosen)) == 200 and chosen == sorted(chosen)
+    assert chosen[0] == shots[0] and chosen[-1] == shots[-1]
+    assert direct.validation_shots(1) == [shots[0]]
+
+
+@pytest.mark.parametrize("val_shots", [10, 11, 5000])
+def test_validation_shots_with_enough_budget_are_every_shot_once_in_order(monkeypatch, val_shots):
+    shots = list(range(100, 110))
+    monkeypatch.setattr(tasks, "split_shots", lambda split: shots)
+    assert direct.validation_shots(val_shots) == shots
+
+
+def test_validation_shots_are_deterministic_and_come_from_val_select(monkeypatch):
+    asked = []
+    monkeypatch.setattr(tasks, "split_shots", lambda split: asked.append(split) or list(range(50)))
+    assert direct.validation_shots(7) == direct.validation_shots(7)
+    assert set(asked) == {"val_select"}
 
 
 def test_train_direct_restarts_the_loader_and_refuses_to_overwrite(toy_task, stub_training, tmp_path):
@@ -238,7 +270,7 @@ def test_train_direct_restarts_the_loader_and_refuses_to_overwrite(toy_task, stu
 def test_a_training_batch_mixes_the_shots_of_the_pool(toy_task, stub_training, tmp_path):
     cfg = dataclasses.replace(TINY, max_steps=4, val_every=4, warmup=1, batch_size=8)
     direct.train_direct(toy_task, cfg, tmp_path / "run", "cpu", num_workers=2)
-    rows = list(csv.DictReader((tmp_path / "run" / "train_log.csv").open()))
+    rows = _log_rows(tmp_path / "run" / "train_log.csv")
     # one fake loader batch holds 2 distinct shots (4 windows per shot); a pool of 4 batches mixes more
     assert float(rows[-1]["shots_per_batch"]) > 2
 
@@ -274,6 +306,7 @@ def command(monkeypatch, tmp_path, toy_task, stub_training):
     monkeypatch.setattr(rh.paths, "stage0_dir", lambda: root)
     monkeypatch.setattr(rh.tasks, "load_task", lambda name: dataclasses.replace(toy_task, name=name))
     monkeypatch.setattr(rh, "DEVICE", "cpu")
+    monkeypatch.setattr(rh, "_cuda_initialized", lambda: False)   # whatever the pytest process did to CUDA
     rh.smi = {"gpus": "0, GPU-aaa\n1, GPU-bbb\n", "apps": "GPU-bbb, 4242\n"}
     monkeypatch.setattr(rh, "_nvidia_smi", lambda *query: rh.smi["gpus" if "index" in " ".join(query) else "apps"])
     return rh, root
@@ -320,10 +353,48 @@ def test_the_command_refuses_when_nvidia_smi_cannot_be_read(command, capsys):
     assert not (root / "direct").exists()
 
 
-def test_the_command_selects_the_gpu_before_torch_is_used(command, monkeypatch):
+def test_the_command_selects_the_gpu_by_the_uuid_nvidia_smi_prints_for_its_index(command):
     rh, root = command
+    rh.smi["apps"] = ""
     assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
-    assert __import__("os").environ["CUDA_VISIBLE_DEVICES"] == "0"
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "GPU-aaa"      # the form nvidia-smi prints, prefix included
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--gpu", "1", "--variant", "other"]) == 0
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "GPU-bbb"      # index 1, not index 0 or the number 1
+
+
+def test_one_nvidia_smi_lookup_serves_the_selection_and_the_busy_check(command):
+    rh, root = command
+    rh.smi["apps"] = ""
+    calls = []
+    real = rh._nvidia_smi
+    rh._nvidia_smi = lambda *q: (calls.append(q), real(*q))[1]
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
+    assert len(calls) == 2                                      # the GPU listing and the compute apps, once each
+
+
+def test_a_gpu_index_nvidia_smi_does_not_list_is_refused(command, capsys, monkeypatch):
+    rh, root = command
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "unchanged")
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--gpu", "7"]) == 2
+    assert "no GPU with index 7" in capsys.readouterr().err
+    assert not (root / "direct").exists()
+
+
+def test_the_command_refuses_when_cuda_is_already_initialized(command, capsys, monkeypatch):
+    rh, root = command
+    monkeypatch.setattr(rh, "_cuda_initialized", lambda: True)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "unchanged")
+
+    def forbidden(*a, **k):
+        raise AssertionError("opened")
+
+    monkeypatch.setattr(rh, "_nvidia_smi", forbidden)
+    monkeypatch.setattr(rh.tasks, "load_task", forbidden)
+    monkeypatch.setattr(rh.harness, "score", forbidden)
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 2
+    assert "CUDA is already initialized" in capsys.readouterr().err
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "unchanged"
+    assert not (root / "direct").exists()
 
 
 def test_direct_needs_a_gpu_argument(command, capsys):
@@ -434,3 +505,100 @@ def test_scoring_uses_the_history_of_the_checkpoints_config(command, stub_traini
     assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--history-s", "0.01"]) == 0
     assert stub_training["scored"][-1]["split"] == "val_report"
     assert stub_training["scored"][-1]["history_s"] == 0.01
+
+
+# ------------------------------------------------------------------ scores follow the checkpoint's life
+
+def _score_json(root, name="direct"):
+    return root / "scores" / "task_1-2" / name / "val_report" / "score.json"
+
+
+def test_a_score_records_the_steps_of_a_complete_run(command, capsys):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
+    record = json.loads(_score_json(root).read_text())
+    assert (record["checkpoint_step"], record["trained_steps"], record["max_steps"]) == (4, 4, 4)
+    assert "warning" not in capsys.readouterr().err
+
+
+def test_a_run_that_stopped_early_is_scored_with_a_warning_and_its_steps(command, capsys):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--max-steps", "6"]) == 0
+    run = root / "direct" / "task_1-2" / "base"
+    # as a run that died after its second validation leaves the files: best.pt and last.pt of step 2, max_steps 6
+    for name in ("best.pt", "last.pt"):
+        state = torch.load(run / name, weights_only=True)
+        state["step"] = 2
+        torch.save(state, run / name)
+    capsys.readouterr()
+    assert rh.main([*BASE, "--split", "val_report", "--gpu", "0"]) == 0
+    record = json.loads(_score_json(root).read_text())
+    assert (record["checkpoint_step"], record["trained_steps"], record["max_steps"]) == (2, 2, 6)
+    err = capsys.readouterr().err
+    assert err.count("warning") == 1 and "2 of 6" in err
+
+
+def test_a_run_whose_best_is_older_than_its_last_validation_records_both(command):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
+    run = root / "direct" / "task_1-2" / "base"
+    state = torch.load(run / "best.pt", weights_only=True)
+    state["step"] = 2
+    torch.save(state, run / "best.pt")
+    assert rh.main([*BASE, "--split", "val_report", "--gpu", "0"]) == 0
+    record = json.loads(_score_json(root).read_text())
+    assert (record["checkpoint_step"], record["trained_steps"], record["max_steps"]) == (2, 4, 4)
+
+
+def test_a_run_without_last_checkpoint_has_null_trained_steps_and_a_warning(command, capsys):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
+    (root / "direct" / "task_1-2" / "base" / "last.pt").unlink()
+    capsys.readouterr()
+    assert rh.main([*BASE, "--split", "val_report", "--gpu", "0", "--force"]) == 0
+    assert json.loads(_score_json(root).read_text())["trained_steps"] is None
+    assert capsys.readouterr().err.count("warning") == 1
+
+
+def test_the_steps_are_records_and_not_provenance(command, capsys):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
+    path = _score_json(root)
+    record = json.loads(path.read_text())
+    for key in ("checkpoint_step", "trained_steps", "max_steps"):
+        record[key] = 999
+    path.write_text(json.dumps(record))
+    capsys.readouterr()
+    assert rh.main([*BASE, "--split", "val_report", "--gpu", "0"]) == 0
+    assert "kept task_1-2 direct val_report" in capsys.readouterr().out
+
+
+def test_a_forced_retraining_removes_the_stored_score_before_it_trains(command, monkeypatch):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
+    assert _score_json(root).exists()
+
+    def dies(*a, **k):
+        raise RuntimeError("the training died")
+
+    monkeypatch.setattr(direct, "train_direct", dies)
+    with pytest.raises(RuntimeError, match="died"):
+        rh.main([*BASE, "--split", "val_report", *TRAIN, "--force"])
+    assert not _score_json(root).parent.exists()                  # no number for a checkpoint that is gone
+    assert not (root / "direct" / "task_1-2" / "base" / "best.pt").exists()
+
+
+def test_a_busy_gpu_is_refused_before_anything_is_deleted(command):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
+    rh.smi["apps"] = "GPU-aaa, 4242\n"
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--force"]) == 2
+    assert _score_json(root).exists() and (root / "direct" / "task_1-2" / "base" / "best.pt").exists()
+
+
+def test_a_forced_retraining_of_one_variant_leaves_the_other_variants_scores(command):
+    rh, root = command
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN]) == 0
+    assert rh.main([*BASE, "--variant", "wide", "--split", "val_report", *TRAIN]) == 0
+    assert rh.main([*BASE, "--variant", "wide", "--split", "val_report", *TRAIN, "--force"]) == 0
+    assert _score_json(root).exists() and _score_json(root, "direct.wide").exists()

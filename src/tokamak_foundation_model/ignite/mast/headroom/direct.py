@@ -32,8 +32,11 @@ AdamW (betas 0.9 and 0.95, decay on the weight matrices only) with linear warm-u
 bfloat16 autocast on the GPU for the forward pass (the loss is computed in float32), gradient clipping at
 1.0, an exponential moving average (EMA) of the weights whose decay is `min(ema, (1 + n) / (10 + n))` at
 update n so that it does not lag behind during the first thousand steps. Every `val_every` steps (and at
-the last step) the EMA weights are scored through `harness.score` on the first `val_shots` shots of
-`val_select`; the lowest becomes `best.pt`, `last.pt` is the last. The trainer reports and logs a number
+the last step) the EMA weights are scored through `harness.score` on `val_shots` shots of `val_select`
+spread evenly over its sorted list, first and last included (`validation_shots`; not the first ones: the
+list is sorted by shot number, so those are the oldest campaign, which is not representative; measured
+2026-11-22 on task_4-5, only 65 of the first 200 had windows and the training-mean baseline scored 0.30
+on them against 0.685 on all shots); the lowest becomes `best.pt`, `last.pt` is the last. The trainer reports and logs a number
 of distinct shots per training batch because a loader batch holds the windows of one worker's shots.
 
 Data. `harness.train_windows(task, stride_s=0.005, shuffle=True, history_s=cfg.history_s)` restarted
@@ -492,6 +495,17 @@ def _update_ema(ema: nn.Module, model: nn.Module, decay: float) -> None:
     torch._foreach_lerp_(e, [p.detach() for p in model.parameters()], 1.0 - decay)
 
 
+def validation_shots(val_shots: int) -> list[int]:
+    """`val_shots` shots evenly spaced over the sorted `val_select` list, first and last included.
+
+    Positions `linspace(0, n - 1, min(val_shots, n)).round()`: ascending, unique, deterministic; with
+    `val_shots >= n` every shot once.
+    """
+    selection = tasks.split_shots("val_select")
+    positions = np.linspace(0, len(selection) - 1, num=min(val_shots, len(selection))).round().astype(int)
+    return [selection[i] for i in positions]
+
+
 def train_direct(task: TaskSpec, cfg: DirectConfig, out_dir: Path, device: str, *, num_workers: int = 32,
                  loader_batch: int | None = None) -> Path:
     """Train on the training split and return the path of `best.pt` (the EMA of the best validation).
@@ -521,7 +535,7 @@ def train_direct(task: TaskSpec, cfg: DirectConfig, out_dir: Path, device: str, 
         csv.writer(f).writerow(LOG_COLUMNS)
 
     def validate(step: int) -> float:
-        shots = tasks.split_shots("val_select")[:cfg.val_shots]
+        shots = validation_shots(cfg.val_shots)
         result = harness.score(task, _predict_fn(ema, task, cfg, device), out_dir / "val" / f"step_{step:06d}",
                                split="val_select", shots=shots, history_s=cfg.history_s,
                                num_workers=num_workers)
