@@ -20,8 +20,8 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from tokamak_foundation_model.ignite.mast import harness, tasks  # noqa: E402
-from tokamak_foundation_model.ignite.mast.headroom import FITTED, direct  # noqa: E402
+from tokamak_foundation_model.ignite.mast import baselines, harness, tasks  # noqa: E402
+from tokamak_foundation_model.ignite.mast.headroom import direct  # noqa: E402
 
 TINY = direct.DirectConfig(d_model=32, depth=2, heads=4, batch_size=16, max_steps=300, warmup=10)
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "mast" / "run_headroom.py"
@@ -500,11 +500,14 @@ def test_a_stored_direct_score_is_kept_until_the_checkpoint_or_the_code_changes(
     assert rh.main([*score_only, "--force"]) == 0 and len(scored) == 3
 
 
-def test_scoring_uses_the_history_of_the_checkpoints_config(command, stub_training):
+def test_scoring_uses_the_history_of_the_checkpoints_config(command, stub_training, toy_task, monkeypatch):
+    """A non-markovian task: --history-s is recorded in the checkpoint's config and the scorer cuts with it. The
+    fake loader delivers windows of the task's own length, so the history asked for equals it (0.005 s)."""
     rh, root = command
-    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--history-s", "0.01"]) == 0
+    monkeypatch.setattr(rh.tasks, "load_task", lambda name: dataclasses.replace(toy_task, name=name, markovian=False))
+    assert rh.main([*BASE, "--split", "val_report", *TRAIN, "--history-s", "0.005"]) == 0
     assert stub_training["scored"][-1]["split"] == "val_report"
-    assert stub_training["scored"][-1]["history_s"] == 0.01
+    assert stub_training["scored"][-1]["history_s"] == 0.005
 
 
 # ------------------------------------------------------------------ scores follow the checkpoint's life
@@ -673,3 +676,492 @@ def test_share_gpu_belongs_to_direct_only(command, capsys, predictor):
     assert rh.main(["--task", "task_1-2", "--predictor", predictor, "--split", "val_report", "--share-gpu"]) == 2
     assert "--share-gpu" in capsys.readouterr().err
 
+
+
+# ------------------------------------------------------------------ final fix wave: C2
+
+def _run(root, variant="base"):
+    return root / "direct" / "task_1-2" / variant
+
+
+def _sidecar(root, variant="base"):
+    return json.loads((_run(root, variant) / "trained_by.json").read_text())
+
+
+def _the_code_now() -> dict:
+    return {"predictor_sha256": direct.PREDICTOR_SHA256, "code_sha256": baselines.scoring_code_sha256()}
+
+
+SCORE_ONLY = [*BASE, "--split", "val_report", "--gpu", "0"]
+TRAIN_ARGV = [*BASE, "--split", "val_report", *TRAIN]
+
+
+# ---- C2-I1: the checkpoint is tied to the code that trained it
+
+def test_the_training_leaves_a_sidecar_with_the_code_that_trained_it(command):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    assert _sidecar(root) == _the_code_now()
+    assert set(_sidecar(root)) == {"predictor_sha256", "code_sha256"}
+    assert not list(_run(root).glob("*.tmp"))
+
+
+def test_the_sidecar_exists_before_the_first_training_step_and_survives_a_stopped_training(command, monkeypatch):
+    rh, root = command
+    seen = {}
+
+    def dies(task, cfg, run_dir, device, **kw):
+        seen["at_start"] = json.loads((Path(run_dir) / "trained_by.json").read_text())
+        raise RuntimeError("the training died")
+
+    monkeypatch.setattr(direct, "train_direct", dies)
+    with pytest.raises(RuntimeError, match="died"):
+        rh.main(TRAIN_ARGV)
+    assert seen["at_start"] == _the_code_now() == _sidecar(root)
+
+
+def test_a_forced_retraining_replaces_the_sidecar(command, monkeypatch):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    monkeypatch.setattr(direct, "PREDICTOR_SHA256", "1" * 64)
+    assert rh.main([*TRAIN_ARGV, "--force"]) == 0
+    assert _sidecar(root)["predictor_sha256"] == "1" * 64
+
+
+@pytest.mark.parametrize("sidecar", ["absent", "not json", "wrong keys", "wrong type"])
+def test_the_score_records_the_code_that_trained_the_checkpoint_or_null(command, sidecar):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    record = json.loads(_score_json(root).read_text())
+    assert record["trained_predictor_sha256"] == direct.PREDICTOR_SHA256
+    assert record["trained_code_sha256"] == baselines.scoring_code_sha256()
+    path = _run(root) / "trained_by.json"
+    if sidecar == "absent":
+        path.unlink()
+    else:
+        path.write_text({"not json": "{not json", "wrong keys": json.dumps({"predictor_sha256": "a"}),
+                         "wrong type": json.dumps({"predictor_sha256": 1, "code_sha256": 2})}[sidecar])
+    assert rh.main([*SCORE_ONLY, "--force"]) == 0
+    record = json.loads(_score_json(root).read_text())
+    assert record["trained_predictor_sha256"] is None and record["trained_code_sha256"] is None
+
+
+def test_the_trained_by_hashes_are_a_mark_and_not_part_of_the_rule_that_keeps_a_score(command, capsys):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    assert rh.stale_reason(root, "task_1-2", "direct", "val_report") == ""
+    capsys.readouterr()
+
+    (_run(root) / "trained_by.json").write_text(json.dumps({**_the_code_now(), "predictor_sha256": "0" * 64}))
+    assert rh.main(SCORE_ONLY) == 0                                 # scoring again cannot cure a training by other code
+    assert "kept task_1-2 direct val_report" in capsys.readouterr().out
+    assert json.loads(_score_json(root).read_text())["trained_predictor_sha256"] == "0" * 64   # the mark follows the run
+    assert rh.stale_reason(root, "task_1-2", "direct", "val_report") == \
+        "trained by other code than the code now loaded"
+
+    (_run(root) / "trained_by.json").write_text(json.dumps({**_the_code_now(), "code_sha256": "0" * 64}))
+    assert rh.main(SCORE_ONLY) == 0
+    assert rh.stale_reason(root, "task_1-2", "direct", "val_report") == \
+        "trained by other code than the code now loaded"
+
+    (_run(root) / "trained_by.json").unlink()
+    assert rh.main(SCORE_ONLY) == 0
+    assert rh.stale_reason(root, "task_1-2", "direct", "val_report") == "training code not recorded"
+
+    (_run(root) / "trained_by.json").write_text(json.dumps(_the_code_now()))
+    assert rh.main(SCORE_ONLY) == 0
+    assert rh.stale_reason(root, "task_1-2", "direct", "val_report") == ""
+
+
+def test_the_table_command_marks_a_direct_score_by_the_code_that_trained_it(command, capsys):
+    rh, root = command
+
+    def notes():
+        capsys.readouterr()
+        assert rh.main(["--table"]) == 0
+        return [line for line in capsys.readouterr().out.splitlines() if line.startswith("- 1-2 direct_val")]
+
+    assert rh.main(TRAIN_ARGV) == 0
+    assert notes() == []                                            # trained by the code now loaded: no mark
+    (_run(root) / "trained_by.json").write_text(json.dumps({**_the_code_now(), "code_sha256": "0" * 64}))
+    assert rh.main(SCORE_ONLY) == 0                                 # kept; the record follows the sidecar
+    assert notes() == ["- 1-2 direct_val: trained by other code than the code now loaded (stale)"]
+    (_run(root) / "trained_by.json").unlink()
+    assert rh.main(SCORE_ONLY) == 0
+    assert notes() == ["- 1-2 direct_val: training code not recorded (stale)"]
+
+
+def test_a_score_from_before_the_sidecar_has_no_training_code_recorded(command):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    path = _score_json(root)
+    record = json.loads(path.read_text())
+    del record["trained_predictor_sha256"], record["trained_code_sha256"]
+    path.write_text(json.dumps(record))
+    assert rh.stale_reason(root, "task_1-2", "direct", "val_report") == "training code not recorded"
+
+
+def test_a_stale_score_keeps_its_own_reason_before_the_trained_by_one(command):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    (_run(root) / "trained_by.json").unlink()
+    best = _run(root) / "best.pt"
+    state = torch.load(best, weights_only=True)
+    state["step"] += 1
+    torch.save(state, best)
+    assert "checkpoint_sha256 changed since" in rh.stale_reason(root, "task_1-2", "direct", "val_report")
+
+
+@pytest.mark.parametrize("variant, name", [("base", "direct"), ("wide", "direct.wide")])
+def test_stale_reason_of_a_direct_checkpoint_follows_its_bytes(command, variant, name):
+    rh, root = command
+    assert rh.main([*TRAIN_ARGV, "--variant", variant]) == 0
+    assert rh.stale_reason(root, "task_1-2", name, "val_report") == ""
+    best = _run(root, variant) / "best.pt"
+    state = torch.load(best, weights_only=True)
+    state["step"] += 1                                                # other bytes
+    torch.save(state, best)
+    assert rh.stale_reason(root, "task_1-2", name, "val_report").startswith("checkpoint_sha256 changed since")
+
+
+# ---- C2-M1: a kept score refreshes what the files say about the run
+
+def test_a_kept_direct_score_refreshes_the_three_run_keys(command, capsys):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    path = _score_json(root)
+    record = json.loads(path.read_text())
+    record.update(checkpoint_step=2, trained_steps=2, max_steps=4)     # a score taken in the middle of the training
+    path.write_text(json.dumps(record))
+    capsys.readouterr()
+    assert rh.main(SCORE_ONLY) == 0
+    out = capsys.readouterr().out
+    assert "kept task_1-2 direct val_report" in out and "refreshed" in out
+    refreshed = json.loads(path.read_text())
+    assert (refreshed["checkpoint_step"], refreshed["trained_steps"], refreshed["max_steps"]) == (4, 4, 4)
+    assert {k: v for k, v in refreshed.items() if not k.startswith(("trained_", "checkpoint_step"))} == \
+        {k: v for k, v in record.items() if not k.startswith(("trained_", "checkpoint_step"))}   # nothing else moved
+    assert not list(path.parent.glob("*.tmp"))
+    capsys.readouterr()
+    assert rh.main(SCORE_ONLY) == 0 and "refreshed" not in capsys.readouterr().out        # nothing to refresh again
+
+
+def test_a_kept_score_whose_run_cannot_be_read_is_still_kept(command, capsys):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    (_run(root) / "config.json").unlink()                              # the record keys cannot be refreshed
+    capsys.readouterr()
+    assert rh.main(SCORE_ONLY) == 0
+    captured = capsys.readouterr()
+    assert "kept task_1-2 direct val_report" in captured.out and "cannot refresh" in captured.err
+
+
+# ---- C2-M2: one checkpoint for the scores of one call
+
+def test_a_checkpoint_that_changes_while_the_predictor_is_built_is_refused(command, monkeypatch, capsys):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    before = _score_json(root).read_text()
+    build, code, provenance = rh.PREDICTORS["direct"]
+
+    def build_then_replace(ctx):
+        predictor = build(ctx)
+        best = _run(root) / "best.pt"
+        state = torch.load(best, weights_only=True)
+        state["step"] += 1                                             # a concurrent writer
+        torch.save(state, best)
+        return predictor
+
+    monkeypatch.setitem(rh.PREDICTORS, "direct", (build_then_replace, code, provenance))
+    scored = []
+    monkeypatch.setattr(rh.harness, "score", lambda *a, **k: scored.append(1))
+    capsys.readouterr()
+    assert rh.main([*SCORE_ONLY, "--force"]) == 1
+    assert "changed while" in capsys.readouterr().err and not scored
+    assert _score_json(root).read_text() == before
+
+
+# ---- C2-M4: the configuration is validated before anything is deleted
+
+@pytest.mark.parametrize("bad", [["--heads", "3"], ["--max-steps", "0"], ["--val-every", "0"], ["--lr", "0"]])
+def test_an_invalid_configuration_is_refused_before_a_forced_retraining_deletes_anything(command, capsys, bad):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    files = {n: (_run(root) / n).read_bytes() for n in ("best.pt", "last.pt", "trained_by.json", "config.json")}
+    score = _score_json(root).read_text()
+    capsys.readouterr()
+    assert rh.main([*TRAIN_ARGV, "--force", *bad]) == 2
+    err = capsys.readouterr().err
+    assert "refused" in err and bad[0].lstrip("-").replace("-", "_") in err      # it names the field
+    assert {n: (_run(root) / n).read_bytes() for n in files} == files
+    assert _score_json(root).read_text() == score
+    assert not (_run(root) / "train.lock").exists()
+
+
+def test_an_invalid_configuration_creates_no_run_directory(command, capsys):
+    rh, root = command
+    assert rh.main([*TRAIN_ARGV, "--variant", "bad", "--heads", "3"]) == 2
+    assert "heads" in capsys.readouterr().err
+    assert not _run(root, "bad").exists()
+
+
+def test_the_help_says_what_force_means_with_and_without_train(command, capsys):
+    rh, root = command
+    with pytest.raises(SystemExit):
+        rh.main(["--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "--force" in text and "without --train: score again" in text and "With `direct --train`: train again" in text
+
+
+# ---- C2-M5: a score that cannot be removed stops the command
+
+def test_a_stored_score_that_cannot_be_removed_stops_the_command(command, monkeypatch, capsys):
+    import types
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    best = (_run(root) / "best.pt").read_bytes()
+    score = _score_json(root).read_text()
+
+    def denied(path, *a, **k):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(rh, "shutil", types.SimpleNamespace(rmtree=denied))
+    trained = []
+    monkeypatch.setattr(direct, "train_direct", lambda *a, **k: trained.append(1))
+    capsys.readouterr()
+    assert rh.main([*TRAIN_ARGV, "--force"]) == 2
+    err = capsys.readouterr().err
+    assert "cannot remove" in err and str(_score_json(root).parent) in err
+    assert not trained and (_run(root) / "best.pt").read_bytes() == best      # nothing was deleted or trained
+    assert _score_json(root).read_text() == score
+    assert not (_run(root) / "train.lock").exists()
+
+
+# ---- C2-M7 and the guard of A-M1: --history-s
+
+def _non_markovian(rh, toy_task, monkeypatch, **changes):
+    monkeypatch.setattr(rh.tasks, "load_task",
+                        lambda name: dataclasses.replace(toy_task, name=name, markovian=False, **changes))
+
+
+def test_history_is_refused_for_a_markovian_task_before_anything_is_written(command, capsys):
+    rh, root = command
+    assert rh.main([*TRAIN_ARGV, "--history-s", "0.01"]) == 2
+    err = capsys.readouterr().err
+    assert "--history-s" in err and "markovian" in err and "task_1-2" in err
+    assert not root.exists()
+
+
+@pytest.mark.parametrize("history", ["0.0001", "0", "-0.01", "nan"])
+def test_a_history_shorter_than_half_a_sample_is_refused_naming_the_signal(command, toy_task, monkeypatch, capsys,
+                                                                          history):
+    rh, root = command
+    _non_markovian(rh, toy_task, monkeypatch)
+    assert rh.main([*TRAIN_ARGV, "--history-s", history]) == 2
+    err = capsys.readouterr().err
+    assert "--history-s" in err and "summary-ip" in err and "magnetics-flux_loop_flux" in err
+    assert not root.exists()                                              # nothing was written
+
+
+def test_the_guard_names_an_actuator_that_is_too_coarse_for_the_history(command, toy_task, monkeypatch, capsys):
+    rh, root = command
+    coarse = dataclasses.replace(toy_task.actuators[0], dt=0.01)           # 10 ms samples: 4 ms history rounds to 0
+    _non_markovian(rh, toy_task, monkeypatch, actuators=(coarse,))
+    assert rh.main([*TRAIN_ARGV, "--history-s", "0.004"]) == 2
+    err = capsys.readouterr().err
+    assert "pf_active-coil_voltage" in err and "summary-ip" not in err
+    assert not root.exists()
+
+
+def test_a_history_of_at_least_half_a_sample_is_accepted(command, toy_task, monkeypatch):
+    rh, root = command
+    _non_markovian(rh, toy_task, monkeypatch)
+    assert rh.main([*TRAIN_ARGV, "--history-s", "0.005"]) == 0              # round(0.005 / dt) >= 1 for every signal
+
+
+# ---- L278: one training of a run at a time
+
+def _alive_pid_not_ours():
+    return os.getppid()
+
+
+def test_the_lock_is_held_during_the_training_and_removed_after_it(command, monkeypatch):
+    rh, root = command
+    seen = {}
+    real = direct.train_direct
+
+    def checking(task, cfg, run_dir, device, **kw):
+        seen["lock"] = (Path(run_dir) / "train.lock").read_text().strip()
+        seen["checkpoint_looks_present"] = (Path(run_dir) / "best.pt").exists()
+        return real(task, cfg, run_dir, device, **kw)
+
+    monkeypatch.setattr(direct, "train_direct", checking)
+    assert rh.main(TRAIN_ARGV) == 0
+    assert seen == {"lock": str(os.getpid()), "checkpoint_looks_present": False}   # a lock is not a checkpoint
+    assert not (_run(root) / "train.lock").exists()
+
+
+def test_the_lock_is_removed_when_the_training_fails(command, monkeypatch):
+    rh, root = command
+
+    def dies(*a, **k):
+        raise RuntimeError("the training died")
+
+    monkeypatch.setattr(direct, "train_direct", dies)
+    with pytest.raises(RuntimeError):
+        rh.main(TRAIN_ARGV)
+    assert not (_run(root) / "train.lock").exists()
+
+
+def test_a_second_launch_of_a_run_that_is_training_is_refused_naming_the_pid(command, monkeypatch, capsys):
+    rh, root = command
+    pid = _alive_pid_not_ours()
+    _run(root).mkdir(parents=True)
+    (_run(root) / "train.lock").write_text(f"{pid}\n")
+    trained = []
+    monkeypatch.setattr(direct, "train_direct", lambda *a, **k: trained.append(1))
+    assert rh.main(TRAIN_ARGV) == 2
+    err = capsys.readouterr().err
+    assert f"pid {pid}" in err and "train.lock" in err and not trained
+    assert (_run(root) / "train.lock").read_text().strip() == str(pid)    # the other training's lock is untouched
+    assert not (_run(root) / "best.pt").exists()
+
+
+def test_a_refused_launch_deletes_nothing(command, capsys):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    best, score = (_run(root) / "best.pt").read_bytes(), _score_json(root).read_text()
+    (_run(root) / "train.lock").write_text(f"{_alive_pid_not_ours()}\n")
+    assert rh.main([*TRAIN_ARGV, "--force"]) == 2
+    assert (_run(root) / "best.pt").read_bytes() == best and _score_json(root).read_text() == score
+
+
+def test_a_lock_of_a_pid_that_is_not_running_is_taken_over_with_one_line(command, capsys):
+    import subprocess
+    rh, root = command
+    done = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"], capture_output=True, text=True,
+                          check=True)
+    dead = int(done.stdout)
+    _run(root).mkdir(parents=True)
+    (_run(root) / "train.lock").write_text(f"{dead}\n")
+    capsys.readouterr()
+    assert rh.main(TRAIN_ARGV) == 0
+    out = capsys.readouterr().out
+    assert out.count("taking over") == 1 and f"pid {dead}" in out
+    assert not (_run(root) / "train.lock").exists() and (_run(root) / "best.pt").exists()
+
+
+def test_a_lock_without_a_readable_pid_is_not_taken_over(command, capsys):
+    rh, root = command
+    _run(root).mkdir(parents=True)
+    (_run(root) / "train.lock").write_text("")
+    assert rh.main(TRAIN_ARGV) == 2
+    assert "no readable pid" in capsys.readouterr().err and (_run(root) / "train.lock").exists()
+
+
+def test_the_old_validation_directories_are_left_alone(command):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    leftovers = sorted(p.name for p in (_run(root) / "val").iterdir())
+    assert leftovers and rh.main([*TRAIN_ARGV, "--force"]) == 0
+    assert set(leftovers) <= {p.name for p in (_run(root) / "val").iterdir()}
+
+
+# ---- C2-M9: the second write of score.json is atomic
+
+def test_the_second_write_of_score_json_is_atomic(command, monkeypatch):
+    rh, root = command
+    real_replace = os.replace
+
+    def failing(src, dst):
+        if str(dst).endswith("score.json"):
+            raise OSError("disk full")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(rh.os, "replace", failing)
+    with pytest.raises(OSError, match="disk full"):
+        rh.main(TRAIN_ARGV)
+    path = _score_json(root)
+    first = json.loads(path.read_text())                                   # the first write is whole, not truncated
+    assert first["predictor"] == "direct" and "predictor_sha256" not in first
+    assert not list(path.parent.glob("*.tmp*"))
+    monkeypatch.setattr(rh.os, "replace", real_replace)
+
+
+# ---- A-R3: a fitted predictor never sees the targets
+
+def test_blinding_gives_a_predictor_that_reads_its_targets_nan_arrays_of_the_same_shape(command, toy_batch):
+    rh, root = command
+    batch = toy_batch(n=3, seed=0)
+    original = {k: v.copy() for k, v in batch.targets.items()}
+
+    def peeking(b):
+        return {k: v.copy() for k, v in b.targets.items()}
+
+    peeking.history_s = 0.02
+    peeking.other = "kept"
+    out = rh._blind_to_targets(peeking)(batch)
+    assert set(out) == set(original)
+    for k, v in out.items():
+        assert v.shape == original[k].shape and v.dtype == original[k].dtype and np.isnan(v).all()
+    for k, v in batch.targets.items():
+        np.testing.assert_array_equal(v, original[k])                      # the harness still has the real targets
+    blind = rh._blind_to_targets(peeking)
+    assert blind.history_s == 0.02 and blind.other == "kept"
+    assert not hasattr(rh._blind_to_targets(lambda b: {}), "history_s")
+
+
+def test_blinding_a_bound_method_keeps_its_history_attribute(command, toy_task, tmp_path):
+    rh, root = command
+    ckpt = _save(toy_task, tmp_path, dataclasses.replace(TINY, history_s=0.005))
+    predict = direct.direct_predictor(toy_task, ckpt, "cpu")
+    assert rh._blind_to_targets(predict).history_s == 0.005
+
+
+def test_the_direct_predictor_gives_the_same_output_blinded_or_not(command, toy_task, toy_batch, tmp_path):
+    rh, root = command
+    ckpt = _save(toy_task, tmp_path)
+    predict = direct.direct_predictor(toy_task, ckpt, "cpu")
+    batch = toy_batch(n=4, seed=5)
+    np.testing.assert_array_equal(rh._blind_to_targets(predict)(batch)["summary-ip"], predict(batch)["summary-ip"])
+    np.testing.assert_array_equal(predict(dataclasses.replace(batch, targets={}))["summary-ip"],
+                                  predict(batch)["summary-ip"])           # L275: predictions do not read the targets
+
+
+def test_the_command_scores_a_direct_model_through_the_blind_wrapper(command, monkeypatch):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    seen = []
+    real = direct._inputs_to_tensors
+    monkeypatch.setattr(direct, "_inputs_to_tensors",
+                        lambda batch, *a, **k: (seen.append([bool(np.isnan(v).all()) for v in batch.targets.values()]),
+                                                real(batch, *a, **k))[1])
+    assert rh.main([*SCORE_ONLY, "--force"]) == 0
+    assert seen and all(all(flags) for flags in seen)                      # every call during scoring saw NaN targets
+
+
+# ---- L275: what is validated and saved is the EMA
+
+def test_the_ema_weights_are_what_is_validated_and_saved(toy_task, stub_training, tmp_path, monkeypatch):
+    cfg = dataclasses.replace(TINY, max_steps=6, val_every=3, warmup=2, val_shots=4, batch_size=8)
+    validated = []
+    real = direct._predict_fn
+
+    def spy(model, task, cfg_, device):
+        validated.append((model, {k: v.detach().clone() for k, v in model.state_dict().items()},
+                          [p.requires_grad for p in model.parameters()]))
+        return real(model, task, cfg_, device)
+
+    monkeypatch.setattr(direct, "_predict_fn", spy)
+    direct.train_direct(toy_task, cfg, tmp_path / "run", "cpu", num_workers=2)
+    assert len(validated) == 2
+    for _, _, grads in validated:
+        assert not any(grads)                                              # the EMA copy: it is never trained
+    saved = torch.load(tmp_path / "run" / "last.pt", weights_only=True)
+    last = validated[-1][1]
+    assert set(saved["state"]) == set(last) and all(torch.equal(saved["state"][k], last[k]) for k in last)
+    best = torch.load(tmp_path / "run" / "best.pt", weights_only=True)
+    by_step = {3: validated[0][1], 6: validated[1][1]}[best["step"]]
+    assert all(torch.equal(best["state"][k], by_step[k]) for k in by_step)
+    # and it is not the raw weights: the EMA of 6 steps is still near the initial weights, the raw ones moved
+    assert not all(torch.equal(validated[0][1][k], validated[1][1][k]) for k in last)

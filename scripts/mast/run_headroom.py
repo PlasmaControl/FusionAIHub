@@ -11,11 +11,14 @@ The score goes to `<stage0>/scores/<task>/<predictor>/<split>/` (TokaMark's eval
 `scripts/mast/check_harness.py` scores them, and a second command writing the same directories
 would be a second source of truth for their definition.
 
-`--table` (no other option) builds the headroom table (`headroom/table.py`) from the scores that are stored under
-`<stage0>/scores`: it scores nothing and fits nothing, writes `<stage0>/headroom_table.csv` and prints the table as
-Markdown, then the projected mean (not computed, with a count, while a stage-0 task has no direct score). Whether
-a stored score is current is decided by `stale_reason`, which applies the rule of `_kept_score` that the command
-uses before it scores again; a score that is not current is shown and named, not dropped.
+`--table` (no other option: every other option is refused) builds the headroom table (`headroom/table.py`) from
+the scores that are stored under `<stage0>/scores`: it scores nothing and fits nothing, writes
+`<stage0>/headroom_table.csv` and prints the table as Markdown, the direct variants listing with the same marks, then
+the projected mean (not computed, with a count, while a stage-0 task has no direct score; else with the number of
+rows whose direct score is stale, unfinished or not competitive). Whether a stored score is current is decided by
+`stale_reason`, which applies the rule of `_kept_score` that the command uses before it scores again, plus, for a
+direct score, a mark when the checkpoint was trained by other code than the code now loaded (see `direct`); a score
+that is not current is shown and named, not dropped.
 
 Predictors: `floor` (TokaMind's output-representation floor, `headroom/floor.py`); `shrunk` and
 `ridge` (`headroom/cheap.py`: shrunk persistence and ridge regression on frame means); `direct` (`headroom/direct.py`:
@@ -44,20 +47,53 @@ By default it refuses a GPU on which the lookup lists a compute process (naming 
 and before scoring; `--share-gpu` (direct only) uses such a GPU anyway and prints one line naming the GPU
 and the pids it is shared with (nothing extra on a GPU without a compute process). Sharing changes how fast a
 run goes, not what it computes, and nothing in `score.json` or the checkpoint records tells that a GPU was
-shared. It always refuses an index or output the lookup cannot resolve. `--train` trains into `<stage0>/direct/<task>/<variant>/` (`best.pt`, `last.pt`,
-`train_log.csv`, `config.json`; it refuses to overwrite an existing `best.pt` unless `--force`) and then
-scores it on `--split val_report` (it first removes the stored score of that predictor name, so no number
-outlives the checkpoint it was computed from while the retraining runs); without `--train` it scores the existing `best.pt` ("train first" if
-there is none). `--variant NAME` (default `base`) selects another configuration: the base variant is
-scored as predictor `direct` into `scores/<task>/direct/<split>/`, another as `direct.<variant>` into
-`scores/<task>/direct.<variant>/<split>/`; both are fitted, so never scored on the test split. The
-configuration options (`--max-steps --d-model --depth --heads --history-s --train-batch-size --lr
---val-every`) apply to `--train` only: scoring rebuilds the model from the `config.json` beside the
-checkpoint, never from the command line. Its provenance key is `checkpoint_sha256`, the sha256 of the
-`best.pt` the predictions come from. Its `score.json` also records, without comparing them when a score is
-kept: `checkpoint_step` (the step of the `best.pt` scored), `trained_steps` (the step of `last.pt`, null if it
-cannot be read) and `max_steps` (from the run's `config.json`); a run whose `trained_steps` is below
-`max_steps`, or null, is scored with one warning line, since its number is for a run that did not finish.
+shared. It always refuses an index or output the lookup cannot resolve.
+
+`direct --train`. Trains into `<stage0>/direct/<task>/<variant>/` (`best.pt`, `last.pt`, `train_log.csv`,
+`config.json`, `trained_by.json`; it refuses to overwrite an existing `best.pt` unless `--force`) and then scores
+it on `--split val_report`. `--force` means "train again" with `--train` and "score again" without it. Before
+anything is deleted the configuration is validated (the model is built on the CPU; sizes, steps and the learning
+rate must be usable) and a run that is being trained is refused: `train.lock` in the run directory holds the pid
+of the training, a second launch is refused naming the pid, and a lock whose pid is not running is taken over
+with one printed line (a lock with no readable pid is not; a reused pid needs the lock removed by hand). The lock
+is removed when the training ends or fails, and is not a checkpoint (`best.pt` is what the checks look at). Then
+the stored score of that predictor name is removed, so that no number outlives the checkpoint it was computed from
+while the retraining runs; a removal that fails stops the command, because the old number would stay readable.
+`trained_by.json` (exactly the keys `predictor_sha256` and `code_sha256`: `direct.py` as loaded and the scoring
+code) is written before the first step, so a stopped training carries it, and replaced by a forced retraining.
+`--history-s` is refused for a markovian task (it changes nothing there) and for a value with
+`round(history_s / dt) < 1` for any input or actuator signal, naming the signal (the harness would deliver an
+all-NaN last sample), both before anything is written.
+
+`direct` scoring. Without `--train` it scores the existing `best.pt` ("train first" if there is none).
+`--variant NAME` (default `base`) selects another configuration: the base variant is scored as predictor `direct`
+into `scores/<task>/direct/<split>/`, another as `direct.<variant>` into `scores/<task>/direct.<variant>/<split>/`;
+both are fitted, so never scored on the test split. The configuration options (`--max-steps --d-model --depth
+--heads --history-s --train-batch-size --lr --val-every`) apply to `--train` only: scoring rebuilds the model
+from the `config.json` beside the checkpoint, never from the command line. Its provenance key is
+`checkpoint_sha256`, the sha256 of the `best.pt` the predictions come from; the command refuses (exit status 1) if
+that hash differs between the check that decides whether to keep a score and the one after the predictor was
+built (a concurrent writer). Its `score.json` also records, without comparing them when a score is kept:
+`checkpoint_step` (the step of the `best.pt` scored), `trained_steps` (the step of `last.pt`, null if it cannot be
+read), `max_steps` (from the run's `config.json`), and `trained_predictor_sha256` and `trained_code_sha256` (from
+`trained_by.json`, null if there is no readable one). A run whose `trained_steps` is below `max_steps`, or null,
+is scored with one warning line, since its number is for a run that did not finish. These five keys are
+refreshed from the run's files whenever a stored direct score is kept, so that a score taken in the middle of a
+training does not keep its step counts after the training finished. The two trained-by hashes are a mark and not
+part of the rule that keeps a score (scoring again cannot cure a training by other code): the table marks the
+cell "trained by other code than the code now loaded", or "training code not recorded" (which is also what a
+run trained before `trained_by.json` existed shows until a sidecar is written for it).
+
+Limits of what "current" means. The direct predictor's hash covers `direct.py` only. It imports the 5 ms frame
+rule (`FRAME_S`, `frame_len`) from `cheap.py`, which the hash does not cover; a test pins both values. A score is
+kept on the hash of our scoring code (harness.py, tasks.py, baselines.py), the predictor's hash and its own
+provenance, so it is not marked when TokaMark's code (windows, statistics, splits, the metric) or the Zarr data
+root changed: the record holds neither.
+
+Blind scoring. The fitted predictors (`shrunk`, `ridge`, `direct`) are called with a copy of the batch whose
+targets are NaN arrays of the same shapes and dtypes (`_blind_to_targets`; the wrapper keeps the predict
+function's attributes such as `history_s`), so that "does not read its targets" is structural. The harness still
+scores against the real targets, and the floor, which reads its targets by definition, is not wrapped.
 
 Provenance. `score.json`'s `code_sha256` covers the scoring code (harness.py, tasks.py,
 baselines.py), not the predictor. This command therefore adds `predictor_sha256`, the sha256 of
@@ -87,6 +123,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+
+import numpy as np
 
 from tokamak_foundation_model.ignite.mast import baselines, harness, paths, tasks
 from tokamak_foundation_model.ignite.mast.headroom import FITTED, cheap, floor
@@ -137,21 +175,140 @@ def _direct_provenance(ctx: Context) -> dict[str, str]:
     return {"checkpoint_sha256": hashlib.sha256(_checkpoint(ctx).read_bytes()).hexdigest()}
 
 
+class Refused(Exception):
+    """A refusal that is not an error of the code: `main` prints it and exits with status 2."""
+
+
+TRAINED_BY = "trained_by.json"      # in a run directory: the code that trained it (written before the first step)
+LOCK = "train.lock"                 # in a run directory: the pid of the training that holds it
+
+
+def _write_json_atomic(path: Path, record: dict) -> None:
+    """Write `record` as JSON to `path` through a temporary name in the same directory, then replace: a reader
+    sees the old file or the new one, never half of one."""
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(record, indent=2) + "\n")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _read_trained_by(run_dir: Path) -> dict | None:
+    """The sidecar of a run (exactly the two hashes, both strings), or None if there is no readable one."""
+    try:
+        record = json.loads((run_dir / TRAINED_BY).read_text())
+    except (OSError, ValueError):
+        return None
+    if (isinstance(record, dict) and set(record) == {"predictor_sha256", "code_sha256"}
+            and all(isinstance(v, str) for v in record.values())):
+        return record
+    return None
+
+
+def _validate_direct_config(direct, task: tasks.TaskSpec, cfg) -> None:
+    """Raise `Refused` for a configuration the training would fail on, before anything is deleted. The model
+    is built (on the CPU, then dropped), which is the check `train_direct` itself makes first; the rest are
+    values for which a run could not produce a `best.pt`."""
+    for name in ("max_steps", "val_every", "batch_size", "d_model", "heads"):
+        if getattr(cfg, name) < 1:
+            raise Refused(f"invalid configuration: {name} is {getattr(cfg, name)}, it must be at least 1")
+    if not (math.isfinite(cfg.lr) and cfg.lr > 0):
+        raise Refused(f"invalid configuration: lr is {cfg.lr}, it must be finite and positive")
+    try:
+        direct.DirectModel(task, cfg)
+    except ValueError as e:
+        raise Refused(f"invalid configuration: {e}") from None
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:      # the process exists and belongs to somebody else
+        return True
+    return True
+
+
+def _take_lock(run_dir: Path) -> Path:
+    """Create `<run dir>/train.lock` holding this pid, or raise `Refused`. A lock whose pid is not alive is
+    taken over with one printed line; one with no readable pid is not (nothing says it is dead). The lock is
+    a file of its own: it is not a checkpoint, and `best.pt` is what the command's checks look at. A pid can
+    be reused by another process after a crash; then the lock must be removed by hand."""
+    lock = run_dir / LOCK
+    for _ in range(2):
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            try:
+                owner = int(lock.read_text().strip())
+            except (OSError, ValueError):
+                raise Refused(f"{lock} exists and holds no readable pid; if no training of this run is going, "
+                              "remove it by hand") from None
+            if _pid_alive(owner):
+                raise Refused(f"another training of this run is going (pid {owner}, {lock}); wait for it, or "
+                              "train another --variant")
+            print(f"taking over {lock}: its pid {owner} is not running", flush=True)
+            lock.unlink(missing_ok=True)
+            continue
+        with os.fdopen(fd, "w") as f:
+            f.write(f"{os.getpid()}\n")
+        return lock
+    raise Refused(f"could not take {lock}: another process took it first")
+
+
+def _release_lock(lock: Path) -> None:
+    try:
+        if lock.read_text().strip() == str(os.getpid()):
+            lock.unlink()
+    except OSError:
+        pass
+
+
 def _train_direct(ctx: Context, score_dir: Path) -> None:
+    """Train the variant: validate the configuration, take the run's lock, remove what is stored for the
+    predictor (and with `--force` the checkpoints), write `trained_by.json`, train. Raises `Refused` before
+    anything is deleted if the configuration is invalid, the run is locked, or a removal fails."""
     direct = _direct_module()
     cfg = dataclasses.replace(direct.default_config(ctx.task), **ctx.overrides)
+    _validate_direct_config(direct, ctx.task, cfg)
     run_dir = direct_run_dir(ctx.root, ctx.task_name, ctx.variant)
-    # Whatever is stored for the predictor goes before the training starts: a score of a checkpoint that is
-    # gone, or of the run this one replaces, must not be readable for the hours the training takes (or for
-    # good if it dies).
-    shutil.rmtree(score_dir, ignore_errors=True)
-    if ctx.force:  # a refused overwrite was checked before; --force starts the run again
-        for name in ("best.pt", "last.pt"):
-            (run_dir / name).unlink(missing_ok=True)
-    started = time.monotonic()
-    direct.train_direct(ctx.task, cfg, run_dir, DEVICE, num_workers=ctx.num_workers)
-    print(f"trained {ctx.task_name} {ctx.variant}: {cfg.max_steps} steps, {time.monotonic() - started:.0f} s",
-          flush=True)
+    created = not run_dir.exists()
+    paths.prepare_write_root(run_dir)
+    lock = _take_lock(run_dir)
+    try:
+        # Whatever is stored for the predictor goes before the training starts: a score of a checkpoint that is
+        # gone, or of the run this one replaces, must not be readable for the hours the training takes (or for
+        # good if it dies). A removal that fails stops the command: the old score would stay readable.
+        try:
+            shutil.rmtree(score_dir)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            raise Refused(f"cannot remove the stored score {score_dir} ({e}); the old number would stay readable "
+                          "during the training") from None
+        if ctx.force:  # a refused overwrite was checked before; --force starts the run again
+            for name in ("best.pt", "last.pt"):
+                try:
+                    (run_dir / name).unlink(missing_ok=True)
+                except OSError as e:
+                    raise Refused(f"cannot remove {run_dir / name} ({e})") from None
+        # The code that trains, recorded before the first step so that a stopped training carries it too; a
+        # forced retraining replaces it. `_direct_record` copies it into score.json.
+        _write_json_atomic(run_dir / TRAINED_BY, {"predictor_sha256": direct.PREDICTOR_SHA256,
+                                                  "code_sha256": baselines.scoring_code_sha256()})
+        started = time.monotonic()
+        direct.train_direct(ctx.task, cfg, run_dir, DEVICE, num_workers=ctx.num_workers)
+        print(f"trained {ctx.task_name} {ctx.variant}: {cfg.max_steps} steps, {time.monotonic() - started:.0f} s",
+              flush=True)
+    finally:
+        _release_lock(lock)
+        if created:
+            try:
+                run_dir.rmdir()  # nothing came of this run: leave no empty variant behind
+            except OSError:
+                pass
 
 
 def _nvidia_smi(*args: str) -> str:
@@ -241,12 +398,30 @@ def _direct_record(ctx: Context) -> dict:
     except (OSError, KeyError, TypeError, ValueError, RuntimeError, EOFError, pickle.UnpicklingError):
         trained_steps = None
     max_steps = int(json.loads((run / "config.json").read_text())["cfg"]["max_steps"])
-    return {"checkpoint_step": checkpoint_step, "trained_steps": trained_steps, "max_steps": max_steps}
+    trained_by = _read_trained_by(run) or {}
+    return {"checkpoint_step": checkpoint_step, "trained_steps": trained_steps, "max_steps": max_steps,
+            "trained_predictor_sha256": trained_by.get("predictor_sha256"),
+            "trained_code_sha256": trained_by.get("code_sha256")}
 
 
 def _floor(ctx: Context) -> harness.PredictFn:
     return floor.floor_predictor(ctx.task, floor.tokamind_output_indices(ctx.task_name),
                                  floor.tokamind_nan_imputation(ctx.task_name))
+
+
+def _blind_to_targets(predict: harness.PredictFn) -> harness.PredictFn:
+    """`predict` as a fitted predictor must be scored: it gets a copy of the batch whose targets are NaN arrays of
+    the same shapes and dtypes. "Does not read its targets" is then structural, not a property each predictor has
+    to keep. The harness still scores against the real targets (the wrapper changes only what the predictor sees),
+    and the attributes the command reads from a predict function (`history_s`, ...) are kept. Not for the floor,
+    which reads its targets by definition."""
+    def blind(batch: harness.WindowBatch) -> dict:
+        nan = {name: np.full(a.shape, np.nan, dtype=a.dtype if a.dtype.kind == "f" else np.float32)
+               for name, a in batch.targets.items()}
+        return predict(dataclasses.replace(batch, targets=nan))
+
+    blind.__dict__.update(getattr(predict, "__dict__", {}))
+    return blind
 
 
 def _floor_provenance(ctx: Context) -> dict[str, str]:
@@ -316,6 +491,18 @@ def provenance_of(predictor: str, ctx: Context) -> dict[str, str]:
     return {"predictor_sha256": code_sha256(), **extra_provenance(ctx)}
 
 
+def _trained_by_reason(record: dict, loaded_predictor_sha256: str) -> str:
+    """The mark for a direct score whose checkpoint was trained by other code than the code now loaded (the
+    predictor's file or the scoring code), or by code that was not recorded. A mark only: it is not part of
+    `_kept_score`, because scoring again cannot cure a training by other code."""
+    trained = (record.get("trained_predictor_sha256"), record.get("trained_code_sha256"))
+    if None in trained:
+        return "training code not recorded"
+    if trained != (loaded_predictor_sha256, baselines.scoring_code_sha256()):
+        return "trained by other code than the code now loaded"
+    return ""
+
+
 def stale_reason(root: Path, task_name: str, name: str, split: str) -> str:
     """"" if the stored score of predictor `name` (`direct.<variant>` included) is current, else why not.
 
@@ -339,7 +526,10 @@ def stale_reason(root: Path, task_name: str, name: str, split: str) -> str:
         provenance = provenance_of(predictor, ctx)
     except Exception as e:  # noqa: BLE001
         return f"provenance cannot be computed now ({type(e).__name__}: {e})"
-    return _kept_score(out_dir, task_name, name, split, provenance, False)[1]
+    stored, reason = _kept_score(out_dir, task_name, name, split, provenance, False)
+    if stored is not None and predictor == "direct":
+        return _trained_by_reason(stored, provenance["predictor_sha256"])
+    return reason
 
 
 def _direct_marked_rows(t) -> int:
@@ -355,6 +545,7 @@ def print_table() -> int:
     """`--table`: build the headroom table from the stored scores, write `<stage0>/headroom_table.csv` and print
     it as Markdown with the projected mean. Scores nothing and writes nothing else."""
     root = paths.prepare_write_root(paths.stage0_dir())
+
     def stale(task: str, name: str, split: str) -> str:
         return stale_reason(root, task, name, split)
 
@@ -381,6 +572,39 @@ def print_table() -> int:
                  "marks above)" if marked else ""))
     print(f"wrote {csv_path}")
     return 0
+
+
+def _history_problem(task: tasks.TaskSpec, history_s: float) -> str | None:
+    """Why `--history-s` cannot apply to `task`, or None. A markovian task has TokaMark's own windows
+    (`tasks.TaskSpec.n_in`, `n_act`), so the option would change nothing but the name of the run. Otherwise
+    `round(history_s / dt)` must be at least 1 for every input and actuator signal: with 0 samples the harness's
+    `_last_finite` returns all NaN even when the history has finite samples (`harness.py`)."""
+    if task.markovian:
+        return (f"--history-s has no effect on the markovian task {task.name} (its windows are TokaMark's own), so "
+                "a run with it would be identical to the base run")
+    short = [f"{s.name} (dt {s.dt:g} s)" for s in (*task.inputs, *task.actuators)
+             if not history_s > 0 or round(history_s / s.dt) < 1]       # not > 0 also catches nan
+    if short:
+        return (f"--history-s {history_s:g} is not at least half a sample (round(history_s / dt) < 1, or not a "
+                f"positive time) for: {', '.join(short)}")
+    return None
+
+
+def _refresh_kept_record(ctx: Context, path: Path, stored: dict) -> None:
+    """A kept direct score keeps its number, but what the files say about the run has moved on since it was
+    written (a score taken in the middle of the training, or before `trained_by.json`): rewrite the record keys
+    of `_direct_record` from the files, atomically, and say so. The run may be unreadable now; the score is
+    kept anyway."""
+    try:
+        fresh = _direct_record(ctx)
+    except Exception as e:  # noqa: BLE001
+        print(f"warning: cannot refresh the record keys of the kept score ({type(e).__name__}: {e})",
+              file=sys.stderr, flush=True)
+        return
+    changed = [k for k, v in fresh.items() if stored.get(k) != v]
+    if changed:
+        _write_json_atomic(path, {**stored, **fresh})
+        print(f"refreshed {', '.join(changed)} of the kept score", flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -464,6 +688,9 @@ def main(argv: list[str] | None = None) -> int:
     build = PREDICTORS[args.predictor][0]
     name = predictor_name(args.predictor, args.variant)
     task = tasks.load_task(args.task)
+    if args.history_s is not None and (problem := _history_problem(task, args.history_s)):
+        print(f"refused: {problem}", file=sys.stderr)  # before anything is written or deleted
+        return 2
     root = paths.prepare_write_root(paths.stage0_dir())
     ctx = Context(args.task, task, root, args.num_workers, args.batch_size, args.force,
                   args.gpu, args.variant, args.train, overrides)
@@ -481,7 +708,11 @@ def main(argv: list[str] | None = None) -> int:
             if _refuse_busy_gpu(args.gpu, gpu_pids, args.share_gpu):
                 return 2
             gpu_checked = True
-            _train_direct(ctx, root / "scores" / args.task / name / args.split)
+            try:
+                _train_direct(ctx, root / "scores" / args.task / name / args.split)
+            except Refused as e:
+                print(f"refused: {e}", file=sys.stderr)
+                return 2
     provenance = provenance_of(args.predictor, ctx)
     out_dir = root / "scores" / args.task / name / args.split
     stored, reason = _kept_score(out_dir, args.task, name, args.split, provenance, args.force)
@@ -489,6 +720,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"kept {args.task} {name} {args.split} "
               f"(scored at {stored['git_revision']}, {stored['date']}): nrmse {float(stored['nrmse']):.4f}",
               flush=True)
+        if is_direct:
+            _refresh_kept_record(ctx, out_dir / "score.json", stored)
         return 0 if math.isfinite(float(stored["nrmse"])) else 1
     if reason != "no score.json":
         print(f"re-scoring {args.task} {name} {args.split}: {reason}", flush=True)
@@ -497,6 +730,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     started = time.monotonic()
     predict_fn = build(ctx)  # a fitted predictor is fitted here if there is no current fit file
+    if args.predictor in FITTED:
+        predict_fn = _blind_to_targets(predict_fn)  # the floor is the one predictor that reads its targets
     run_record = _direct_record(ctx) if is_direct else dict(ctx.built.get("fit_record", {}))
     if is_direct and (run_record["trained_steps"] is None or run_record["trained_steps"] < run_record["max_steps"]):
         trained = ("an unknown number of steps (no readable last.pt)" if run_record["trained_steps"] is None
@@ -504,10 +739,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"warning: {name} was trained for {trained}, short of max_steps {run_record['max_steps']}; "
               f"the run did not finish, so this score is not final (checkpoint scored: step "
               f"{run_record['checkpoint_step']})", file=sys.stderr, flush=True)
-    provenance = provenance_of(args.predictor, ctx)  # now with the fit it uses
+    first_provenance, provenance = provenance, provenance_of(args.predictor, ctx)  # now with the fit it uses
+    if is_direct and provenance["checkpoint_sha256"] != first_provenance["checkpoint_sha256"]:
+        print(f"refused: {_checkpoint(ctx)} changed while the predictor was being built (its hash was "
+              f"{first_provenance['checkpoint_sha256'][:12]}, now {provenance['checkpoint_sha256'][:12]}): a score "
+              "must come from one checkpoint; a training of the same run may be writing it", file=sys.stderr)
+        return 1
     if no_digest := [k for k, v in provenance.items() if v == cheap.NO_CURRENT_FIT]:
-        print(f"refused: {args.predictor} has no current fit ({', '.join(no_digest)}), and the sentinel is not a digest "
-              "to store in a score", file=sys.stderr)
+        print(f"refused: {args.predictor} has no current fit ({', '.join(no_digest)}), and the sentinel is not a "
+              "digest to store in a score", file=sys.stderr)
         return 1
     result = harness.score(task, predict_fn, out_dir, split=args.split, history_s=getattr(predict_fn, "history_s", None),
                            batch_size=args.batch_size, num_workers=args.num_workers)
@@ -515,7 +755,7 @@ def main(argv: list[str] | None = None) -> int:
     record = json.loads(path.read_text())
     record.update(provenance)
     record.update(run_record)  # records, not provenance: `_kept_score` does not compare them
-    path.write_text(json.dumps(record, indent=2) + "\n")
+    _write_json_atomic(path, record)
     print(f"{args.task} {name} {args.split}: nrmse {result.task_nrmse:.4f}, "
           f"{result.n_windows} windows, {time.monotonic() - started:.0f} s", flush=True)
     return 0 if math.isfinite(result.task_nrmse) else 1

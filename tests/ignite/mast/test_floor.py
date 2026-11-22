@@ -298,6 +298,27 @@ def test_a_stored_floor_score_is_kept_until_the_predictor_changes(stub_command, 
     assert len(calls) == 4
 
 
+def test_the_floor_is_scored_with_its_targets_unlike_the_fitted_predictors(stub_command, monkeypatch, toy_batch):
+    """The blind wrapper (A-R3) is for the fitted predictors; the floor reads its targets by definition."""
+    run_headroom, calls, out_dir = stub_command
+    monkeypatch.setattr(run_headroom.floor, "tokamind_output_indices",
+                        lambda name: {"summary-ip": (np.arange(100), (1, 1, 100))})   # every coefficient: the targets
+    seen = {}
+
+    def fake_score(task, predict_fn, out_dir, *, split, **kwargs):
+        batch = toy_batch(4)
+        seen["close"] = bool(np.allclose(predict_fn(batch)["summary-ip"], batch.targets["summary-ip"],
+                                         rtol=1e-5, atol=1.0))
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        return harness.ScoreResult(
+            task=task.name, task_nrmse=0.25, per_signal=pd.DataFrame({"feature_name": ["summary-ip"], "NRMSE": [0.25]}),
+            per_shot=pd.DataFrame({"shot_id": [1], "NRMSE": [0.25]}), n_windows=7, out_dir=Path(out_dir))
+
+    monkeypatch.setattr(run_headroom.harness, "score", fake_score)
+    assert run_headroom.main(["--task", "task_1-2", "--predictor", "floor", "--split", "val_report"]) == 0
+    assert seen["close"]                                          # it saw the real targets, not NaN
+
+
 def test_a_stored_score_without_the_representation_hash_is_scored_again(stub_command, capsys):
     run_headroom, calls, out_dir = stub_command
     argv = ["--task", "task_1-2", "--predictor", "floor", "--split", "val_report"]

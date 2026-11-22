@@ -873,3 +873,29 @@ def test_the_no_current_fit_sentinel_is_never_stored_as_a_digest(command, stub_d
     assert rh.main(["--task", "task_1-2", "--predictor", "ridge", "--split", "val_report"]) == 1
     assert "no current fit" in capsys.readouterr().err
     assert scored == [] and not (root / "scores" / "task_1-2" / "ridge").exists()
+
+
+# ---- A-R3: the fitted predictors are scored blind to the targets
+
+def test_the_cheap_predictors_give_the_same_output_blinded_or_not(command, toy_task, toy_batch):
+    rh, scored, root = command
+    b = toy_batch(n=6, seed=21)
+    for predictor in _fitted(toy_task, toy_batch):
+        np.testing.assert_array_equal(rh._blind_to_targets(predictor.predict)(b)["summary-ip"],
+                                      predictor.predict(b)["summary-ip"])
+
+
+@pytest.mark.parametrize("name", ["shrunk", "ridge"])
+def test_the_command_scores_the_cheap_predictors_through_the_blind_wrapper(command, stub_data, monkeypatch, name):
+    rh, scored, root = command
+    seen = []
+    cls = cheap.PREDICTOR_CLASSES[name]
+    real = cls.predict
+
+    def spy(self, batch):
+        seen.append([bool(np.isnan(v).all()) for v in batch.targets.values()])
+        return real(self, batch)
+
+    monkeypatch.setattr(cls, "predict", spy)
+    assert rh.main(["--task", "task_1-2", "--predictor", name, "--split", "val_report"]) == 0
+    assert seen and all(all(flags) for flags in seen)          # the fake scorer passes a batch with finite targets
