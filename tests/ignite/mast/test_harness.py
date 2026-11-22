@@ -234,6 +234,15 @@ def test_score_refuses_shots_outside_the_split(tmp_path):
         harness.score(t, lambda b: {}, tmp_path, split="train")
 
 
+def test_open_mast_dataset_refuses_shots_outside_the_splits():
+    """The shots in none of the three splits are never loaded; the check precedes any data access."""
+    pytest.importorskip("tokamark")
+    t = tasks.load_task("task_1-1")
+    assert 1 not in tasks.split_shots("train") + tasks.split_shots("val") + tasks.split_shots("test")
+    with pytest.raises(ValueError, match="not in any split"):
+        harness.open_mast_dataset({"task": t.name}, [tasks.split_shots("train")[0], 1])
+
+
 # ---------------------------------------------------------------- real data
 
 @pytest.mark.real_data

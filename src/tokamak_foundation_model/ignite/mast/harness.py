@@ -103,7 +103,16 @@ def open_mast_dataset(config_task: dict, shots: list[int]):
     Physical units (no standard scaling), outliers replaced per TokaMark's outlier file, bad
     EFIT ratings removed (the default, as in the reference script), read from the local Zarr
     store. The one place where these settings live: whole-shot readers use this too.
+
+    Raises ``ValueError`` if a shot is in none of TokaMark's train, val and test lists: the
+    shots outside them (negative plasma current) are never loaded. The check comes before any
+    data is opened.
     """
+    known = set(split_shots("train")) | set(split_shots("val")) | set(split_shots("test"))
+    outside = sorted(set(shots) - known)
+    if outside:
+        raise ValueError(f"shots {outside[:5]} are not in any split of TokaMark's split file; they are never loaded")
+
     from MAST_tools.utils.path_utils import RANDOM_SPLIT_OUTLIER_METADATA_FILE
     from tokamark.data import initialize_MAST_dataset
 
