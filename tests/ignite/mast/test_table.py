@@ -293,3 +293,31 @@ def test_the_table_command_needs_no_task(capsys):
         run_headroom.main([])
     assert e.value.code == 2
     assert "--task" in capsys.readouterr().err
+
+
+def test_the_table_lists_every_trained_variant_including_one_without_a_score(tmp_path):
+    stage0 = tmp_path / "stage0"
+    scores = stage0 / "scores"
+    done = {"trained_steps": 100, "max_steps": 100}
+    write_score(scores, "task_3-1", "direct", "val_report", [0.40], **done)
+    write_log(stage0, "task_3-1", "base", [0.9, 0.52], {"depth": 8, "d_model": 384, "max_steps": 100})
+    write_log(stage0, "task_3-1", "wide", [0.9, 0.45], {"depth": 8, "d_model": 768, "max_steps": 100})  # no score yet
+    text = table.variants_markdown(scores)
+    assert "3-1" in text and "d_model=768" in text and "0.4500" in text and "0.5200" in text
+    wide = next(line for line in text.splitlines() if line.startswith("| wide "))
+    base = next(line for line in text.splitlines() if line.startswith("| base "))
+    assert "no score" in wide and "no" in wide.split("|")[-2]      # lower selection error, but not in the table
+    assert "0.4000" in base and "yes" in base.split("|")[-2]       # the variant the table takes
+    assert "1-2" not in text                                       # tasks without a variant are not listed
+
+
+def test_the_table_command_prints_the_variants(tmp_path, monkeypatch, capsys):
+    run_headroom = _run_headroom()
+    stage0 = tmp_path / "stage0"
+    write_score(stage0 / "scores", "task_1-2", "mean", "test", [1.0])
+    write_log(stage0, "task_3-1", "base", [0.9, 0.5])
+    monkeypatch.setattr(run_headroom.paths, "stage0_dir", lambda: stage0)
+    monkeypatch.setattr(run_headroom.paths, "prepare_write_root", lambda p: Path(p))
+    assert run_headroom.main(["--table"]) == 0
+    out = capsys.readouterr().out
+    assert "Direct variants" in out and "| base " in out and "no score" in out

@@ -211,12 +211,14 @@ frames, so neither can predict structure inside a frame. The ridge fit counts a
 target frame that is missing as 0 after centring, which pulls the fit toward the
 mean wherever targets are missing. For the two spectrogram signals the output
 window is one frame, because the content of a spectrogram is the band
-structure per bin and not its time course within 20 ms. Task 1-1 has no output
-that is also an input, so `shrunk` there is only the per-channel training
-mean. Both predictors are fit on 3,000 of the 8,963 training shots with one
+structure per bin and not its time course within 20 ms. Tasks 1-1 and 1-2 have no
+output that is also an input, so `shrunk` there is only the per-channel
+training mean (checked with `tasks.load_task` on the seven tasks, 2026-11-22:
+task 2-1 has three of its 18 outputs among its inputs, and in tasks 3-1, 4-1,
+4-4 and 4-5 every output is an input). Both predictors are fit on 3,000 of the 8,963 training shots with one
 seed and one regularization search, and neither is tuned beyond that.
 
-**Measured 2026-11-22**, in the headroom table below. Two findings.
+**Measured 2026-11-22**, in the headroom table below. Two findings, the second with an inferred reading marked as such.
 
 - *TokaMark's mean baseline is one scalar per signal, and that is most of its
   error on task 1-2.* A per-channel training mean alone, which is what `shrunk`
@@ -225,13 +227,21 @@ seed and one regularization search, and neither is tuned beyond that.
   mean baseline on that task is the fixed shape of the boundary, not its motion.
   Ridge on frame means scores 0.0830 there, about twice the best published
   score (0.0412, test split, a different split).
-- *Where the published models beat these cheap references only a little, the
-  task is near a noise floor or is not predicted at all.* On task 4-1 the
-  published models beat `shrunk` by about 0.07 (`shrunk` 0.2842, our
-  replication 0.2147). On task 4-5 nobody beats the mean: the mean scores 0.6852 on
-  `val_report` and 0.6533 on test, TokaMind 0.6499, and `shrunk` on `val_report`
-  is 0.6925, slightly worse than the mean on the same shots. Persistence on
-  all windows scores 0.8011 there.
+- *How close the published models are to the cheap references.* Measured: on
+  task 4-1 our replication (0.2147, test) is 0.07 below `shrunk` (0.2842,
+  `val_report`; different splits). On task 4-5 the mean scores 0.6852 on
+  `val_report` and 0.6533 on test; our replication (0.6499) and the best
+  published score (0.6510) are 0.0034 and 0.0023 below the mean on test, and
+  `shrunk` on `val_report` is 0.6925, 0.0073 above the mean on the same shots.
+  Persistence on all windows scores 0.8011 there. **No paired test was run**,
+  and one score on task 4-5 is known only to about +-0.06 over shots
+  (bootstrap of `shrunk` on 351 `val_report` shots, measured 2026-11-22, 95%
+  interval 0.634 to 0.756). Differences of 0.002 to 0.007 are therefore
+  neither a win nor a tie: the page does not say that the published models
+  beat the mean on task 4-5, nor that they do not.
+  *Inferred, not measured:* that these small margins mean the tasks are near a
+  noise floor, or are not predicted at all. Nothing on this page measures a
+  noise floor.
 
 Ridge scores for tasks 4-1, 4-4 and 4-5 were not stored when the table below
 was printed, so no statement is made about them.
@@ -246,8 +256,11 @@ are the simulator's tokens, one channel over one 5 ms frame, so a gap between
 this model and the later simulator points at the token path and not at how the
 data are cut.
 
-Configuration of the base variant (`config.json` of each run): `d_model` 384,
-8 layers, 8 heads, 5 ms patches, batch 256, 30,000 steps, learning rate 3e-4
+Configuration of the base variant (`config.json` of each run, read 2026-11-22):
+`d_model` 384, 8 layers, 8 heads, 5 ms patches, 30,000 steps, batch 256 for the
+markovian tasks (3-1 from its `config.json`; 1-1, 1-2 and 2-1 from
+`default_config`, their trainings have not started) and batch 64 for the
+non-markovian tasks of group 4 (4-1, 4-4, 4-5), learning rate 3e-4
 with 1,000 warm-up steps and cosine decay, weight decay 0.05, an exponential
 moving average of the weights (0.999), seed 0. The training loss is in
 TokaMark-standardized units (mean over signals of the signal's mean squared
@@ -281,7 +294,9 @@ competitive", because a weak model is not a headroom finding. When more than
 one variant is trained, the table takes the variant with the lowest best
 `val_nrmse` on `val_select` and this page lists every variant, what differs
 in its `config.json`, its best `val_nrmse` and its `val_report` score. Only the
-base variant exists today.
+base variant exists today. `--table` prints this listing for every task that
+has a trained variant, including a variant whose selection error is the lowest
+but which has no stored score yet (it cannot enter the table).
 
 ## The headroom table
 
@@ -424,6 +439,9 @@ projected mean.
   shots, not over seeds.
 - **The direct model's training budget.** One configuration, 30,000 steps. The
   headroom it reports is a lower bound on what a specialized model can reach.
+  On tasks 4-1, 4-4 and 4-5 the batch is 64, so 30,000 steps see a quarter of
+  the windows that 30,000 steps of batch 256 would (`train_log.csv`, measured
+  2026-11-22: 135 to 185 windows per second on group 4, 812 to 865 on task 3-1).
 - **No data is not a negative.** A "missing" cell is a score nobody has stored
   yet. It is not a bad score and it is not 0.
 - **The cheap predictors are cheap.** They say what trivial means predict, not

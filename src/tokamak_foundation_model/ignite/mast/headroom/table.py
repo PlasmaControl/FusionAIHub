@@ -338,3 +338,24 @@ def to_markdown(table: pd.DataFrame) -> str:
     if notes:
         lines += ["", *notes]
     return "\n".join(lines) + "\n"
+
+
+def variants_markdown(scores_dir: Path) -> str:
+    """Every trained direct variant of each stage-0 task, as Markdown: what differs in its `config.json` from
+    the base variant, its best `val_nrmse` (on `val_select`, from `train_log.csv`), its `val_report` score
+    ("no score" when none is stored: the table cannot take it, which matters when its selection error is the
+    lowest), and whether the table's direct cell is this variant. Empty if no task has a variant."""
+    blocks = []
+    for task in tasks.STAGE0_TASKS:
+        variants = direct_variants(scores_dir, task)
+        if variants.empty:
+            continue
+        chosen = _chosen_direct(scores_dir, task)
+        rows = [[r.variant, r.differs or "-",
+                 "unreadable" if math.isnan(r.best_val_nrmse) else f"{r.best_val_nrmse:.4f}",
+                 "no score" if math.isnan(r.val_report) else f"{r.val_report:.4f}",
+                 "yes" if r.variant == chosen else "no"] for r in variants.itertuples()]
+        blocks += [f"Task {task.removeprefix('task_')}:", "",
+                   *_md(["variant", "differs from base", "best val_nrmse (val_select)", "val_report", "in the table"],
+                        rows), ""]
+    return "\n".join(blocks)

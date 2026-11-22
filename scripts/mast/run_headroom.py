@@ -335,6 +335,11 @@ def print_table() -> int:
     t.to_csv(csv_path)
     print(f"Headroom table of {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC, from the scores under {root / 'scores'}\n")
     print(headroom_table.to_markdown(t))
+    variants = headroom_table.variants_markdown(root / "scores")
+    if variants:
+        print("Direct variants (the table takes the one with the lowest best val_nrmse among those with a stored "
+              "score):\n")
+        print(variants)
     n_direct = int(t["direct_val"].notna().sum())
     projected = headroom_table.projected_mean(t)
     if math.isnan(projected):
