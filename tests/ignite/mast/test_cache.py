@@ -242,6 +242,23 @@ def test_overflow_becomes_invalid(tmp_path):
     assert got.valid[0, 7:].all() and got.valid[0, :5].all() and status[IP.name] == "ok"
 
 
+def test_lost_counts_samples_finite_in_the_loader_and_not_in_the_file(tmp_path):
+    """Only float32 overflow adds NaN; a loader NaN or inf is not a lost sample."""
+    flux = _raw(FLUX)
+    ip = _raw(IP)
+    ip["values"][0, 5] = IP.mean + IP.std * 1e39        # finite from the loader, z beyond float32
+    ip["values"][0, 6] = IP.mean - IP.std * 1e39
+    ip["values"][0, 7] = np.inf                         # not finite from the loader: not lost
+    ip["values"][0, 8] = np.nan
+    p, status = _write(tmp_path, {FLUX.name: flux, IP.name: ip}, [FLUX, IP])
+    assert status == {FLUX.name: "ok", IP.name: "ok"}
+    got = cache.read_shot(p)[IP.name]
+    assert (~got.valid[0, 5:9]).all()
+    assert cache.summarize_shot(p)["lost"] == {FLUX.name: 0, IP.name: 2}
+    with h5py.File(p, "r") as f:
+        assert f[IP.name].attrs["lost"] == 2 and f[FLUX.name].attrs["lost"] == 0
+
+
 def test_asinh_signal_roundtrip(tmp_path):
     st = _stats(IP, mean=0.0, std=2.0, compress="asinh", scale=1000.0)
     raw = _raw(IP)
@@ -326,6 +343,7 @@ def test_build_writes_every_shot_and_the_manifest(tmp_path, fake_env):
     assert m["counts"]["train"]["files"] == 4 and m["counts"]["val"]["files"] == 2 and m["counts"]["test"]["files"] == 1
     assert m["signals"][FLUX.name]["status"] == {"ok": 7}
     assert m["signals"][FLUX.name]["dead_nan"] == 0 and m["signals"][FLUX.name]["const"] == 0
+    assert all(v["lost"] == 0 for v in m["signals"].values()) and m["stale_files"] == {}
     assert m["errors"] == {} and m["size_bytes"] > 0 and m["wall_seconds"] >= 0
     assert (tmp_path / "registry.csv").exists()
     reg = registry.load_registry(tmp_path / "registry.csv")
@@ -347,6 +365,22 @@ def test_build_counts_absent_and_dead_per_signal(tmp_path, fake_env, monkeypatch
     assert m["signals"][IP.name]["status"] == {"ok": 4, "absent": 3}
     assert m["signals"][FLUX.name]["dead_nan"] == 7 and m["signals"][FLUX.name]["const"] == 7
     assert m["signals"][COIL.name]["dead_nan"] == 0 and "dead_const" not in m["signals"][COIL.name]
+
+
+def test_build_sums_lost_samples_per_signal(tmp_path, fake_env, monkeypatch):
+    real = _fake_loader()
+
+    def load(shot, signals):
+        out = real(shot, signals)
+        out[IP.name]["values"][0, 3] = IP.mean + IP.std * 1e39      # one sample lost in every shot
+        if shot == 7:
+            out[IP.name]["values"][0, 4] = IP.mean + IP.std * 1e39
+        return out
+    monkeypatch.setattr(transform, "load_shot", load)
+    m = cache.build(tmp_path, SHOTS, workers=1)
+    assert m["signals"][IP.name]["lost"] == 8 and m["signals"][FLUX.name]["lost"] == 0
+    # a rerun that skips the files still reports them (the manifest summarizes the files)
+    assert cache.build(tmp_path, SHOTS, workers=1)["signals"][IP.name]["lost"] == 8
 
 
 def test_build_statistics_draw_and_registry_sample(tmp_path, fake_env):
@@ -452,6 +486,41 @@ def test_build_rewrites_a_float16_file_with_the_current_hash(tmp_path, fake_env)
     assert cache.read_shot(p)[FLUX.name].values.dtype == np.float32
 
 
+def _other_statistics(root):
+    """Replace stats.npz by statistics of another hash, as a refit on other shots would."""
+    stats = transform.load_stats(root / "stats.npz")
+    stats[FLUX.name].std[:] *= 2.0
+    (root / "stats.npz").unlink()
+    transform.save_stats(stats, root / "stats.npz")
+
+
+def test_files_outside_the_request_with_other_statistics_are_listed(tmp_path, fake_env):
+    """--force with new statistics and a partial request must not end as a success."""
+    first = cache.build(tmp_path, SHOTS, workers=1)
+    assert not cache.failed(first)
+    _other_statistics(tmp_path)
+    with pytest.raises(ValueError, match="different statistics"):
+        cache.build(tmp_path, {"train": [1]}, workers=1)
+    m = cache.build(tmp_path, {"train": [1]}, workers=1, force=True)
+    assert m["stats_sha256"] != first["stats_sha256"]
+    assert sorted(m["stale_files"], key=int) == ["2", "3", "4", "5", "6", "7"]     # 1 was rewritten
+    assert cache.failed(m)
+    assert json.loads((tmp_path / "manifest.json").read_text())["stale_files"] == m["stale_files"]
+    # requesting the rest rewrites them, and the build is a success again
+    m2 = cache.build(tmp_path, SHOTS, workers=1, force=True)
+    assert m2["stale_files"] == {} and not cache.failed(m2)
+    for p in (tmp_path / "shots").glob("*.h5"):
+        with h5py.File(p, "r") as f:
+            assert f.attrs["stats_sha256"] == m2["stats_sha256"]
+
+
+def test_failed_is_true_for_a_shot_error_or_a_stale_file():
+    base = {"errors": {}, "stale_files": {}}
+    assert not cache.failed(base)
+    assert cache.failed({**base, "errors": {"1": "RuntimeError: x"}})
+    assert cache.failed({**base, "stale_files": {"2": "x"}})
+
+
 def test_a_failing_shot_is_recorded_and_the_others_are_written(tmp_path, fake_env, monkeypatch):
     monkeypatch.setattr(transform, "load_shot", _fake_loader(bad=(2,)))
     m = cache.build(tmp_path, SHOTS, workers=1)
@@ -508,7 +577,16 @@ def test_git_revision_of_a_directory_without_git(tmp_path):
 # ------------------------------------------------------------------------------ real data
 
 def _fidelity_errors(cache_root, n_shots=5):
-    """``{signal: worst relative error over the shots}`` and the shots used; also checks the NaN pattern."""
+    """``({signal: worst relative error over the shots}, shots used)``; every check is strict.
+
+    Per shot and signal, with the loader's values ``x`` and the cached ones ``c``:
+    - the cache has the signal exactly when the loader does (a refused or dropped signal fails);
+    - no sample that is finite in the loader is NaN in the cache (a lost sample fails);
+    - no sample that is NaN in the loader is finite in the cache;
+    - every signal with status "ok" in the file gets an RMS error (it was compared on finite samples).
+    A signal whose status is "all_invalid" counts as compared when its NaN pattern was checked (all NaN in
+    the loader too, by the second rule); it has no RMS error to report.
+    """
     manifest = json.loads((cache_root / "manifest.json").read_text())
     assert manifest["stats_sha256"] == transform.stats_sha256(cache_root / "stats.npz"), \
         "manifest and stats.npz disagree"
@@ -517,6 +595,7 @@ def _fidelity_errors(cache_root, n_shots=5):
     val = []
     for p in sorted((cache_root / "shots").glob("*.h5")):
         with h5py.File(p, "r") as f:
+            assert f.attrs["stats_sha256"] == manifest["stats_sha256"], f"{p.name}: other statistics"
             if f.attrs["split"] == "val":
                 val.append(p)
     assert len(val) >= n_shots, f"only {len(val)} validation shots in the cache"
@@ -526,21 +605,31 @@ def _fidelity_errors(cache_root, n_shots=5):
         shot = int(p.stem)
         truth = transform.load_shot(shot, signals)
         got = cache.read_shot(p)
+        with h5py.File(p, "r") as f:
+            status = json.loads(f.attrs["status"])
         for spec in signals:
             c, t = got[spec.name], truth.get(spec.name)
             has_truth = t is not None and np.asarray(t["values"]).size > 0
-            if c is None or not has_truth:
+            assert (c is None) == (not has_truth), \
+                f"{shot} {spec.name}: cache has it: {c is not None}, loader has it: {has_truth}, status {status[spec.name]}"
+            if c is None:
                 continue
             x = np.asarray(t["values"], dtype=np.float64)
             assert c.values.shape == x.shape, f"{shot} {spec.name}: shape {c.values.shape} vs {x.shape}"
+            lost = int((~np.isfinite(c.values) & np.isfinite(x)).sum())
+            assert lost == 0, f"{shot} {spec.name}: {lost} samples finite in the loader and NaN in the cache"
             back = transform.to_physical(c.values.astype(np.float64), stats[spec.name])
-            # the loader's NaN is the cache's NaN
             assert not (np.isfinite(back) & ~np.isfinite(x)).any(), f"{shot} {spec.name}: finite where the loader is NaN"
             both = np.isfinite(back) & np.isfinite(x)
+            if status[spec.name] == "ok":
+                assert both.any(), f"{shot} {spec.name}: status ok but nothing to compare"
             if not both.any():
                 continue
             err = float(np.sqrt(np.mean((back[both] - x[both]) ** 2)) / spec.std)
             worst[spec.name] = max(worst.get(spec.name, 0.0), err)
+        for name, st in status.items():
+            if st == "ok":
+                assert name in worst, f"{shot} {name}: status ok but not compared"
     return worst, [int(p.stem) for p in chosen]
 
 

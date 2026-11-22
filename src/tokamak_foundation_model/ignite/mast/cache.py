@@ -14,8 +14,9 @@ choice open for the next stage, at about 12 MB per shot (about 135 GB for 11,188
 
 File ``shots/<shot>.h5``: one contiguous, uncompressed float32 dataset per signal, named
 ``<source>-<signal>``, shape ``(*values_shape, T)``, attributes ``t0`` and ``dt`` (seconds),
-``dead_nan`` (number of dead channels) and ``const_channels`` (sorted flat indices of the constant
-channels, an int array, empty when none); a boolean ``<name>__saturated`` beside a signal that has
+``dead_nan`` (number of dead channels), ``lost`` (samples finite from the loader and not finite in the
+file: float32 overflow, the only way the cache adds NaN) and ``const_channels`` (sorted flat indices
+of the constant channels, an int array, empty when none); a boolean ``<name>__saturated`` beside a signal that has
 a saturation limit; file attributes ``shot``, ``split``, ``cache_version``, ``stats_sha256`` and
 ``status`` (JSON, the status of every signal asked for, so that a signal the shot lacks reads back
 as None and not as a missing key). The file is written as ``<shot>.h5.tmp`` and renamed.
@@ -120,7 +121,7 @@ def _signal_status(spec: SignalSpec, d: dict) -> tuple[str, np.ndarray | None, n
 
 
 def _convert(x: np.ndarray, st: ChannelStats, sat: np.ndarray):
-    """``(float32 values, saturated or None, dead_nan, const_channels)`` of one signal, shape (*values_shape, T)."""
+    """``(float32 values, saturated or None, dead_nan, const_channels, lost)`` of one signal, shape (*values_shape, T)."""
     shape = x.shape
     flat = x.reshape(-1, shape[-1])
     finite = np.isfinite(flat)
@@ -133,12 +134,13 @@ def _convert(x: np.ndarray, st: ChannelStats, sat: np.ndarray):
     with np.errstate(over="ignore", invalid="ignore"):
         out = z.astype(np.float32)
     out[~np.isfinite(out)] = np.nan             # overflow (inf) and anything non-finite: not valid
+    lost = int((finite & ~np.isfinite(out)).sum())   # finite from the loader, not valid in the file
     saturated = None
     if np.isfinite(sat).any():
         with np.errstate(invalid="ignore"):
             saturated = np.isfinite(out) & (np.abs(flat) >= sat[:, None])
         saturated = saturated.reshape(shape)
-    return out.reshape(shape), saturated, int(dead.sum()), const.astype(np.int64)
+    return out.reshape(shape), saturated, int(dead.sum()), const.astype(np.int64), lost
 
 
 def _write_shot(path: Path, shot: int, split: str, raw: dict, signals: Sequence[SignalSpec],
@@ -162,11 +164,12 @@ def _write_shot(path: Path, shot: int, split: str, raw: dict, signals: Sequence[
                 if x is None:
                     status[spec.name] = state
                     continue
-                data, saturated, dead_nan, const = _convert(x, stats[spec.name], tables[spec.name])
+                data, saturated, dead_nan, const, lost = _convert(x, stats[spec.name], tables[spec.name])
                 ds = f.create_dataset(spec.name, data=data, dtype=np.float32)
                 ds.attrs["t0"] = float(time_[0])
                 ds.attrs["dt"] = float(spec.dt)
                 ds.attrs["dead_nan"] = dead_nan
+                ds.attrs["lost"] = lost
                 ds.attrs["const_channels"] = const
                 if saturated is not None:
                     f.create_dataset(spec.name + _SAT_SUFFIX, data=saturated)
@@ -225,12 +228,14 @@ def read_shot(path: Path, names: Sequence[str] | None = None) -> dict[str, Cache
 
 
 def summarize_shot(path: Path) -> dict:
-    """``{"status": {signal: status}, "channels": {signal: (dead_nan, n_const)}}`` from the file's attributes."""
+    """``{"status": {signal: status}, "channels": {signal: (dead_nan, n_const)}, "lost": {signal: n}}``
+    from the file's attributes."""
     with h5py.File(path, "r") as f:
         status = _file_status(f)
         channels = {n: (int(f[n].attrs["dead_nan"]), int(f[n].attrs["const_channels"].size))
                     for n in status if n in f}
-    return {"status": status, "channels": channels}
+        lost = {n: int(f[n].attrs["lost"]) for n in status if n in f}
+    return {"status": status, "channels": channels, "lost": lost}
 
 
 def _is_current(path: Path, stats_sha: str) -> bool:
@@ -240,8 +245,8 @@ def _is_current(path: Path, stats_sha: str) -> bool:
             if not (f.attrs["cache_version"] == CACHE_VERSION and f.attrs["stats_sha256"] == stats_sha
                     and "status" in f.attrs):
                 return False
-            # a file of an older layout (float16, no const_channels) is not current whatever its hash
-            return all(f[n].dtype == np.float32 and "const_channels" in f[n].attrs
+            # a file of an older layout (float16, no const_channels, no lost) is not current whatever its hash
+            return all(f[n].dtype == np.float32 and "const_channels" in f[n].attrs and "lost" in f[n].attrs
                        for n in f if not n.endswith(_SAT_SUFFIX))
     except Exception:       # missing, half-written by an older crash, not HDF5: write it again
         return False
@@ -389,6 +394,12 @@ def _statistics(root: Path, shots: dict, stats_pool: Sequence[int] | None, worke
     return stats, path, sha, fit_summary, stats_shots, fitted
 
 
+def failed(manifest: dict) -> bool:
+    """True when the build must not count as a success: a shot failed to write, or a file in ``shots/``
+    does not match the manifest's statistics (``stale_files``). The command exits 1 on it."""
+    return bool(manifest["errors"] or manifest["stale_files"])
+
+
 def build(root: Path, shots: dict[str, list[int]], *, workers: int, force: bool = False,
           stats_pool: Sequence[int] | None = None) -> dict:
     """Build (or resume) the cache under ``root`` and return the manifest (also ``manifest.json``).
@@ -399,7 +410,8 @@ def build(root: Path, shots: dict[str, list[int]], *, workers: int, force: bool 
     then ``shots/<shot>.h5`` for every shot of ``shots`` ({split: [shot, ...]}) with ``workers``
     processes. A shot whose file exists and was made from the same statistics is skipped; a shot
     whose write raises is listed in the manifest's ``errors`` and leaves no file; the others go
-    on. The manifest is the summary of the files of the requested shots, written or skipped.
+    on. The manifest is the summary of the files of the requested shots, written or skipped; files
+    outside the request that do not match its statistics are listed in ``stale_files``.
 
     Raises ``ValueError`` when ``manifest.json`` was made from other statistics (unless
     ``force``), and when there are no statistics and no training shots; ``RuntimeError`` when a
@@ -433,7 +445,8 @@ def build(root: Path, shots: dict[str, list[int]], *, workers: int, force: bool 
     jobs = [(int(s), split) for split, lst in shots.items() for s in sorted({int(x) for x in lst})]
     counts = {split: {"requested": len({int(x) for x in lst}), "files": 0, "written": 0, "skipped": 0, "failed": 0}
               for split, lst in shots.items()}
-    sig = {s.name: {"status": dict.fromkeys(STATUSES, 0), "dead_nan": 0, "const": 0} for s in signals}
+    sig = {s.name: {"status": dict.fromkeys(STATUSES, 0), "dead_nan": 0, "const": 0, "lost": 0}
+           for s in signals}
     errors: dict[str, str] = {}
     for i, (shot, split, summary, wrote, err) in enumerate(_run_jobs(jobs, state, workers), 1):
         if err is not None:
@@ -447,12 +460,20 @@ def build(root: Path, shots: dict[str, list[int]], *, workers: int, force: bool 
             for name, (n_nan, n_const) in summary["channels"].items():
                 sig[name]["dead_nan"] += n_nan
                 sig[name]["const"] += n_const
+            for name, n_lost in summary["lost"].items():
+                sig[name]["lost"] += n_lost
         if i % 500 == 0 or i == len(jobs):
             print(f"[ignite.mast] cache: {i} of {len(jobs)} shots done, {len(errors)} errors, "
                   f"{time.time() - start:.0f} s", flush=True)
     for v in sig.values():
         v["status"] = {k: n for k, n in v["status"].items() if n}
 
+    # Files of earlier runs outside this request (another split, beyond --limit) are not rewritten. If
+    # they were made from other statistics or another layout they would hold values in the wrong model
+    # units while the manifest names the new hash, and `read_shot` cannot tell: list them.
+    requested = {job[0] for job in jobs}
+    stale = {p.stem: "made from other statistics or another layout" for p in sorted(shots_dir.glob("*.h5"))
+             if not (p.stem.isdigit() and int(p.stem) in requested) and not _is_current(p, sha)}
     asinh = [n for n in sorted(stats) if stats[n].compress == "asinh"]
     manifest = {
         "date": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -466,6 +487,7 @@ def build(root: Path, shots: dict[str, list[int]], *, workers: int, force: bool 
         "counts": counts,
         "signals": sig,
         "errors": errors,
+        "stale_files": stale,
         "wall_seconds": round(time.time() - start, 1),
         "size_bytes": sum(p.stat().st_size for p in shots_dir.glob("*.h5")),
     }

@@ -10,7 +10,8 @@ The cache goes to `paths.cache_dir()` (`<root>/cache/v1`). The statistics are al
 TokaMark's full training split (2,000 shots), also with `--limit`, so a trial's constants are the
 real ones; `--limit N` only restricts the shots that are written to N per split, evenly spaced
 over the sorted split so that a trial spans the campaigns. A rerun skips shots already written
-from the same statistics. Exit status 1 if any shot failed (the manifest lists them).
+from the same statistics. Exit status 1 if any shot failed or a file in shots/ does not match the manifest's statistics
+(the manifest lists them).
 
 The `__main__` guard is required: the shot-writing pool starts its workers with *spawn*, which
 imports this file in every worker.
@@ -45,9 +46,14 @@ def main() -> int:
     n_files = sum(c["files"] for c in manifest["counts"].values())
     print(f"cache at {root}: {n_files} shot files, {manifest['size_bytes'] / 1e9:.2f} GB, "
           f"{manifest['wall_seconds']:.0f} s")
+    if manifest["stale_files"]:
+        print(f"{len(manifest['stale_files'])} files in shots/ do not match the statistics of the manifest "
+              "(manifest.json, 'stale_files'); rebuild those shots or remove them. First:", file=sys.stderr)
+        print(json.dumps(dict(list(manifest["stale_files"].items())[:5]), indent=1), file=sys.stderr)
     if manifest["errors"]:
         print(f"{len(manifest['errors'])} shots failed (manifest.json, 'errors'); first:", file=sys.stderr)
         print(json.dumps(dict(list(manifest["errors"].items())[:5]), indent=1), file=sys.stderr)
+    if cache.failed(manifest):
         return 1
     return 0
 
