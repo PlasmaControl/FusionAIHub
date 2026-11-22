@@ -11,6 +11,12 @@ The score goes to `<stage0>/scores/<task>/<predictor>/<split>/` (TokaMark's eval
 `scripts/mast/check_harness.py` scores them, and a second command writing the same directories
 would be a second source of truth for their definition.
 
+`--table` (no other option) builds the headroom table (`headroom/table.py`) from the scores that are stored under
+`<stage0>/scores`: it scores nothing and fits nothing, writes `<stage0>/headroom_table.csv` and prints the table as
+Markdown, then the projected mean (not computed, with a count, while a stage-0 task has no direct score). Whether
+a stored score is current is decided by `stale_reason`, which applies the rule of `_kept_score` that the command
+uses before it scores again; a score that is not current is shown and named, not dropped.
+
 Predictors: `floor` (TokaMind's output-representation floor, `headroom/floor.py`); `shrunk` and
 `ridge` (`headroom/cheap.py`: shrunk persistence and ridge regression on frame means); `direct` (`headroom/direct.py`:
 a transformer trained per task). `shrunk`, `ridge` and `direct` are the fitted ones (`headroom.FITTED`); they
@@ -71,11 +77,13 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
 from tokamak_foundation_model.ignite.mast import baselines, harness, paths, tasks
 from tokamak_foundation_model.ignite.mast.headroom import FITTED, cheap, floor
+from tokamak_foundation_model.ignite.mast.headroom import table as headroom_table
 
 
 @dataclass(frozen=True)
@@ -285,11 +293,70 @@ def _kept_score(out_dir, task: str, predictor: str, split: str, provenance: dict
     return stored, ""
 
 
+def provenance_of(predictor: str, ctx: Context) -> dict[str, str]:
+    """What a stored score of `predictor` must carry to be the score of the code and files in use now:
+    `predictor_sha256` first, then the predictor's own keys. One definition for the command (before it keeps
+    a stored score, and for the provenance it stores) and for `stale_reason` (the headroom table)."""
+    _, code_sha256, extra_provenance = PREDICTORS[predictor]
+    return {"predictor_sha256": code_sha256(), **extra_provenance(ctx)}
+
+
+def stale_reason(root: Path, task_name: str, name: str, split: str) -> str:
+    """"" if the stored score of predictor `name` (`direct.<variant>` included) is current, else why not.
+
+    Scores nothing and fits nothing; reads the scoring code as loaded, the predictor's code, and the files its
+    provenance names (a fit file, a checkpoint, TokaMind's run). It is the rule the command applies before it
+    scores again (`_kept_score`), exposed for the headroom table, which shows a stale score and names it.
+    `mean`, `persistence` and `persistence_all` are written by `check_harness.py` and have no predictor: for
+    them the scoring-code rule `baselines.read_kept_score` is the whole rule. A provenance file that is not
+    there (no checkpoint, no TokaMind run) is a reason, not an error.
+    """
+    out_dir = root / "scores" / task_name / name / split
+    predictor, _, variant = name.partition(".")
+    if predictor not in PREDICTORS:
+        return baselines.read_kept_score(out_dir, task_name, name, split)[1]
+    # No task spec: the provenance functions need the names and the root only, and loading the spec
+    # needs TokaMark.
+    ctx = Context(task_name, None, root, 0, 0, False, None, variant or BASE_VARIANT, False, {})
+    try:
+        provenance = provenance_of(predictor, ctx)
+    except (OSError, ValueError, KeyError) as e:
+        return f"provenance cannot be computed now ({type(e).__name__}: {e})"
+    return _kept_score(out_dir, task_name, name, split, provenance, False)[1]
+
+
+def print_table() -> int:
+    """`--table`: build the headroom table from the stored scores, write `<stage0>/headroom_table.csv` and print
+    it as Markdown with the projected mean. Scores nothing and writes nothing else."""
+    root = paths.prepare_write_root(paths.stage0_dir())
+    t = headroom_table.build_table(root / "scores", headroom_table.TOKAMIND_REPLICATION,
+                                   stale_reason=lambda task, name, split: stale_reason(root, task, name, split))
+    csv_path = root / "headroom_table.csv"
+    t.to_csv(csv_path)
+    print(f"Headroom table of {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC, from the scores under {root / 'scores'}\n")
+    print(headroom_table.to_markdown(t))
+    n_direct = int(t["direct_val"].notna().sum())
+    projected = headroom_table.projected_mean(t)
+    if math.isnan(projected):
+        print(f"projected mean: not computed, {len(t) - n_direct} of {len(t)} stage-0 tasks have no direct score")
+    else:
+        marked = int((t["stale"] != "").sum() + (t["unfinished"] != "").sum())
+        print(f"projected mean over the 14 tasks (direct model on the {len(t)} stage-0 tasks, best published score on "
+              f"the other {len(tasks.ALL_TASKS) - len(t)}): {projected:.4f}; the bar is 0.183, matching the best "
+              f"published score everywhere would give 0.194"
+              + (f"; {marked} row(s) carry stale or unfinished marks" if marked else ""))
+    print(f"wrote {csv_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--task", required=True, choices=list(tasks.ALL_TASKS))
-    ap.add_argument("--predictor", required=True, choices=sorted({*PREDICTORS, *FITTED}))
-    ap.add_argument("--split", required=True, choices=("val_report", "test"))
+    ap.add_argument("--table", action="store_true",
+                    help="build the headroom table from the stored scores (nothing is scored), write "
+                         "<stage0>/headroom_table.csv and print it as Markdown; takes no other option")
+    ap.add_argument("--task", choices=list(tasks.ALL_TASKS))
+    ap.add_argument("--predictor", choices=sorted({*PREDICTORS, *FITTED}))
+    ap.add_argument("--split", choices=("val_report", "test"))
     ap.add_argument("--num-workers", type=int, default=64)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--gpu", type=int, default=None, help="`direct`: the GPU index (required); the others use none")
@@ -302,6 +369,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="`direct --train`: override the DirectConfig field "
                              f"{_CONFIG_FIELD.get(option, option)}")
     args = ap.parse_args(argv)
+    if args.table:
+        if any(getattr(args, k) is not None for k in ("task", "predictor", "split")):
+            ap.error("--table builds the table of all stage-0 tasks from the stored scores; "
+                     "it takes no --task, --predictor or --split")
+        return print_table()
+    if args.task is None or args.predictor is None or args.split is None:
+        ap.error("the following arguments are required: --task, --predictor, --split")
     is_direct = args.predictor == "direct"
     overrides = {_CONFIG_FIELD.get(k, k): getattr(args, k) for k in DIRECT_OPTIONS if getattr(args, k) is not None}
 
@@ -341,7 +415,7 @@ def main(argv: list[str] | None = None) -> int:
         # may be imported already. The uuid in nvidia-smi's own form, not the index: the two orders may differ.
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu_uuid
 
-    build, code_sha256, extra_provenance = PREDICTORS[args.predictor]
+    build = PREDICTORS[args.predictor][0]
     name = predictor_name(args.predictor, args.variant)
     task = tasks.load_task(args.task)
     root = paths.prepare_write_root(paths.stage0_dir())
@@ -362,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             gpu_checked = True
             _train_direct(ctx, root / "scores" / args.task / name / args.split)
-    provenance = {"predictor_sha256": code_sha256(), **extra_provenance(ctx)}
+    provenance = provenance_of(args.predictor, ctx)
     out_dir = root / "scores" / args.task / name / args.split
     stored, reason = _kept_score(out_dir, args.task, name, args.split, provenance, args.force)
     if stored is not None:
@@ -384,7 +458,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"warning: {name} was trained for {trained}, short of max_steps {run_record['max_steps']}; "
               f"the run did not finish, so this score is not final (checkpoint scored: step "
               f"{run_record['checkpoint_step']})", file=sys.stderr, flush=True)
-    provenance = {"predictor_sha256": code_sha256(), **extra_provenance(ctx)}  # now with the fit it uses
+    provenance = provenance_of(args.predictor, ctx)  # now with the fit it uses
     result = harness.score(task, predict_fn, out_dir, split=args.split, history_s=getattr(predict_fn, "history_s", None),
                            batch_size=args.batch_size, num_workers=args.num_workers)
     path = baselines.write_score_json(result, name, args.split)

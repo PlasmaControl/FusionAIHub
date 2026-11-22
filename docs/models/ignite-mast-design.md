@@ -4,7 +4,10 @@ title: "IGNITE on MAST: design"
 
 # IGNITE on MAST: design (2026-11-21, amended 2026-11-22)
 
-**Status: design. Nothing described here is built.** On 2026-11-22 Nathaniel
+**Status: design. Stage 0 is built and measured on 2026-11-22 (the direct
+model's rows of the headroom table are still being trained): see
+[stage 0 results](./ignite-mast-stage0.md). Nothing else described here is
+built.** On 2026-11-22 Nathaniel
 answered the request for approval with "ok yes" and raised the bar. That is
 read here as approval of the design with the changes listed under
 [What changed on 2026-11-22](#what-changed-on-2026-11-22). The next document
