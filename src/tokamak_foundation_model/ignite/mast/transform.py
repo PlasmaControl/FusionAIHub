@@ -59,8 +59,23 @@ def _per_channel(a: np.ndarray, x: np.ndarray) -> np.ndarray:
     return a[..., None]
 
 
+COMPRESSIONS = ("none", "asinh")
+
+
+def _check_compress(compress: str) -> None:
+    """Refuse a ``compress`` value this code does not implement.
+
+    Both transforms used to treat anything but "asinh" as the identity, so a value added later (stage 1
+    expects a centred asinh) would have been read by older code as "none" and returned unstandardized
+    values without an error.
+    """
+    if compress not in COMPRESSIONS:
+        raise ValueError(f"unknown compress {compress!r}; this code implements {COMPRESSIONS}")
+
+
 def to_model(x: np.ndarray, st: ChannelStats) -> np.ndarray:
     """Physical units (*values_shape, T) to standardized units. Float64; NaN stays NaN."""
+    _check_compress(st.compress)
     x = np.asarray(x)
     scale, mean, std = (_per_channel(a, x) for a in (st.scale, st.mean, st.std))
     y = np.arcsinh(x / scale) if st.compress == "asinh" else x.astype(np.float64)
@@ -69,6 +84,7 @@ def to_model(x: np.ndarray, st: ChannelStats) -> np.ndarray:
 
 def to_physical(z: np.ndarray, st: ChannelStats) -> np.ndarray:
     """Inverse of `to_model`."""
+    _check_compress(st.compress)
     z = np.asarray(z)
     scale, mean, std = (_per_channel(a, z) for a in (st.scale, st.mean, st.std))
     y = z * std + mean
@@ -355,12 +371,17 @@ def save_stats(stats: dict[str, ChannelStats], path: Path) -> None:
 
 
 def load_stats(path: Path) -> dict[str, ChannelStats]:
+    """Read a ``stats.npz``; ``ValueError`` (naming the signal) for a ``compress`` this code does not implement."""
     out: dict[str, ChannelStats] = {}
     with np.load(Path(path), allow_pickle=False) as z:
         names = sorted({k.rsplit("::", 1)[0] for k in z.files})
         for name in names:
-            out[name] = ChannelStats(str(z[f"{name}::compress"]), z[f"{name}::scale"],
-                                     z[f"{name}::mean"], z[f"{name}::std"])
+            compress = str(z[f"{name}::compress"])
+            try:
+                _check_compress(compress)
+            except ValueError as e:
+                raise ValueError(f"{path}: {name}: {e}") from None
+            out[name] = ChannelStats(compress, z[f"{name}::scale"], z[f"{name}::mean"], z[f"{name}::std"])
     return out
 
 

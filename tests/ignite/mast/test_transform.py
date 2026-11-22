@@ -48,6 +48,31 @@ def test_nan_stays_nan_and_sign_is_kept():
     assert np.isnan(z[0, 0]) and z[0, 1] == -z[0, 2] and z[0, 2] > 0
 
 
+@pytest.mark.parametrize("fn", ["to_model", "to_physical"])
+@pytest.mark.parametrize("compress", ["asinh_centred", "ASINH", "", "log"])
+def test_an_unknown_compress_is_refused_not_taken_for_the_identity(fn, compress):
+    """A third value is expected in stage 1; code that does not know it must not return unstandardized values."""
+    st = transform.ChannelStats(compress, np.ones((1,)), np.zeros((1,)), np.ones((1,)))
+    with pytest.raises(ValueError, match="compress"):
+        getattr(transform, fn)(np.ones((1, 4)), st)
+
+
+def test_load_stats_refuses_an_unknown_compress(tmp_path):
+    """The file is read once and used for the whole cache: a value this code does not know stops there."""
+    path = tmp_path / "stats.npz"
+    transform.save_stats({"a-x": transform.ChannelStats("asinh_centred", np.ones((1,)), np.zeros((1,)),
+                                                        np.ones((1,)))}, path)
+    with pytest.raises(ValueError, match="asinh_centred"):
+        transform.load_stats(path)
+
+
+def test_the_two_known_compress_values_are_read_back(tmp_path):
+    path = tmp_path / "stats.npz"
+    transform.save_stats({n: transform.ChannelStats(n, np.ones((1,)), np.zeros((1,)), np.ones((1,)))
+                          for n in ("none", "asinh")}, path)
+    assert {k: v.compress for k, v in transform.load_stats(path).items()} == {"none": "none", "asinh": "asinh"}
+
+
 def _fake_loader(n_t=600, spiky_fraction=0.01):
     """A loader of two scalar signals, deterministic per shot: one gaussian, one with 1% of samples x1000."""
     def load(shot, signals):

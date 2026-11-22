@@ -2,7 +2,8 @@
 
 The registry is the readable record of what each channel is (units, IMAS path, position, family,
 the roles it plays in the tasks) and of how it is standardized (the last four columns repeat the
-numbers of ``stats.npz``, which is what the code reads; a test holds the two together).
+numbers of ``stats.npz``, which is what the code reads; `stats_mismatches` compares the two, and
+`cache.build` refuses to reuse a ``registry.csv`` that disagrees with ``stats.npz`` or `SAT_ABS`).
 `zarr`, `tokamark` and `MAST_tools` are imported inside the functions that use them.
 
 An empty cell means "not found", never zero: units, IMAS path, channel name, r and z are
@@ -30,6 +31,7 @@ _STRING_COLUMNS = ("device", "signal", "channel_name", "family", "units", "imas_
 _FLOAT_COLUMNS = ("dt", "r", "z", "tm_mean", "tm_std", "sat_abs", "valid_fraction", "dead_fraction",
                   "scale", "mean", "std")
 _ROLE_CODES = (("inputs", "inp"), ("actuators", "act"), ("outputs", "out"))
+_LISTED = 20                    # signals named in a printed summary
 
 # ADC range of plus or minus 5 V (data profile of 2026-11-21): the largest value a channel
 # can record, a little below 5 V. Empty for every other signal.
@@ -101,12 +103,15 @@ def _read_attributes(zarr_root: Path, specs: list[SignalSpec], sample_shots: lis
 
     found: dict[str, dict] = {}
     todo = {s.name: s for s in specs if s.name not in SPECTROGRAM_SIGNALS}
+    n_wanted, unopened, tried = len(todo), 0, 0
     for shot in sample_shots:
         if not todo:
             break
+        tried += 1
         try:
             group = zarr.open_group(str(Path(zarr_root) / f"{shot}.zarr"), mode="r")
         except Exception:      # a shot directory that is not there or cannot be opened: try the next
+            unopened += 1
             continue
         for name in list(todo):
             spec = todo[name]
@@ -132,6 +137,12 @@ def _read_attributes(zarr_root: Path, specs: list[SignalSpec], sample_shots: lis
                         rec["channel_names"] = [str(c) for c in coord]
             found[name] = rec
             del todo[name]
+    # Said, like the validity pass says its counts: a signal no sample shot has leaves empty units and
+    # IMAS cells ("not found"), and a shot that cannot be opened was skipped without a word.
+    print(f"registry: attributes read for {len(found)} of {n_wanted} signals "
+          f"({unopened} of {tried} sample shots could not be opened)")
+    if todo:
+        print(f"  no attributes found for: {', '.join(sorted(todo)[:_LISTED])}")
     return found
 
 
@@ -140,9 +151,11 @@ def _read_attributes(zarr_root: Path, specs: list[SignalSpec], sample_shots: lis
 def _validity_shot(args: tuple) -> tuple[int, dict | None, str | None]:
     """Per channel of one shot: the finite fraction of its samples and whether it is dead.
 
-    Dead: no finite sample (the cache's definition: a channel held at one value is valid and
-    only flagged there, and counts as live here). A signal the shot does not
-    have, or has with another shape, is ``None``.
+    Dead: no finite sample (the cache's definition of a dead channel: a channel held at one value
+    is valid and only flagged there, and counts as live here). A signal the shot does not have, or
+    has with another shape, is ``None``; `_measure_validity` then counts every channel of it as
+    dead, which the cache does not (it records such a shot as ``absent``, not as dead channels),
+    so ``dead_fraction`` is "no finite sample, or the shot lacks the signal".
     """
     shot, signals = args
     try:
@@ -164,7 +177,9 @@ def _validity_shot(args: tuple) -> tuple[int, dict | None, str | None]:
 def _measure_validity(signals: list[SignalSpec], sample_shots: list[int], workers: int) -> dict[str, tuple]:
     """``{name: (valid_fraction (C,), dead_fraction (C,))}`` over the shots that could be read.
 
-    A shot that lacks the signal counts as dead (it has no finite sample) and as 0 valid; a
+    A shot that lacks the signal counts as dead (it has no finite sample) and as 0 valid. This
+    merges two states that the cache keeps apart (a dead channel of a present signal, and an
+    ``absent`` signal), and the column is left as it is: read it as "dead or absent". A
     shot that cannot be read at all is left out of the denominator and counted in the printed
     summary. With no readable shot the fractions are NaN, not zero.
     """
@@ -262,6 +277,53 @@ def attach_stats(df: pd.DataFrame, stats: dict[str, ChannelStats]) -> pd.DataFra
         for k, a in arrays.items():
             out.loc[rows, k] = a[channels]
         out.loc[rows, "compress"] = st.compress
+    return out
+
+
+_STATS_COLUMNS = ("compress", "scale", "mean", "std")
+_MISMATCH_RTOL = 1e-9       # the CSV holds shortest-repr floats; pandas' fast parser may differ in the last digit
+
+
+def stats_mismatches(df: pd.DataFrame, stats: dict[str, ChannelStats]) -> list[str]:
+    """What in the registry ``df`` disagrees with ``stats`` and `SAT_ABS`; an empty list when it agrees.
+
+    The registry repeats the numbers of ``stats.npz`` (compress, scale, mean, std) and holds the
+    saturation limits of `SAT_ABS` (``sat_abs``). `cache.build` reuses a ``registry.csv`` that
+    exists, and the shot files are written from ``stats.npz`` and from that file's ``sat_abs``, so
+    a registry left over from other statistics would put other limits into the files while it
+    still shows the old constants. Floats are compared to a relative 1e-9 (NaN equals NaN).
+    """
+    try:
+        expected = attach_stats(df, stats)
+    except ValueError as e:
+        return [f"the registry does not fit the statistics: {e}"]
+    problems = []
+
+    def describe(column: str, bad: np.ndarray) -> str:
+        first = df.loc[bad].iloc[0]
+        return f"{column} differs in {int(bad.sum())} rows (first: {first['signal']} channel {first['channel']})"
+
+    bad = (df["compress"].astype(str).to_numpy() != expected["compress"].astype(str).to_numpy())
+    if bad.any():
+        problems.append(describe("compress", bad))
+    want_sat = df["signal"].map(lambda n: SAT_ABS.get(n, np.nan)).to_numpy(dtype=np.float64)
+    for column, want in (*((c, expected[c].to_numpy(dtype=np.float64)) for c in _STATS_COLUMNS[1:]),
+                         ("sat_abs", want_sat)):
+        have = df[column].to_numpy(dtype=np.float64)
+        same = np.isclose(have, want, rtol=_MISMATCH_RTOL, atol=0.0, equal_nan=True)
+        if not same.all():
+            problems.append(describe(column, ~same))
+    return problems
+
+
+def reconciled(df: pd.DataFrame, stats: dict[str, ChannelStats]) -> pd.DataFrame:
+    """A copy of ``df`` with the statistics columns from ``stats`` and ``sat_abs`` from `SAT_ABS`.
+
+    Raises ``ValueError`` where `attach_stats` does (a signal whose rows do not fit its arrays):
+    that registry has to be measured again, not patched.
+    """
+    out = attach_stats(df, stats)
+    out["sat_abs"] = out["signal"].map(lambda n: SAT_ABS.get(n, np.nan)).to_numpy(dtype=np.float64)
     return out
 
 

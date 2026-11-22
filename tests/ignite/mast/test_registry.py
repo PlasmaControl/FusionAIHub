@@ -77,6 +77,51 @@ def test_attach_stats_rejects_a_shape_mismatch():
         registry.attach_stats(_frame(), stats)
 
 
+def _two_stats(rng=None):
+    rng = rng or np.random.default_rng(0)
+    return {
+        "a-x": transform.ChannelStats("none", np.ones((1,)), np.array([0.5]), np.array([2.0])),
+        "b-y": transform.ChannelStats("asinh", rng.uniform(1, 2, (3,)), rng.standard_normal(3), rng.uniform(1, 2, (3,))),
+    }
+
+
+def test_a_registry_with_the_statistics_attached_has_no_mismatch_even_after_the_csv(tmp_path, monkeypatch):
+    """The two files are held together here: the registry on disk against stats.npz and SAT_ABS."""
+    monkeypatch.setattr(registry, "SAT_ABS", {"a-x": 4.99})
+    stats = _two_stats()
+    df = registry.reconciled(_frame(), stats)
+    assert registry.stats_mismatches(df, stats) == []
+    registry.save_registry(df, tmp_path / "reg.csv")
+    assert registry.stats_mismatches(registry.load_registry(tmp_path / "reg.csv"), stats) == []
+
+
+@pytest.mark.parametrize("column", ["compress", "scale", "mean", "std", "sat_abs"])
+def test_a_registry_that_disagrees_with_the_statistics_or_sat_abs_is_named(monkeypatch, column):
+    monkeypatch.setattr(registry, "SAT_ABS", {"a-x": 4.99})
+    stats = _two_stats()
+    df = registry.reconciled(_frame(), stats)
+    row = df.index[(df.signal == "b-y") & (df.channel == 1)][0]
+    df.loc[row, column] = "none" if column == "compress" else (df.loc[row, column] * 1.001 if column != "sat_abs"
+                                                                else 4.5)
+    problems = registry.stats_mismatches(df, stats)
+    assert len(problems) == 1 and problems[0].startswith(f"{column} differs in 1 rows (first: b-y channel 1)")
+
+
+def test_a_registry_without_the_sat_abs_of_sat_abs_is_a_mismatch(monkeypatch):
+    """A registry made before a limit was added (the cell is empty) is not the one the files are written from."""
+    stats = _two_stats()
+    df = registry.reconciled(_frame(), stats)
+    monkeypatch.setattr(registry, "SAT_ABS", {"a-x": 4.99})
+    assert registry.stats_mismatches(df, stats) == ["sat_abs differs in 1 rows (first: a-x channel 0)"]
+
+
+def test_a_registry_that_does_not_fit_the_statistics_is_a_mismatch_and_cannot_be_reconciled():
+    stats = {"b-y": transform.ChannelStats("none", np.ones((2,)), np.zeros((2,)), np.ones((2,)))}
+    assert "b-y" in registry.stats_mismatches(_frame(), stats)[0]
+    with pytest.raises(ValueError, match="b-y"):
+        registry.reconciled(_frame(), stats)
+
+
 def test_save_load_registry_roundtrip(tmp_path):
     df = registry.attach_stats(_frame(), {"a-x": transform.ChannelStats("none", np.ones((1,)), np.array([0.5]),
                                                                        np.array([2.0]))})
@@ -158,6 +203,20 @@ def test_build_registry_from_a_small_store(tmp_path, monkeypatch):
     assert te.valid_fraction.iloc[1] == pytest.approx((0 + 0.5 + 1.0) / 3)
     assert (df.compress == "").all() and df[["scale", "mean", "std"]].isna().all(axis=None)   # not fitted yet
     assert df.sat_abs.isna().all()
+
+
+def test_read_attributes_says_how_many_signals_got_attributes(tmp_path, capsys):
+    """A signal no sample shot has, and a shot that cannot be opened, were skipped without a word."""
+    _fake_zarr_store(tmp_path, [101, 102])
+    specs = [tasks.SignalSpec("summary-ip", 0.00025, (1,), 3.0, 4.0),
+             tasks.SignalSpec("thomson_scattering-t_e", 0.005, (3,), 5.0, 6.0),
+             tasks.SignalSpec("summary-not_in_the_store", 0.00025, (1,), 0.0, 1.0)]
+    found = registry._read_attributes(tmp_path, specs, [101, 999, 102])   # 999: no such shot directory
+    assert set(found) == {"summary-ip", "thomson_scattering-t_e"}
+    out = capsys.readouterr().out
+    assert "attributes read for 2 of 3 signals" in out
+    assert "summary-not_in_the_store" in out
+    assert "1 of 3 sample shots could not be opened" in out
 
 
 @pytest.mark.real_data
