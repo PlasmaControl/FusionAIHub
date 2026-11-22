@@ -76,18 +76,18 @@ it is the real bar, not TokaMind.
 | 1-1 | 15 equilibrium scalars | magnetics, coil currents, Ip | same 5 ms | 0.150 | 0.1363 | **0.0941** | 0.1503 |
 | 1-2 | plasma boundary (R, Z) | same | same 5 ms | 0.043 | 0.0439 | **0.0412** | 0.0433 |
 | 1-3 | flux map ψ(R, Z), 65×65 | same | same 5 ms | 0.122 | 0.1200 | **0.1156** | 0.1198 |
-| 2-1 | coil currents, Ip, 15 scalars | same, plus future coil voltages and NBI power | 5 → 25 ms | 0.181 | 0.1289 | **0.0880** | running |
+| 2-1 | coil currents, Ip, 15 scalars | same, plus future coil voltages and NBI power | 5 → 25 ms | 0.181 | 0.1289 | **0.0880** | 0.1809 |
 | 2-2 | plasma boundary | same | 5 → 25 ms | 0.043 | 0.0408 | **0.0370** | 0.0439 |
 | 2-3 | flux map | same | 5 → 25 ms | 0.092 | 0.0866 | **0.0828** | 0.0917 |
 | 3-1 | Thomson Te, ne profiles | one Thomson sample, plus future Ip and density requests, NBI, gas | 5 → 50 ms | 0.346 | 0.3477 | **0.3311** | 0.3457 |
-| 3-2 | D-alpha, two soft X-ray cameras | Thomson, D-alpha, soft X-ray, same actuators | 5 → 50 ms | 0.269 | 0.2529 | **0.2522** | running |
-| 3-3 | Thomson profiles, three betas | whole history of magnetics, coils, Ip, line density | history → 5 ms | 0.220 | 0.2415 | **0.2147** | running |
-| 4-1 | two soft X-ray cameras | whole history of 14 signals | history → 100 ms | 0.213 | **0.2122** | 0.2298 | running |
-| 4-2 | two soft X-ray cameras | as 4-1 plus Thomson | history → 100 ms | 0.214 | **0.2143** | 0.2302 | running |
-| 4-3 | magnetic axis height | as 4-1 | history → 100 ms | 0.080 | 0.0781 | **0.0691** | running |
-| 4-4 | plasma current | as 4-1 | history → 100 ms | 0.349 | 0.3470 | **0.3116** | running |
-| 4-5 | Mirnov power spectra | as 4-1 | history → 100 ms | 0.651 | 0.7377 | 0.7487 | running |
-| Mean | | | | 0.212 | 0.2134 | **0.2033** | |
+| 3-2 | D-alpha, two soft X-ray cameras | Thomson, D-alpha, soft X-ray, same actuators | 5 → 50 ms | 0.269 | 0.2529 | **0.2522** | 0.2671 |
+| 3-3 | Thomson profiles, three betas | whole history of magnetics, coils, Ip, line density | history → 5 ms | 0.220 | 0.2415 | **0.2147** | 0.2197 |
+| 4-1 | two soft X-ray cameras | whole history of 14 signals | history → 100 ms | 0.213 | **0.2122** | 0.2298 | 0.2147 |
+| 4-2 | two soft X-ray cameras | as 4-1 plus Thomson | history → 100 ms | 0.214 | **0.2143** | 0.2302 | 0.2155 |
+| 4-3 | magnetic axis height | as 4-1 | history → 100 ms | 0.080 | 0.0781 | **0.0691** | 0.0810 |
+| 4-4 | plasma current | as 4-1 | history → 100 ms | 0.349 | 0.3470 | **0.3116** | 0.3502 |
+| 4-5 | Mirnov power spectra | as 4-1 | history → 100 ms | 0.651 | 0.7377 | 0.7487 | 0.6499 |
+| Mean | | | | 0.212 | 0.2134 | **0.2033** | 0.2124 |
 
 Three things in these numbers shape the design:
 
@@ -102,12 +102,13 @@ Three things in these numbers shape the design:
   model is at or above that.
 - **The published TokaMind numbers disagree with each other** (task 2-1: 0.181
   in the paper, 0.129 in GenToka's re-run). The reference is therefore our own
-  replication with today's benchmark code, which is running
-  (`/models/tokamind/run_all_tasks.sh`; the six tasks finished by
-  2026-11-22 00:30 UTC are within 0.002 of the paper: 1-1 at 0.1503 against
-  0.150, 1-2 at 0.0433 against 0.043, 1-3 at 0.1198 against 0.122, 2-2 at
-  0.0439 against 0.043, 2-3 at 0.0917 against 0.092, 3-1 at 0.3457 against
-  0.346).
+  replication with today's benchmark code
+  (`/models/tokamind/run_all_tasks.sh`, finished 2026-11-22 04:36 UTC). It
+  reproduces the paper: all 14 tasks are within 0.0022 of the paper's
+  fine-tuned column (largest difference task 1-3, 0.1198 against 0.122), and
+  the mean is 0.2124 against 0.212. Task 2-1 comes out at 0.1809, so the
+  paper's 0.181 is what today's code gives and GenToka's 0.129 for TokaMind
+  on that task is not reproduced here.
 - **A few tasks carry the mean.** Task 4-5 alone is 26% of GenToka's summed
   score (0.749 of 2.846). The six tasks of groups 1 and 2 together are 16%
   (0.459). A model that only matched the best published number on every task
@@ -362,14 +363,23 @@ organize time scales within MAST
 
 ### Data path
 
-- **Standardized cache.** One pass turns each shot's signals into float16
-  arrays of standardized values with a validity mask, under
-  `/models/intermediate/`. Measured size for the 39 benchmark signals: 90 GB,
-  or 55 GB without the 500 kHz channels. The model never reads Zarr during
-  training.
-- **Validity is explicit.** NaNs, sentinel values, saturated samples, dead
-  channels and missing chunk files all become "not valid" in the mask. A
-  channel that is invalid for a frame produces no token for that frame.
+- **Standardized cache.** One pass turns each shot's signals into arrays of
+  standardized values under `/models/intermediate/`, with NaN marking a
+  sample that is not valid. The model never reads Zarr during training.
+  As built on 2026-11-22 (`/models/intermediate/mast/cache/v1`, 11,188
+  shots, 137.8 GB) the arrays are float32, not the float16 first planned:
+  float16 could not hold an `asinh`-compressed heavy-tailed signal to 1e-3 of
+  the benchmark's standard deviation, and float32 keeps the cache exact to
+  about 1e-6, so the choice of training units stays open. A per-signal dtype
+  is a question for the raw 500 kHz waveforms.
+- **Validity is explicit.** NaNs, sentinel values, dead channels and missing
+  chunk files all become "not valid". A channel that is invalid for a frame
+  produces no token for that frame. Two cases are flagged instead of
+  invalidated in cache v1, because the benchmark scores them: clipped
+  (saturated) samples stay valid and are marked in a `<signal>__saturated`
+  dataset, and a channel that is constant within a shot stays valid and is
+  listed in `const_channels` (two thirds of those are constant by
+  construction, such as boundary anchor points and programmed references).
 - **Normalization** uses one set of statistics per channel, computed on
   training shots only and fixed. Signals with heavy tails (soft X-ray,
   D-alpha, Mirnov power) get a monotone compression before standardizing; the
