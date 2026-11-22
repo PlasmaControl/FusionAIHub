@@ -222,7 +222,9 @@ every fitted predictor blind: it hands the predictor a copy of each batch whose
 targets are NaN, so a predictor cannot read what it is scored on
 (`run_headroom.py`, `_blind_to_targets`). The command does this since
 `a34cd797` (08:21). The second fit of the cheap predictors started after it
-(08:23), so every `shrunk` and `ridge` score on this page was made blind. A
+(08:23), so every stored `shrunk` and `ridge` score was made blind; the
+first-fit ridge scores in the table below, which are no longer stored, were
+not. A
 direct run is scored by the process that trained it, with the code loaded at
 its start. Of the 16 direct scores of the table of 13:45, 13 come from runs
 that started before that commit (05:08 to 07:42: the seven base runs, `h050`
@@ -238,7 +240,10 @@ made without the blinding. Six of them are rows of the headroom table (tasks
 - *Measured on one of them, 2026-11-22 14:08 to 14:12:* the row of task 1-2
   (`lr1e4`) was scored again with the blinding. With the 48 loader workers of
   the original run the score is 0.036184312776439465, equal to the stored one
-  in every digit. With 64 workers it is 0.036184062141816686, twice. So the
+  in every digit. With 64 workers it is 0.036184062141816686 in two runs (the
+  second value was read from the score file before the next run replaced it;
+  `analysis/rescore_1-2_lr1e4.txt` under the stage root records it from the
+  session's output). So the
   blinding changes nothing for this predictor, and the number of loader
   workers changes a score by 2.5e-7 here, which no table on this page shows.
   The stored score of that row is now the blind one (same value, date 14:11).
