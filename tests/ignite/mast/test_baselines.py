@@ -148,3 +148,28 @@ def test_a_stored_score_that_is_not_the_one_asked_for_is_not_kept(tmp_path, case
     assert stored is None and reason
     if case in ("no_hash", "other_hash"):
         assert "scoring code changed since" in reason
+
+
+# ---------------------------------------------------------------- stamped with the code as loaded
+
+def test_the_hash_is_the_digest_of_the_files_of_an_unedited_tree():
+    assert baselines.scoring_code_sha256() == baselines._hash_scoring_files()
+
+
+def test_the_hash_is_taken_at_import_not_when_a_score_is_written(tmp_path, monkeypatch):
+    """A score computed by the code as loaded must not be stamped with files edited since."""
+    loaded = baselines.scoring_code_sha256()
+    before = baselines.write_score_json(_score_result(tmp_path), "mean", "test")
+    monkeypatch.setattr(baselines, "_hash_scoring_files", lambda: "0" * 64)
+    assert baselines.scoring_code_sha256() == loaded
+    after = baselines.write_score_json(_score_result(tmp_path), "mean", "test")
+    assert json.loads(after.read_text())["code_sha256"] == loaded
+    before_again, reason = baselines.read_kept_score(tmp_path, "task_x", "mean", "test")
+    assert reason == "" and before_again["code_sha256"] == loaded and before == after
+
+
+def test_the_git_revision_is_taken_at_import_not_when_a_score_is_written(tmp_path, monkeypatch):
+    loaded = json.loads(baselines.write_score_json(_score_result(tmp_path), "mean", "test").read_text())["git_revision"]
+    monkeypatch.setattr(baselines, "_git_revision", lambda: "f" * 40)
+    again = json.loads(baselines.write_score_json(_score_result(tmp_path), "mean", "test").read_text())
+    assert again["git_revision"] == loaded != "f" * 40

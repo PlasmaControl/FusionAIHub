@@ -83,16 +83,39 @@ def outside_tolerance(ours: float, published: float | None, tolerance: float) ->
 _SCORING_FILES = ("harness.py", "tasks.py", "baselines.py")
 
 
-def scoring_code_sha256() -> str:
-    """sha256 over the bytes of the scoring code, each file preceded by its name.
-
-    A stored score is the same score only if this value is unchanged.
-    """
+def _hash_scoring_files() -> str:
+    """sha256 over the bytes of the scoring files on disk now, each preceded by its name."""
     h = hashlib.sha256()
     for name in _SCORING_FILES:
         h.update(name.encode() + b"\n")
         h.update((Path(__file__).parent / name).read_bytes())
     return h.hexdigest()
+
+
+def _git_revision() -> str:
+    try:
+        done = subprocess.run(["git", "-C", str(_REPO), "rev-parse", "HEAD"],
+                              capture_output=True, text=True, check=True, timeout=30)
+        return done.stdout.strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+# Taken once, here, within milliseconds of the scoring modules being loaded (`.harness` and
+# `.tasks` are imported above) and never read again: a process that runs for hours must stamp its
+# scores with the code it is running, not with whatever the files hold when a score is written.
+# Observed 2026-11-22: scores computed by code loaded at 7eb42e9f carried git_revision e86aed5b
+# because the revision and the hash were read at write time.
+_CODE_SHA256 = _hash_scoring_files()
+_GIT_REVISION = _git_revision()
+
+
+def scoring_code_sha256() -> str:
+    """The sha256 of the scoring code as loaded by this process (taken at import, not re-read).
+
+    A stored score is the same score only if this value is unchanged.
+    """
+    return _CODE_SHA256
 
 
 _SCORE_KEYS = ("task", "predictor", "split", "nrmse", "n_shots", "n_windows", "git_revision", "date",
@@ -103,7 +126,7 @@ def read_kept_score(out_dir: Path, task: str, predictor: str, split: str) -> tup
     """The stored ``score.json`` of `out_dir` if it is the score asked for, else ``(None, reason)``.
 
     Kept only if the file exists, parses, has every key, names this task, predictor and split,
-    and was written with the scoring code as it is now (`scoring_code_sha256`).
+    and was written by the scoring code this process is running (`scoring_code_sha256`, as loaded).
     """
     path = Path(out_dir) / "score.json"
     if not path.exists():
@@ -121,17 +144,11 @@ def read_kept_score(out_dir: Path, task: str, predictor: str, split: str) -> tup
     return stored, ""
 
 
-def _git_revision() -> str:
-    try:
-        done = subprocess.run(["git", "-C", str(_REPO), "rev-parse", "HEAD"],
-                              capture_output=True, text=True, check=True, timeout=30)
-        return done.stdout.strip() or "unknown"
-    except (OSError, subprocess.SubprocessError):
-        return "unknown"
-
-
 def write_score_json(result: ScoreResult, predictor: str, split: str) -> Path:
-    """Write ``score.json`` into ``result.out_dir`` beside TokaMark's evaluator files; return its path."""
+    """Write ``score.json`` into ``result.out_dir`` beside TokaMark's evaluator files; return its path.
+
+    The git revision and `code_sha256` describe the code as loaded at import, not the files at write time.
+    """
     path = Path(result.out_dir) / "score.json"
     record = {
         "task": result.task,
@@ -140,9 +157,9 @@ def write_score_json(result: ScoreResult, predictor: str, split: str) -> Path:
         "nrmse": result.task_nrmse,
         "n_shots": int(len(result.per_shot)),
         "n_windows": int(result.n_windows),
-        "git_revision": _git_revision(),
+        "git_revision": _GIT_REVISION,
         "date": datetime.now(timezone.utc).isoformat(),
-        "code_sha256": scoring_code_sha256(),
+        "code_sha256": _CODE_SHA256,
     }
     path.write_text(json.dumps(record, indent=2) + "\n")
     return path
