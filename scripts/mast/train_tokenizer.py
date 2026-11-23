@@ -12,7 +12,8 @@ of several signals leaves out beside each signal's own concatenated basis and on
 their streams, at the same number of values in all. `train --arm NAME` trains the network of one network arm on
 the stores (on one GPU, or on the CPU with `--cpu`) and writes ``<stage1>/recoders/<NAME>.s<seed>[.<variant>]``:
 the weights of the best validation, the log, the provenance and, last, ``result.json`` with the collapse check;
-it exits 3 if the network collapsed. Torch is loaded at import by the modules this script uses; `train` defers the CUDA
+it exits 3 if the network collapsed. `fluct` measures what the trend path leaves out of the 50 kHz channels (the band above
+a signal's K cosine values, by frequency; no tokenizer is built) and writes ``<stage1>/compare/fluct.csv``. Torch is loaded at import by the modules this script uses; `train` defers the CUDA
 device choice until after its refusals (`CUDA_VISIBLE_DEVICES` is set before any CUDA call).
 
 Units. "Front values" are what a front codec's ``encode_domain`` returns (`store.Norm` takes them to "example
@@ -42,7 +43,7 @@ from tokamak_foundation_model.ignite.mast import cache, paths, registry, tasks, 
 from tokamak_foundation_model.ignite.mast.tokenizers import assign, code_sha256, fit, grid
 from tokamak_foundation_model.ignite.mast.tokenizers import learned
 from tokamak_foundation_model.ignite.mast.tokenizers.frames import frame_len
-from tokamak_foundation_model.ignite.mast.tokenizers.learned import compare, identity, recode, store
+from tokamak_foundation_model.ignite.mast.tokenizers.learned import compare, fluct, identity, recode, store
 
 FIT_VERSION = "v1"                        # 1b's fit, whose shots are the training shots
 STORE_VERSION = "v1"
@@ -703,6 +704,86 @@ def run_train(args: argparse.Namespace) -> int:
     return 3 if collapsed else 0
 
 
+# ------------------------------------------------------------------------------------- fluct
+
+FLUCT_SAMPLES = 250                       # samples of a 5 ms frame at 50 kHz
+FLUCT_COLUMNS = ("signal", "k_trend", "n_frames", "band_to_trend", "share_below_5khz", "persistence")
+
+
+def run_fluct(args: argparse.Namespace) -> int:
+    """For every series signal with 250 samples per 5 ms frame (`frames.frame_len` of its sampling interval; four on
+    cache v1), the power above the trend path, by frequency, over `--n-shots` ``val_select`` shots spread evenly
+    (`fluct.summarize`; the samples are the front codec's domain, the K of the trend is the signal's in
+    ``<stage1>/assignments/v1.json``). Writes ``<stage1>/compare/fluct.csv`` atomically (`signal`, `k_trend`,
+    `n_frames`, `band_to_trend`, `share_below_5khz`, `persistence`, `bin_00` to `bin_24`; a signal without a frame has
+    `n_frames` 0 and empty cells) and prints one line per signal without the bin columns, "no data" for one without a
+    frame. Exit 2 for a refusal, before any file is read (a missing assignment, fit or cache manifest) or written."""
+    if args.n_shots < 1 or args.workers < 1:
+        raise Refused("--n-shots and --workers are at least 1")
+    stage1 = paths.stage1_dir()
+    assignment_path = stage1 / "assignments" / f"{DEFAULT_ASSIGNMENT}.json"
+    fit_dir = stage1 / "fit" / FIT_VERSION
+    root = Path(args.cache_dir) if args.cache_dir else paths.cache_dir()
+    if not assignment_path.is_file():
+        raise Refused(f"there is no assignment at {assignment_path}")
+    if not (root / "manifest.json").is_file():
+        raise Refused(f"there is no cache manifest at {root / 'manifest.json'}")
+    if not (fit_dir / "fit.npz").exists():
+        raise Refused(f"there is no fit at {fit_dir}: run `run_tokenizer.py fit` first")
+    specs = [s for s in registry.all_signals() if assign.codec_kind(s) == "frame_dct" and frame_len(s.dt) == FLUCT_SAMPLES]
+    if not specs:
+        raise Refused(f"no series signal has {FLUCT_SAMPLES} samples per frame")
+    try:
+        assignment = assign.load_assignment(assignment_path)
+        fits, fit_meta = fit.load_fit(fit_dir)
+        stats_sha = _stats_sha(root, fit_meta)
+        stats = transform.load_stats(root / "stats.npz")
+    except (OSError, KeyError, ValueError) as e:
+        raise Refused(f"the inputs cannot be read ({type(e).__name__}: {e})") from e
+    shots = cache.pick_evenly(tasks.split_shots("val_select"), args.n_shots)
+    gone = [s for s in shots if not (root / "shots" / f"{s}.h5").exists()]
+    if gone:
+        raise Refused(f"{len(gone)} shots have no cache file in {root}; the first is {gone[0]}")
+    fronts, no_fit = {}, []
+    for spec in specs:
+        setting = assignment.get(spec.name)
+        if setting is None or setting.codec != "frame_dct":
+            raise Refused(f"the setting of {spec.name} must be a plain 'frame_dct' codec (its K is the trend path), got "
+                          f"{None if setting is None else setting.codec!r}")
+        if spec.name not in fits or fits[spec.name].n_examples == 0:
+            no_fit.append(spec)
+            continue
+        try:
+            fronts[spec.name] = store.front_codec(spec, stats[spec.name], fits[spec.name], "frame_dct", setting.domain)
+        except (KeyError, ValueError) as e:
+            raise Refused(f"the front codec of {spec.name} cannot be built ({type(e).__name__}: {e})") from e
+    out_dir = _prepare(stage1 / "compare")                  # after every refusal above
+    print(f"{len(specs)} signals with {FLUCT_SAMPLES} samples per frame, over {len(shots)} val_select shots", flush=True)
+    rows = []
+    for spec in specs:
+        k = int(assignment[spec.name].k[0])
+        if spec.name in fronts:
+            s = fluct.summarize((u for u in transform.map_shots(
+                fluct.shot_domain, shots, (str(root), stats_sha, fronts[spec.name]), args.workers) if u is not None),
+                                FLUCT_SAMPLES, k)
+        else:
+            s = fluct.summarize([], FLUCT_SAMPLES, k)         # not fitted: no training shot has it
+        rows.append({"signal": spec.name, "k_trend": k, "n_frames": s["n_frames"], "band_to_trend": s["band_to_trend"],
+                     "share_below_5khz": s["share_below_5khz"], "persistence": s["persistence"],
+                     **{f"bin_{i:02d}": float(v) for i, v in enumerate(s["share_by_bin"])}})
+        if s["n_frames"] == 0:
+            print(f"{spec.name}: no data (K {k})", flush=True)
+        else:
+            print(f"{spec.name}: K {k}, {s['n_frames']} channel-frames, band to trend {s['band_to_trend']:.3g}, "
+                  f"share below 5 kHz {s['share_below_5khz']:.3f}, persistence {s['persistence']:.3f}", flush=True)
+    target = out_dir / "fluct.csv"
+    tmp = target.with_name(target.name + ".tmp")
+    pd.DataFrame(rows, columns=list(FLUCT_COLUMNS) + [f"bin_{i:02d}" for i in range(fluct.N_FLUCT_BINS)]).to_csv(tmp, index=False)
+    os.replace(tmp, target)
+    print(f"wrote {target}", flush=True)
+    return 0
+
+
 # -------------------------------------------------------------------------------------------- main
 
 def _parser() -> argparse.ArgumentParser:
@@ -741,6 +822,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--variant", default=None, help="a name that is appended to the run directory (<arm>.s<seed>.<variant>)")
     p.add_argument("--force", action="store_true", help="train again over a finished run (its files are removed first)")
     p.set_defaults(run=run_train)
+
+    p = sub.add_parser("fluct", help="the power above the trend path of the 50 kHz channels, by frequency (a statistic; no tokenizer)")
+    p.add_argument("--n-shots", type=int, default=100, help="val_select shots, spread evenly (default 100)")
+    p.add_argument("--workers", type=int, default=64, help="reader processes (default 64)")
+    p.add_argument("--cache-dir", default=None, help="the cache (default <root>/cache/v1)")
+    p.set_defaults(run=run_fluct)
     return ap
 
 
