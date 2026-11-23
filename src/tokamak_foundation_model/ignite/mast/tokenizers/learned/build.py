@@ -13,6 +13,7 @@ codec are in recoder values. Nothing here imports torch.
 from __future__ import annotations
 
 import hashlib
+import math
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -22,7 +23,7 @@ from ...tasks import SignalSpec
 from ...transform import ChannelStats
 from .. import assign, codecs, fit as fit_module
 from ..grid import GridSet
-from . import recode, store
+from . import identity, recode, store
 
 RECODED = "recoded"                   # a per-stream recoder
 RECODED_CONCAT = "recoded_concat"     # a recoder of all streams of a frame at once
@@ -121,3 +122,71 @@ def sources_sha256(assignment: Mapping[str, assign.Setting], recoders_root: Path
         h.update(name.encode())
         h.update(recode.recoder_sha256(Path(recoders_root) / name).encode())
     return h.hexdigest()
+
+
+def _base_values(setting: assign.Setting, info: Mapping[str, object]) -> int:
+    """Values per frame of the base setting of a signal whose front the recoder recorded as `info`.
+
+    ``frame_dct``: ``S * K`` (S the recorded streams, one per channel). ``band_dct``: ``P * sum(k)`` with
+    ``P = S / 8`` probes. ``linear``: ``k[0]``. An integer count (no unit).
+    """
+    kind, s = info["kind"], int(info["n_streams"])
+    if kind == "frame_dct":
+        return s * int(setting.k[0])
+    if kind == "band_dct":
+        return s // identity.N_BANDS * int(sum(setting.k))
+    return int(setting.k[0])
+
+
+def recode_assignment(base: Mapping[str, assign.Setting], loaded: recode.Loaded, source: str, *,
+                      scale: float = 1.0, signals: Sequence[str] | None = None) -> dict[str, assign.Setting]:
+    """`base` with the signals of a recoder (or the listed ones among them) behind that recoder.
+
+    `loaded` is the recoder read from ``<recoders>/<source>``. Each chosen signal gets
+    ``Setting(RECODED or RECODED_CONCAT, k, base domain, base n_bins, source)``. A per-stream recoder keeps
+    what the base kept per stream: ``(K,)`` of a `frame_dct`, the eight numbers of a `band_dct`,
+    ``(n_values,)`` of a `linear`. A concatenated recoder keeps ``k = (m,)``: `m` is the base's values per
+    frame for the signal (S times K; P times ``sum(k)``) times `scale`, rounded down to a multiple of the
+    recoder's `n_val` and at least one token. Signals not chosen keep their base setting.
+
+    `ValueError` naming "scale" for a per-stream recoder with ``scale != 1``; "domain" if the base domain is
+    not the one the recoder was fitted in; "recoded" if the base setting already names a recoder; "holds" if
+    the recoder has fewer values than `k` asks for; "codec" if the base is another kind of codec than the
+    recoder's front, or has no setting for a signal; "multiple" if a multi-token recoder is asked for a
+    number of values that is not a whole number of tokens.
+    """
+    r = loaded.recoder
+    concat = bool(r.concat)
+    if not scale > 0:
+        raise ValueError(f"scale must be positive, got {scale}")
+    if scale != 1.0 and not concat:
+        raise ValueError(f"scale {scale} cannot apply to {source!r}: a per-stream recoder keeps the base's values "
+                         "per stream, and only a concatenated recoder is sized by a scale")
+    out = dict(base)
+    for name, info in loaded.meta["signals"].items():
+        if signals is not None and name not in signals:
+            continue
+        if name not in base:
+            raise ValueError(f"codec: the base assignment has no setting for {name!r}, which recoder {source!r} lists")
+        b = base[name]
+        if b.codec in (RECODED, RECODED_CONCAT):
+            raise ValueError(f"{name}: the base setting is already recoded (by {b.source!r}); a signal has one recoder")
+        if b.domain != info["domain"]:
+            raise ValueError(f"{name}: the base domain {b.domain!r} is not the domain {info['domain']!r} "
+                             f"that recoder {source!r} was fitted in")
+        if b.codec != info["kind"]:
+            raise ValueError(f"{name}: the base codec is {b.codec!r} but recoder {source!r} was fitted behind a "
+                             f"{info['kind']!r} codec")
+        if concat:
+            values = _base_values(b, info)
+            m = max(r.n_val, int(math.floor(values * scale + 1e-9)) // r.n_val * r.n_val)
+            k = (m,)
+        else:
+            k = tuple(b.k[:1]) if info["kind"] == "linear" else tuple(b.k)
+            if r.n_tok > 1 and (len(set(k)) != 1 or k[0] % r.n_val):
+                raise ValueError(f"{name}: recoder {source!r} has tokens of {r.n_val} values, so it needs one "
+                                 f"number of values that is a multiple of {r.n_val}, got {list(k)}")
+        if max(k) > r.n_values:
+            raise ValueError(f"{name}: K {list(k)} asks for more values than recoder {source!r} holds ({r.n_values})")
+        out[name] = assign.Setting(RECODED_CONCAT if concat else RECODED, k, b.domain, b.n_bins, source)
+    return out

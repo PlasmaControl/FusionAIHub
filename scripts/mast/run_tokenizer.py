@@ -31,6 +31,16 @@ score of ``<stage1>/assignments/ref.json``, written by `assign --reference --nam
 kept with the current provenance, and the cache-side columns measured over `val_report` shots. It prints the
 table and writes `<stage1>/gate/<name>.csv` and `.md` after every refusal; it exits 1 if a row blocks.
 
+An assignment may name a learned recoder (plan 1c): a setting whose codec is `recoded` or `recoded_concat` and
+whose `source` is a directory of ``<stage1>/recoders/`` (made by `train_tokenizer.py linear` or `train`). Every
+sub-command builds its codecs through `learned.build`, and the provenance of such an assignment adds
+`learned_code_sha256` and `sources_sha256` (the bytes of each recoder it names). `recode --name NEW --from OLD
+--arm R[,R...]` writes `<stage1>/assignments/NEW.json` from OLD with the signals of each recoder behind it, the
+values per frame kept (`--scale` sizes a concatenated recoder); it refuses a name that exists. `score --instrument
+floor` runs on the CPU for a network recoder too (one torch thread), so it still refuses `--gpu`. The gate reads
+a recoded assignment through a copy of `gate.cache_side_job` that builds its codecs with `learned.build`, and
+refuses a concatenated band codec, whose kept positions it cannot tell.
+
 Later sub-commands are added as one more sub-parser and one more function each. This file does
 nothing at import time except define: `fit`, `ladder --inputs` and `gate` start spawned workers, and they
 import it again.
@@ -40,6 +50,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import functools
 import hashlib
 import importlib.util
 import json
@@ -59,6 +70,9 @@ from tokamak_foundation_model.ignite.mast import baselines, cache, harness, path
 from tokamak_foundation_model.ignite.mast.headroom import table
 from tokamak_foundation_model.ignite.mast.tokenizers import assign, code_sha256, grid
 from tokamak_foundation_model.ignite.mast.tokenizers import fit, floor, gate, ladder
+from tokamak_foundation_model.ignite.mast.tokenizers import learned
+from tokamak_foundation_model.ignite.mast.tokenizers.learned import build as learned_build
+from tokamak_foundation_model.ignite.mast.tokenizers.learned import recode as learned_recode
 
 STAGE1_SPLITS = ("val_select", "val_report")
 INSTRUMENTS = ("floor", "passthrough", "inputs", "raw")
@@ -134,14 +148,33 @@ def kept_score(out_dir: Path, task: str, predictor: str, label: str, provenance:
     return stored, ""
 
 
+def _default_recoders_root() -> Path:
+    return paths.stage1_dir() / "recoders"
+
+
+def recoders_root() -> Path:
+    """Where the recoders of an assignment are read from: ``<stage1>/recoders``."""
+    return _default_recoders_root()
+
+
+def _names_a_recoder(assignment: Mapping[str, assign.Setting]) -> bool:
+    return bool(learned_build.sources(assignment)) or any(
+        s.codec in (learned_build.RECODED, learned_build.RECODED_CONCAT) for s in assignment.values())
+
+
 def provenance_of(assignment_path: Path | None, fit_dir: Path | None, cache_root: Path,
-                  checkpoint: Path | None = None) -> dict[str, str]:
+                  checkpoint: Path | None = None, recoders_root: Path | None = None) -> dict[str, str]:
     """What a stored score must carry to be the score of the code and files in use now.
 
     In this order: `tokenizer_code_sha256`, `assignment_sha256`, `fit_sha256`, `stats_sha256` (these four only
-    with an assignment), `tokamark_revision` (from ``manifest.json`` of `cache_root`), `data_root`, and
-    `checkpoint_sha256` (the sha256 of the file `checkpoint`). `ValueError` naming "statistics" if
-    ``stats.npz``, the manifest and the fit's meta do not carry one hash. Arrays are not read.
+    with an assignment), `learned_code_sha256` and `sources_sha256` (only for an assignment that names a
+    recoder: the hash of `learned`'s modules and of the bytes of every recoder it names, read from
+    `recoders_root`, default ``<stage1>/recoders`` (which `score` relies on); `FileNotFoundError` for a recoder
+    that is not saved),
+    `tokamark_revision` (from ``manifest.json`` of `cache_root`), `data_root`, and `checkpoint_sha256` (the
+    sha256 of the file `checkpoint`). `ValueError` naming "statistics" if ``stats.npz``, the manifest and the
+    fit's meta do not carry one hash. Arrays are not read. An assignment that names no recoder gets exactly
+    plan 1b's keys.
     """
     manifest = json.loads((Path(cache_root) / "manifest.json").read_text())
     out: dict[str, str] = {}
@@ -152,9 +185,13 @@ def provenance_of(assignment_path: Path | None, fit_dir: Path | None, cache_root
                 "fit.json": fit_meta["stats_sha256"]}
         if len(set(shas.values())) != 1:
             raise ValueError("the statistics are not one set: " + ", ".join(f"{k} {v[:12]}" for k, v in shas.items()))
-        out = {"tokenizer_code_sha256": code_sha256(),
-               "assignment_sha256": assign.assignment_sha256(assign.load_assignment(assignment_path)),
+        assignment = assign.load_assignment(assignment_path)
+        out = {"tokenizer_code_sha256": code_sha256(), "assignment_sha256": assign.assignment_sha256(assignment),
                "fit_sha256": fit.fit_sha256(Path(fit_dir)), "stats_sha256": stats_sha}
+        if _names_a_recoder(assignment):
+            root = Path(recoders_root) if recoders_root is not None else _default_recoders_root()
+            out["learned_code_sha256"] = learned.code_sha256()
+            out["sources_sha256"] = learned_build.sources_sha256(assignment, root)
     out["tokamark_revision"] = manifest["tokamark_revision"]
     out["data_root"] = str(paths.tokamark_zarr_root())
     if checkpoint is not None:
@@ -269,6 +306,15 @@ def _needed_signals(task: tasks.TaskSpec, instrument: str) -> tuple[tasks.Signal
     return task.outputs if instrument in ("floor", "passthrough") else ()
 
 
+def _one_thread_for_networks(codecs: Mapping[str, object]) -> None:
+    """Limit torch to one thread when a codec runs a network recoder (ruling C7: network floors run on the CPU,
+    and a floor pass is not made faster by many threads over small tokens). torch is imported only then, here
+    and never in the library."""
+    if any(getattr(getattr(c, "recoder", None), "kind", None) == "net" for c in codecs.values()):
+        import torch
+        torch.set_num_threads(1)
+
+
 def _build_predictor(args: argparse.Namespace, task: tasks.TaskSpec, cache_root: Path, assignment_path: Path | None,
                      fit_dir: Path, checkpoint: Path | None) -> harness.PredictFn:
     """The harness predictor of the instrument (physical units in and out). `Refused` if a signal it needs
@@ -288,7 +334,8 @@ def _build_predictor(args: argparse.Namespace, task: tasks.TaskSpec, cache_root:
             raise Refused(f"signal {s.name} has no data in the fit, and {task.name} needs it")
         if s.name not in assignment:
             raise Refused(f"the assignment has no setting for signal {s.name}, and {task.name} needs it")
-    codecs = fit.build_codecs(signals, stats, fits, assignment)
+    codecs = learned_build.build_codecs(signals, stats, fits, assignment, recoders_root())
+    _one_thread_for_networks(codecs)
     if args.instrument == "floor":
         return floor.floor_predictor(task, codecs, args.mode)
     if args.instrument == "passthrough":
@@ -543,7 +590,7 @@ def _ladder_task(args: argparse.Namespace, stage1: Path, cache_root: Path, fit_d
     def build(settings: dict[str, assign.Setting]):
         current.clear()
         current.update(settings)
-        return fit.build_codecs(task.outputs, stats, fits, settings)
+        return learned_build.build_codecs(task.outputs, stats, fits, settings, recoders_root())
 
     def score(kind: str, codecs, name: str):
         extra = {**records, "pass": name, "settings": {n: dataclasses.asdict(st) for n, st in current.items()}}
@@ -770,6 +817,72 @@ def run_assign(args: argparse.Namespace) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------------------- recode
+
+def run_recode(args: argparse.Namespace) -> int:
+    """Write ``<stage1>/assignments/<name>.json`` from ``<from>.json`` with the signals of each recoder of
+    `--arm` (a comma list of directories of ``<stage1>/recoders``) behind that recoder
+    (`learned.build.recode_assignment`: the values per frame kept, `--scale` for a concatenated recoder,
+    `--signals` to recode only some). The recoders' signals must not overlap after `--signals`. Prints, per
+    changed signal, the values per frame before and after. Exit 2 for a refusal (before any write); an
+    existing name is never overwritten."""
+    for label, value in (("--name", args.name), ("--from", args.from_.removesuffix(".json"))):
+        if not _NAME.fullmatch(value):
+            raise Refused(f"{label} {value!r} is not a file name (letters, digits, . _ -)")
+    stage1 = paths.stage1_dir()
+    out = stage1 / "assignments" / f"{args.name}.json"
+    if out.exists():
+        raise Refused(f"{out} exists: an assignment is not overwritten; choose another --name")
+    old_path = stage1 / "assignments" / f"{args.from_.removesuffix('.json')}.json"
+    if not old_path.is_file():
+        raise Refused(f"there is no assignment {old_path}")
+    sources = [a for a in args.arm.split(",") if a]
+    if not sources or any(not _NAME.fullmatch(a) for a in sources):
+        raise Refused(f"--arm {args.arm!r} must be recoder directory names, separated by commas")
+    wanted = [n for n in args.signals.split(",") if n] if args.signals else None
+    if not args.scale > 0:
+        raise Refused(f"--scale must be positive, got {args.scale}")
+    for a in sources:
+        if not (recoders_root() / a / learned_recode.RECODER_JSON).is_file():
+            raise Refused(f"there is no recoder {recoders_root() / a}: `train_tokenizer.py linear --arm {a}` "
+                          "(or `train`) makes it")
+    try:
+        base = assign.load_assignment(old_path)
+        notes = dict(json.loads(old_path.read_text()).get("notes", {}))
+        specs = {s.name: s for s in registry.all_signals()}
+        loaded = [learned_recode.load_recoder(recoders_root() / a) for a in sources]
+    except (OSError, KeyError, ValueError) as e:
+        raise Refused(f"the inputs cannot be read ({type(e).__name__}: {e})") from e
+    owner: dict[str, str] = {}
+    for a, got in zip(sources, loaded):
+        for n in got.meta["signals"]:
+            if wanted is not None and n not in wanted:
+                continue
+            if n in owner:
+                raise Refused(f"signal {n} is in both recoder {owner[n]} and recoder {a}: one recoder per signal")
+            owner[n] = a
+    if wanted is not None and (missing := [n for n in wanted if n not in owner]):
+        raise Refused(f"--signals names {missing}, which none of the recoders {sources} lists")
+    if not owner:
+        raise Refused(f"the recoders {sources} list no signal to recode")
+    new = dict(base)
+    try:
+        for a, got in zip(sources, loaded):
+            new = learned_build.recode_assignment(new, got, a, scale=args.scale, signals=wanted)
+        counts = {n: (ladder.values_per_frame(specs[n], base[n]), ladder.values_per_frame(specs[n], new[n]))
+                  for n in sorted(owner)}
+    except (KeyError, ValueError) as e:
+        raise Refused(str(e)) from e
+    for n, (before, after) in counts.items():
+        notes[n] = (f"recoded by {owner[n]}: {before} values per frame kept as {after} "
+                    f"({base[n].codec} K {_k_text(base[n])} to {new[n].codec} K {_k_text(new[n])}; from {old_path.stem})")
+        print(f"{n}: values per frame {before} -> {after}; {notes[n]}")
+    _prepare(stage1 / "assignments")                        # after every refusal above
+    assign.save_assignment(new, out, notes)
+    print(f"wrote {out}", flush=True)
+    return 0
+
+
 # ------------------------------------------------------------------------------------------ gate
 
 GATE_SPLIT = "val_report"
@@ -819,6 +932,43 @@ def _narrow_range_lines(table_: pd.DataFrame) -> list[str]:
     return lines
 
 
+@functools.lru_cache(maxsize=64)
+def _gate_codec_of(fit_dir: str, cache_root: str, recoders_dir: str, spec: tasks.SignalSpec,
+                   setting: assign.Setting):
+    """The codec of `setting` for `spec` from the fit, or None if the signal has no fitted data; built once in a
+    process and kept. A copy of `gate._codec_of` (hashed, so it cannot change) that builds the codec with
+    `learned_build.build_codec`, so that a setting naming a recoder is built too. A recoder is read once per
+    process for all the signals that name it."""
+    fits, stats = gate._fit_and_stats(fit_dir, cache_root)
+    f = fits.get(spec.name)
+    if f is None or f.n_examples == 0:
+        return None
+    codec = learned_build.build_codec(spec, stats[spec.name], f, setting, Path(recoders_dir),
+                                      _GATE_LOADED.setdefault(recoders_dir, {}))
+    _one_thread_for_networks({spec.name: codec})
+    return codec
+
+
+_GATE_LOADED: dict[str, dict] = {}       # per process: recoders_dir -> {source: learned_recode.Loaded}
+
+
+def gate_cache_side_job(job: tuple) -> dict[str, dict | None]:
+    """One shot of the cache-side pass, for `transform.map_shots`: ``job = (shot, cache_root, stats_sha256,
+    fit_dir, specs, settings, recoders_dir)``. A copy of `gate.cache_side_job` (hashed, so it cannot change)
+    that builds its codecs with `learned_build.build_codec` (through `_gate_codec_of`) and then calls the
+    hashed `gate.shot_side`; the extra last item names the directory of the recoders. Returns, per signal
+    name, `gate.shot_side` of the shot's cached values (model units), or None if the shot does not have the
+    signal or the signal was not fitted."""
+    shot, cache_root, sha, fit_dir, specs, settings, recoders_dir = job
+    got = cache.read_shot(Path(cache_root) / "shots" / f"{shot}.h5", [s.name for s in specs], stats_sha256=sha)
+    out: dict[str, dict | None] = {}
+    for spec, setting in zip(specs, settings, strict=True):
+        c = got[spec.name]
+        codec = None if c is None else _gate_codec_of(str(fit_dir), str(cache_root), str(recoders_dir), spec, setting)
+        out[spec.name] = None if codec is None else gate.shot_side(codec, spec, c.values)
+    return out
+
+
 def run_gate(args: argparse.Namespace) -> int:
     """Judge every (task, output signal) pair; print the table, a line per task, the scores that are not
     kept and the count line (``<n> rows, <m> not scored, <b> block``); write `<stage1>/gate/<name>.csv` and
@@ -839,9 +989,6 @@ def run_gate(args: argparse.Namespace) -> int:
         raise Refused(f"there is no fit at {fit_dir}: run `fit` first")
     try:
         assignment = assign.load_assignment(assignment_path)
-        prov = provenance_of(assignment_path, fit_dir, cache_root)
-        ref_path = stage1 / "assignments" / f"{REF_NAME}.json"
-        ref_prov = provenance_of(ref_path, fit_dir, cache_root) if ref_path.is_file() else None
         task_specs = {t: tasks.load_task(t) for t in tasks.ALL_TASKS}
     except (OSError, KeyError, ValueError, ImportError) as e:
         raise Refused(f"the inputs cannot be read ({type(e).__name__}: {e})") from e
@@ -850,6 +997,18 @@ def run_gate(args: argparse.Namespace) -> int:
     unassigned = sorted(n for n in unique if n not in assignment)
     if unassigned:
         raise Refused(f"the assignment has no setting for {len(unassigned)} output signals; the first is {unassigned[0]}")
+    for n, spec in sorted(unique.items()):         # ruling C2: the gate's kept-position mask reads one K per band
+        if assignment[n].codec == learned_build.RECODED_CONCAT and assign.codec_kind(spec) == "band_dct":
+            raise Refused(f"{n} is a spectrogram with a concatenated recoder ({assignment[n].source!r}); the gate "
+                          "cannot tell which positions of a concatenated band codec are kept, so it judges only "
+                          "per-stream band codecs")
+    try:
+        prov = provenance_of(assignment_path, fit_dir, cache_root, recoders_root=recoders_root())
+        ref_path = stage1 / "assignments" / f"{REF_NAME}.json"
+        ref_prov = (provenance_of(ref_path, fit_dir, cache_root, recoders_root=recoders_root())
+                    if ref_path.is_file() else None)
+    except (OSError, KeyError, ValueError, ImportError) as e:
+        raise Refused(f"the inputs cannot be read ({type(e).__name__}: {e})") from e
     shots = cache.pick_evenly(tasks.split_shots(GATE_SPLIT), args.n_shots)
     gone = [s for s in shots if not (cache_root / "shots" / f"{s}.h5").exists()]
     if gone:
@@ -877,14 +1036,17 @@ def run_gate(args: argparse.Namespace) -> int:
     fits, _ = fit.load_fit(fit_dir)
     specs = tuple(unique[n] for n in sorted(unique))
     settings = tuple(assignment[s.name] for s in specs)
-    per_shot = list(transform.map_shots(gate.cache_side_job, shots, (str(cache_root), prov["stats_sha256"],
-                                                                      str(fit_dir), specs, settings), args.workers))
+    per_shot = list(transform.map_shots(gate_cache_side_job, shots, (str(cache_root), prov["stats_sha256"],
+                                                                      str(fit_dir), specs, settings,
+                                                                      str(recoders_root())), args.workers))
     stats = transform.load_stats(cache_root / "stats.npz")
     side: dict[str, dict] = {}
+    loaded: dict[str, learned_recode.Loaded] = {}
     for s in specs:
         parts = [r[s.name] for r in per_shot if r[s.name] is not None]
         if s.name in fits and fits[s.name].n_examples > 0:
-            codec = fit.build_codec(s, stats[s.name], fits[s.name], assignment[s.name])
+            codec = learned_build.build_codec(s, stats[s.name], fits[s.name], assignment[s.name], recoders_root(),
+                                              loaded)
             side[s.name] = gate.combine_sides(codec, parts, len(per_shot) - len(parts))
         else:
             side[s.name] = gate.empty_side(len(per_shot))
@@ -975,6 +1137,14 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--reference", action="store_true", help="write the own-mean reference assignment")
     p.add_argument("--cache-dir", default=None, help="the cache (default <root>/cache/v1)")
     p.set_defaults(run=run_assign)
+
+    p = sub.add_parser("recode", help="an assignment with the signals of learned recoders behind their recoders")
+    p.add_argument("--name", required=True, help="the new assignment's file name, without .json")
+    p.add_argument("--from", dest="from_", required=True, help="the assignment to copy, in <stage1>/assignments")
+    p.add_argument("--arm", required=True, help="recoder directories of <stage1>/recoders, comma-separated")
+    p.add_argument("--scale", type=float, default=1.0, help="a concatenated recoder keeps this part of the values")
+    p.add_argument("--signals", default=None, help="recode only these signals (comma-separated)")
+    p.set_defaults(run=run_recode)
 
     p = sub.add_parser("gate", help="judge every (task, signal) pair from the stored floors and the cache")
     p.add_argument("--assignment", required=True, help="the assignment file to judge")
