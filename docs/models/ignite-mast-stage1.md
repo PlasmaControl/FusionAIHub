@@ -642,7 +642,7 @@ TokaMark units, the score of a perfect prediction of the tokens, and not an IGNI
   0.028, 89 shots). At `v1b`'s K 2 (ruling C42) `v1b` clearly beats `s-klt.b` on both currents (solenoid current
   0.002212 against 0.005913, coil currents 0.007586 against 0.009755; `val_select`, 89 shots). The profile and map
   networks lose clearly to `v1` at both learning rates (76 to 92 shots), and the Mirnov networks collapsed or lost
-  to `bc-pca`.
+  to `bc-pca` (not compared with `v1` itself, see [The decisions](#the-decisions)).
 - **`v2` equals `v1b`, and `v2c` exists.** No learned arm replaced anything, so `v2` was not built as a separate
   file. `v2c` is `v1b` with `pca.ccbv`, `pca.obr`, `pca.obv` and `pca.flux` at `v1b`'s values per frame (160, 18, 36
   and 30). Its input round-trip on `val_report` (`ranged`, `inputs / raw - 1` on the same shots) is
@@ -877,7 +877,7 @@ to 07:10:58) were built and before any network was trained. None changes a rule 
   the share of the most common row are recorded per signal in `result.json`, so the
   literal reading can be applied afterwards without training again.
 
-**Readings added during the measurement.** Eight more readings were written on 2026-11-23.
+**Readings added during and after the measurement.** Eight more readings were written on 2026-11-23.
 C37 (07:31 UTC) came as M6 started (07:30:56) and before any network result, so it had the same
 results in view as C33. C39 to C43 (07:43 to 08:10 UTC) came after M6's results were seen. C44 and
 C45 (08:53 UTC) were written after the scoped review of this page and with the results of jobs
@@ -956,7 +956,7 @@ was decided, why, and what it costs if wrong.
   No task predicts a magnetics signal, so `v2c` changes no task's output and needs no floor
   (M9 asks for floors "for every task with a changed output signal"). The gate on `v2` is
   `v1b`'s (07:40 UTC, 57 rows, 0 block). If wrong, 8 GPU passes (52 s to 22 minutes each, 2026-11-23, `m9_inputs.meta`).
-- **A network floor pass over 3 times its linear arm's pass is recorded and stops nothing (ruling C44).**
+- **M7's crossing of ruling C7's 3-times guard is recorded and stops nothing (ruling C44).**
   Written 2026-11-23 at 08:53 UTC, after the review of this page and with the results of M1 to M10 in
   view. Ruling C7 (see [the departures](#where-stage-1c-departs-from-the-design)) says that a network
   floor pass taking more than 3 times the pass of the matching linear arm stops the controller and makes
@@ -1510,7 +1510,9 @@ Measured 2026-11-23, 33 rows: the 13 `.s0` runs of job M6 (07:30 to 07:41 UTC), 
 runs of ruling C39 (07:43 to 08:00 UTC, 40,000 steps), the 9 `.s0.lr1e4` runs of job M8 (08:06 to 08:17 UTC) and the
 one `.s0.lr1e4_long` run of ruling C45 (08:54 to 08:57 UTC, 40,000 steps), all
 on the 2,000 training shots of the fit and validated on 100 `val_select` shots. "Seconds" is wall-clock with two to
-four runs sharing a GPU, except for the run of ruling C45, whose log does not say what else ran on its GPU 1. "Active tokens" and "Active values" are "n of m", and for an arm of several signals the
+four runs sharing a GPU, except for the run of ruling C45, which had GPU 1 to itself: at its launch (08:53 UTC)
+`nvidia-smi` showed no other compute process on GPU 1, and no other job was started there until 08:57 (the ledger;
+`logs/c45.meta` holds the one training). "Active tokens" and "Active values" are "n of m", and for an arm of several signals the
 smallest to the largest over its signals ("4 to 11 of 32"); for the values, "of m" is the values per token. The collapsed column was computed again from
 `first_value_entropy_by_token` (a signal is collapsed when no entry reaches 0.3, ruling C33) and agrees with the
 `collapsed` key of each of the 33 `result.json` files and with the "COLLAPSED (C33)" lines of the training logs.
