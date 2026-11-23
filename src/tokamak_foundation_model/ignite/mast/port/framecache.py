@@ -160,6 +160,7 @@ def build_mast_codecs(
     fit_dir: Path,
     assignment_path: Path,
     recoders_dir: Path | None = None,
+    logspec_fit: Path | None = None,
 ) -> tuple[dict[str, tok_codecs.Codec], dict[str, transform.ChannelStats], dict[str, assign.Setting]]:
     """Build stage-1b/1c codecs exactly as ``scripts/mast/run_tokenizer.py::_build_predictor``."""
     fits, _ = fit.load_fit(Path(fit_dir))
@@ -171,6 +172,13 @@ def build_mast_codecs(
     ]
     rec_root = Path(recoders_dir) if recoders_dir is not None else recoders_root()
     codecs = learned_build.build_codecs(covered, stats, fits, assignment, rec_root)
+    if logspec_fit is not None:
+        from . import logspec
+
+        log_codecs = logspec.build_logspec_codecs(Path(logspec_fit), stats)
+        for name, codec in log_codecs.items():
+            if name in codecs:
+                codecs[name] = codec
     return codecs, stats, assignment
 
 
@@ -826,6 +834,8 @@ def build_manifest(
     stats_sha256: str,
     stats: Mapping[str, transform.ChannelStats] | None = None,
     signal_physical_std: Mapping[str, float] | None = None,
+    logspec_fit_path: Path | None = None,
+    logspec_fit_sha256: str | None = None,
     plasma_ip_threshold_a: float = PLASMA_IP_THRESHOLD_A,
     dt_frame: float = DT_FRAME,
     t0_start: float = 0.0,
@@ -880,6 +890,12 @@ def build_manifest(
         "fit_sha256": str(fit_sha256),
         "cache_v1_root": str(Path(cache_root).resolve()),
         "stats_sha256": str(stats_sha256),
+        "logspec_fit_path": (
+            str(Path(logspec_fit_path).resolve()) if logspec_fit_path is not None else None
+        ),
+        "logspec_fit_sha256": (
+            str(logspec_fit_sha256) if logspec_fit_sha256 is not None else None
+        ),
         "notes": {
             "family_mapping": (
                 "Mapped MAST signals to dev-peter's family vocabulary: Mirnov STFT "

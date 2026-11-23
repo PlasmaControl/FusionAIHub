@@ -26,7 +26,7 @@ import numpy as np
 import torch
 
 from tokamak_foundation_model.ignite.mast import paths, registry, transform
-from tokamak_foundation_model.ignite.mast.port import framecache
+from tokamak_foundation_model.ignite.mast.port import framecache, logspec
 from tokamak_foundation_model.ignite.mast.tokenizers import assign, fit
 
 DEFAULT_ASSIGNMENT = "/models/intermediate/mast/stage1/assignments/v1b.json"
@@ -73,6 +73,7 @@ def _init_encode_worker(state: tuple) -> None:
         fit_dir,
         assignment_path,
         recoders_dir,
+        logspec_fit,
         act_specs,
         act_stats,
         stats_sha,
@@ -80,7 +81,12 @@ def _init_encode_worker(state: tuple) -> None:
         force,
     ) = state
     codecs, stats, _assignment = framecache.build_mast_codecs(
-        signals, Path(cache_root), Path(fit_dir), Path(assignment_path), Path(recoders_dir)
+        signals,
+        Path(cache_root),
+        Path(fit_dir),
+        Path(assignment_path),
+        Path(recoders_dir),
+        logspec_fit=Path(logspec_fit) if logspec_fit is not None else None,
     )
     modality_order = tuple(s.name for s in signals if s.name in codecs)
     _ENCODE_STATE = (
@@ -199,6 +205,7 @@ def _check_existing_manifest(
     fit_sha256: str,
     stats_sha256: str,
     plasma_ip_threshold_a: float,
+    logspec_fit_sha256: str | None = None,
     n_train_shots: int | None = None,
 ) -> None:
     """Refuse to resume into an existing cache dir if any provenance or stats key disagrees."""
@@ -212,6 +219,10 @@ def _check_existing_manifest(
         diffs.append(f"fit_sha256 ({existing.get('fit_sha256')} != {fit_sha256})")
     if existing.get("stats_sha256") != stats_sha256:
         diffs.append(f"stats_sha256 ({existing.get('stats_sha256')} != {stats_sha256})")
+    if existing.get("logspec_fit_sha256") != logspec_fit_sha256:
+        diffs.append(
+            f"logspec_fit_sha256 ({existing.get('logspec_fit_sha256')!r} != {logspec_fit_sha256!r})"
+        )
     existing_thresh = existing.get("plasma_ip_threshold_A")
     if existing_thresh is None or not math.isclose(
         float(existing_thresh), float(plasma_ip_threshold_a), rel_tol=0.0, abs_tol=1e-9
@@ -238,6 +249,7 @@ def build_cache(
     fit_dir: Path,
     cache_root: Path,
     out_dir: Path,
+    logspec_fit: Path | None = None,
     workers: int = 8,
     max_shots: int = 0,
     force: bool = False,
@@ -248,6 +260,10 @@ def build_cache(
     cache_root = Path(cache_root)
     fit_dir = Path(fit_dir)
     assignment_path = Path(assignment_path)
+    logspec_fit_path = Path(logspec_fit) if logspec_fit is not None else None
+    logspec_sha = (
+        logspec.logspec_fit_sha256(logspec_fit_path) if logspec_fit_path is not None else None
+    )
 
     manifest_v1 = json.loads((cache_root / "manifest.json").read_text())
     stats_sha = str(manifest_v1["stats_sha256"])
@@ -258,7 +274,7 @@ def build_cache(
     act_specs = framecache.actuator_specs()
 
     codecs, stats, assignment = framecache.build_mast_codecs(
-        signals, cache_root, fit_dir, assignment_path
+        signals, cache_root, fit_dir, assignment_path, logspec_fit=logspec_fit_path
     )
     modality_order = tuple(s.name for s in signals if s.name in codecs)
     assign_sha = assign.assignment_sha256(assignment)
@@ -272,6 +288,7 @@ def build_cache(
             fit_sha256=fit_sha,
             stats_sha256=stats_sha,
             plasma_ip_threshold_a=framecache.PLASMA_IP_THRESHOLD_A,
+            logspec_fit_sha256=logspec_sha,
         )
 
     shot_items = _discover_shots(cache_root, workers=workers, max_shots=max_shots)
@@ -301,6 +318,7 @@ def build_cache(
             fit_sha256=fit_sha,
             stats_sha256=stats_sha,
             plasma_ip_threshold_a=framecache.PLASMA_IP_THRESHOLD_A,
+            logspec_fit_sha256=logspec_sha,
             n_train_shots=act_stats.n_train_shots,
         )
 
@@ -316,6 +334,8 @@ def build_cache(
         stats_sha256=stats_sha,
         stats=stats,
         signal_physical_std=sig_stds,
+        logspec_fit_path=logspec_fit_path,
+        logspec_fit_sha256=logspec_sha,
     )
     framecache.save_json_atomic(manifest, manifest_path)
 
@@ -331,6 +351,7 @@ def build_cache(
         str(fit_dir),
         str(assignment_path),
         str(framecache.recoders_root()),
+        str(logspec_fit_path) if logspec_fit_path is not None else None,
         act_specs,
         act_stats,
         stats_sha,
@@ -411,6 +432,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--assignment", default=DEFAULT_ASSIGNMENT, help="Stage-1 assignment JSON")
     p.add_argument("--fit", default=DEFAULT_FIT, help="Stage-1 fit directory")
     p.add_argument("--cache-root", default=DEFAULT_CACHE_ROOT, help="MAST cache v1 directory")
+    p.add_argument(
+        "--logspec-fit",
+        default=None,
+        help="Optional LogBandDCT fit directory replacing the two Mirnov BandDCT codecs",
+    )
     p.add_argument("--out", required=True, help="Output frame-code cache directory")
     p.add_argument("--workers", type=int, default=8, help="Spawn worker count")
     p.add_argument("--max-shots", type=int, default=0, help="Cap total shots (0 = all)")
@@ -425,6 +451,7 @@ def main(argv=None) -> int:
         fit_dir=Path(args.fit),
         cache_root=Path(args.cache_root),
         out_dir=Path(args.out),
+        logspec_fit=Path(args.logspec_fit) if args.logspec_fit else None,
         workers=args.workers,
         max_shots=args.max_shots,
         force=args.force,

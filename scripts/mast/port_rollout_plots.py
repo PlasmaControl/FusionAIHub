@@ -22,7 +22,12 @@ import numpy as np
 import torch
 
 from tokamak_foundation_model.ignite.mast import paths, registry
-from tokamak_foundation_model.ignite.mast.port import framecache, layout, rollout as port_rollout
+from tokamak_foundation_model.ignite.mast.port import (
+    framecache,
+    layout,
+    logspec,
+    rollout as port_rollout,
+)
 
 
 def _resolve_device(spec: str) -> torch.device:
@@ -119,8 +124,9 @@ def run_rollout_plots(
     model, cfg, step = port_rollout.load_mast_model(ckpt, cache_dir, device)
 
     signals = registry.all_signals()
+    logspec_fit = logspec.resolve_manifest_logspec_fit(manifest)
     codecs, stats, _assignment = framecache.build_mast_codecs(
-        signals, cache_root, fit_dir, assignment_path
+        signals, cache_root, fit_dir, assignment_path, logspec_fit=logspec_fit
     )
 
     shot_list = (

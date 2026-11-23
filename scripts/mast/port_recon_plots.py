@@ -31,7 +31,12 @@ import numpy as np
 import torch
 
 from tokamak_foundation_model.ignite.mast import paths, registry
-from tokamak_foundation_model.ignite.mast.port import framecache, layout, rollout as port_rollout
+from tokamak_foundation_model.ignite.mast.port import (
+    framecache,
+    layout,
+    logspec,
+    rollout as port_rollout,
+)
 from tokamak_foundation_model.ignite.mast.port.layout import ev
 
 # TokaMark's STFT (tokamark/tools/transforms/stft_transform.py, support_n=512): 512-sample Hann
@@ -237,8 +242,13 @@ def run_recon_plots(
     cache_root = Path(manifest["cache_v1_root"])
     stats_sha = str(manifest.get("stats_sha256") or "") or None
     signal_stds = manifest.get("signal_physical_std")
+    logspec_fit = logspec.resolve_manifest_logspec_fit(manifest)
     codecs, stats, _assignment = framecache.build_mast_codecs(
-        registry.all_signals(), cache_root, Path(manifest["fit_dir"]), Path(manifest["assignment_path"])
+        registry.all_signals(),
+        cache_root,
+        Path(manifest["fit_dir"]),
+        Path(manifest["assignment_path"]),
+        logspec_fit=logspec_fit,
     )
     names = [r[0] for r in ROWS]
 
