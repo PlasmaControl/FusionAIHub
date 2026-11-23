@@ -206,3 +206,44 @@ def test_a_band_codec_with_uneven_keeps_reads_its_dropped_positions_as_zero_when
         read = c.read(encoded, mode)
         assert (read[..., dropped] == 0.0).all() and np.isfinite(read).all() and read[..., ~dropped].any()
     assert c.roundtrip(x, "nearest").shape == x.shape
+
+
+# ------------------------------------------------------- a concatenated fit on rows with a missing stream (ruling C21)
+
+def _share_left_out(r, e, k):
+    """The share of the energy of the finite entries of `e` that the first `k` values of `r` leave out (a missing
+    stream encodes as 0 and counts in neither sum: `train_tokenizer.left_over`)."""
+    ok = np.isfinite(e)
+    e0 = np.where(ok, e, 0.0)
+    ident = np.full(len(e), -1)
+    v = r.encode(e0, ident)
+    v[:, k:] = 0
+    miss = np.where(ok, e0 - r.decode(v, ident), 0.0)
+    return float((miss ** 2).sum() / (e0 ** 2).sum())
+
+
+def test_a_concatenated_recoder_is_fitted_on_zero_filled_rows():
+    """Measured 2026-11-23 on the stage-1c trial: a pairwise covariance of rows with a missing stream has negative
+    eigenvalues, which reorders the basis, and the left-over stayed flat (0.0071 from 40 to 320 values). Toy: 6
+    streams of 4 values, rank 3 plus noise, one whole stream NaN in 60% of the 400 rows. Zero-filled, the first 18
+    values (rank 3 times the 6 streams: a zeroed stream moves the rows to another 3-dimensional subspace) leave
+    under 1e-3 out on rows with a missing stream and on complete rows (measured 1.6e-6 and 1.8e-6); the pairwise
+    basis on the same rows leaves 0.022 out on the rows with a missing stream (0.00043 on complete rows)."""
+    rng = np.random.default_rng(0)
+    s, d, n, k = 6, 4, 400, 18
+    e = (rng.standard_normal((n, 3)) * np.array([3.0, 2.0, 1.0])) @ rng.standard_normal((3, s * d)) \
+        + 0.01 * rng.standard_normal((n, s * d))
+    miss = rng.random(n) < 0.6
+    e = e.reshape(n, s, d)
+    e[np.flatnonzero(miss), rng.integers(0, s, int(miss.sum()))] = np.nan
+    e = e.reshape(n, s * d)
+    assert 200 < miss.sum() < 300 and np.isnan(e).any(-1).sum() == miss.sum()
+    r = recode.fit_linear(e, s * d, concat=True)
+    assert r.concat and r.basis.shape == (s * d, s * d) and np.isfinite(r.mean).all() and np.isfinite(r.basis).all()
+    with_missing, complete = _share_left_out(r, e[miss], k), _share_left_out(r, e[~miss], k)
+    assert with_missing < 1e-3 and complete < 1e-3, (with_missing, complete)
+    mean, rows, _, _ = codecs.fit_pca(e, s * d)                                  # the pairwise fit, as fit_linear was
+    pairwise = recode.LinearRecoder(mean, rows.T, concat=True)
+    assert _share_left_out(pairwise, e[miss], k) > 10 * max(with_missing, 1e-3)
+    mean_c, rows_c, _, _ = codecs.fit_pca(e[~miss], s * d)                        # finite rows: nothing is filled
+    assert np.array_equal(recode.fit_linear(e[~miss], s * d, concat=True).basis, rows_c.T)

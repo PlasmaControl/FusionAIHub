@@ -148,13 +148,12 @@ def kept_score(out_dir: Path, task: str, predictor: str, label: str, provenance:
     return stored, ""
 
 
-def _default_recoders_root() -> Path:
+def recoders_root() -> Path:
+    """Where the recoders of an assignment are read from: ``<stage1>/recoders``."""
     return paths.stage1_dir() / "recoders"
 
 
-def recoders_root() -> Path:
-    """Where the recoders of an assignment are read from: ``<stage1>/recoders``."""
-    return _default_recoders_root()
+_default_recoders_root = recoders_root                  # one definition; `provenance_of` names it as its default
 
 
 def _names_a_recoder(assignment: Mapping[str, assign.Setting]) -> bool:
@@ -388,6 +387,8 @@ def run_score(args: argparse.Namespace) -> int:
     label = split_label(args.split, args.n_shots)
     out_dir = stage1 / "scores" / args.task / name / label
     try:
+        # No `recoders_root` here: 1b's test_tok_command.py mocks `provenance_of` with a 3-4 positional-argument lambda
+        # (the default root is `<stage1>/recoders`, the one this command reads).
         provenance = provenance_of(assignment_path, fit_dir if assignment_path else None, cache_root, checkpoint)
     except (OSError, KeyError, ValueError) as e:
         print(f"refused: the provenance cannot be made ({type(e).__name__}: {e})", file=sys.stderr)

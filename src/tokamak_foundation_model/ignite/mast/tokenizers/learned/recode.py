@@ -115,8 +115,13 @@ class LinearRecoder(Recoder):
 def fit_linear(e: np.ndarray, n_values: int, *, concat: bool = False, n_val: int | None = None) -> LinearRecoder:
     """The `LinearRecoder` of the first `n_values` principal components of `e` ``(N, d_in)``, example units.
 
-    NaN entries of `e` (a concatenated example has them when a stream is missing) are used pairwise
-    (`codecs.fit_pca`). `ValueError` if `n_values` is not a multiple of `n_val` or is more than `d_in`.
+    A concatenated example has NaN where a stream is missing. A concatenated recoder is fitted on rows with
+    those entries set to 0.0 (one copy of `e`, taken only if it has a NaN): that is how the recoder encodes a
+    missing stream (`RecodedCodec`, `LinearRecoder.encode`), and a pairwise covariance over rows with missing
+    streams is not positive semi-definite, which reorders the basis (measured 2026-11-23 on the stage-1c Task 3
+    trial: 131 negative eigenvalues of 640, the left-over flat at 0.0071 from 40 to 320 values; zero-filled it
+    falls to 0.0000 by 320). A per-stream recoder is fitted on finite rows, so nothing changes for it.
+    `ValueError` if `n_values` is not a multiple of `n_val` or is more than `d_in`.
     """
     e = np.asarray(e)
     if e.ndim != 2:
@@ -125,6 +130,8 @@ def fit_linear(e: np.ndarray, n_values: int, *, concat: bool = False, n_val: int
         raise ValueError(f"n_values={n_values} must be a multiple of n_val={n_val}")
     if not 1 <= n_values <= e.shape[1]:
         raise ValueError(f"n_values must be in 1..{e.shape[1]} (d_in), got {n_values}")
+    if concat and not np.isfinite(e).all():
+        e = np.where(np.isfinite(e), e, 0.0)                       # ruling C21: a missing stream is 0 in example units
     mean, rows, _, _ = codecs.fit_pca(e, n_values)                 # rows (n_values, d_in)
     return LinearRecoder(mean, rows.T, concat=concat, n_val=n_val)
 

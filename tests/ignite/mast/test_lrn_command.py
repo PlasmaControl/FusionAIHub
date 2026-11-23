@@ -184,7 +184,7 @@ def test_store_and_linear_write_once_and_recode_reads_what_they_wrote(tmp_path, 
     root, _, _, _, sha = toy_world(tmp_path, monkeypatch)
     tt = toy_script(monkeypatch, "train_tokenizer")
     arm = tt.Arm("klt.series", ("summary-ip",), False, False, 1, 16)
-    monkeypatch.setattr(tt, "arms", lambda *a: {"klt.series": arm, "pca.x": tt.Arm("pca.x", ("summary-ip",), True, False, 4, 4)})
+    monkeypatch.setattr(tt, "arms", lambda *a: {"klt.series": arm})
     argv = ["store", "--n-val", "2", "--workers", "1", "--cache-dir", str(root)]
     assert tt.main(argv) == 0
     out = capsys.readouterr().out
@@ -220,6 +220,60 @@ def test_store_and_linear_write_once_and_recode_reads_what_they_wrote(tmp_path, 
     assert rt.main(["recode", "--name", "t-sc", "--from", "v1", "--arm", "klt.series", "--scale", "0.5"]) == 2
     assert rt.main(["recode", "--name", "t-nope", "--from", "v1", "--arm", "gone"]) == 2
     assert not (tmp_path / "stage1" / "assignments" / "t-two.json").exists()
+
+
+def test_a_concatenated_linear_arm_is_fitted_on_a_store_with_a_missing_stream(tmp_path, monkeypatch, capsys):
+    """Ruling C21 end to end: 3 streams of 4 values (rank 3 plus noise), one stream missing in 60% of the frames
+    and a few frames with no data; the concatenated arm keeps all 12 values."""
+    name, s, d = "magnetics-b_field_pol_probe_ccbv_field", 3, 4
+    monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
+    spec = tasks.SignalSpec(name, 0.00025, (s,), 0.0, 1.0)
+    reg = pd.DataFrame([{"device": "mast", "signal": name, "channel": c, "channel_name": f"c{c}", "family": "slow",
+                         "dt": spec.dt, "units": "T", "imas_path": "", "r": 1.0 + c, "z": 0.1 * c, "tm_mean": 0.0,
+                         "tm_std": 1.0, "roles": "inp+out", "sat_abs": np.nan, "valid_fraction": 1.0,
+                         "dead_fraction": 0.0, "compress": "none", "scale": 1.0, "mean": 0.0, "std": 1.0}
+                        for c in range(s)])
+    cache_root = tmp_path / "cache" / "v1"
+    cache_root.mkdir(parents=True)
+    registry.save_registry(reg, cache_root / "registry.csv")
+
+    def frames(seed, m):
+        rng = np.random.default_rng(seed)
+        e = (rng.standard_normal((m, 3)) * [3.0, 2.0, 1.0]) @ np.random.default_rng(7).standard_normal((3, s * d)) \
+            + 0.05 * rng.standard_normal((m, s * d))
+        e = e.reshape(m, s, d)
+        miss = rng.random(m) < 0.6
+        e[np.flatnonzero(miss), rng.integers(0, s, int(miss.sum()))] = np.nan
+        e[: m // 20] = np.nan                                                     # frames with no data at all
+        return e.astype(np.float32)
+
+    meta = {"signals": {name: {"kind": "frame_dct", "domain": "linear", "n_streams": s, "values_per_token": 1}},
+            "cache_dir": str(cache_root)}
+    for key, m in (("train", 400), ("val", 200)):
+        store.save_store({name: store.Store(name, frames(1 if key == "train" else 2, m), np.zeros(m, dtype=np.int64))},
+                         tmp_path / "stage1" / "store" / "v1" / key, meta)
+    train, _ = store.load_store(tmp_path / "stage1" / "store" / "v1" / "train")
+    rows, ident = load("train_tokenizer")._rows(store.fit_norm(train[name].values).apply(train[name].values), True)
+    assert rows.shape == (380, s * d) and (ident == -1).all() and np.isnan(rows).any(1).mean() > 0.5   # the concat rows
+
+    tt = toy_script(monkeypatch, "train_tokenizer")
+    monkeypatch.setattr(tt.registry, "all_signals", lambda: [spec])
+    monkeypatch.setattr(tt, "arms", lambda *a: {"pca.toy": tt.Arm("pca.toy", (name,), True, False, 3, 4)})
+    assert tt.main(["linear", "--arm", "pca.toy"]) == 0
+    line = [ln for ln in capsys.readouterr().out.splitlines() if name in ln]
+    assert len(line) == 1 and "left over" in line[0]
+    sizes_and_fractions = line[0].split("left over")[1].replace(",", " ").replace(":", " ").split()
+    sizes = [int(v) for v in sizes_and_fractions[0::2]]
+    fractions = [float(v) for v in sizes_and_fractions[1::2]]
+    assert sizes == [3, 6, 12, 12, 12]                                            # S times 1, 2, 4, 8, 16, cut at 12
+    assert 1 > fractions[0] > fractions[1] > fractions[2] >= 0                    # falls with the values
+    assert fractions[2] < 1e-6 and fractions[3] < 1e-6 and fractions[4] < 1e-6    # all 12 values: about nothing left
+    loaded_r = recode.load_recoder(tmp_path / "stage1" / "recoders" / "pca.toy")
+    assert loaded_r.recoder.concat and loaded_r.recoder.n_values == 12 and loaded_r.recoder.n_tok == 3
+    assert loaded_r.meta["n_train_examples"] == 380
+    lo, hi, width = loaded_r.ranges[name]
+    assert lo.shape == hi.shape == width.shape == (1, 12) and np.isfinite(lo).all() and (hi >= lo).all()
+    assert tt.main(["linear", "--arm", "pca.toy"]) == 2                           # an existing recoder is refused
 
 
 # ------------------------------------------------------------------ the gate reads a recoded assignment (ruling C2)
@@ -278,10 +332,13 @@ def test_the_gate_refuses_a_concatenated_band_codec_and_names_the_signal(tmp_pat
     assert not (tmp_path / "stage1" / "gate").exists()
 
 
-def test_floor_still_refuses_the_gpu_flags_for_a_recoded_assignment(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("flags", [["--gpu", "0"], ["--share-gpu"], ["--variant", "v"]])
+def test_floor_still_refuses_the_gpu_flags_for_a_recoded_assignment(tmp_path, monkeypatch, capsys, flags):
     toy_world(tmp_path, monkeypatch)
     assign.save_assignment({"summary-ip": assign.Setting("recoded", (4,), "linear", source="klt.ip")}, tmp_path / "r1.json")
     rt = load("run_tokenizer")
     assert rt.main(["score", "--task", "task_1-1", "--split", "val_select", "--assignment", str(tmp_path / "r1.json"),
-                    "--mode", "unquantized", "--gpu", "0"]) == 2                              # ruling C7
+                    "--mode", "unquantized", *flags]) == 2          # ruling C7
     assert "uses no GPU" in capsys.readouterr().err
+    assert not (tmp_path / "stage1" / "recoders").exists()                      # refused before any file was read
+    assert not (tmp_path / "stage1" / "cache").exists()
