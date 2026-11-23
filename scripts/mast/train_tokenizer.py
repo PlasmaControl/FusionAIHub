@@ -12,7 +12,8 @@ of several signals leaves out beside each signal's own concatenated basis and on
 their streams, at the same number of values in all. `train --arm NAME` trains the network of one network arm on
 the stores (on one GPU, or on the CPU with `--cpu`) and writes ``<stage1>/recoders/<NAME>.s<seed>[.<variant>]``:
 the weights of the best validation, the log, the provenance and, last, ``result.json`` with the collapse check;
-it exits 3 if the network collapsed. `fluct` measures what the trend path leaves out of the 50 kHz channels (the band above
+it exits 3 if the network collapsed (rule 7 as ruling C33 reads it: `rule7_usage`, on the distinct validation
+examples, no token's first value is used; `result.json` holds the plan's literal reading beside it). `fluct` measures what the trend path leaves out of the 50 kHz channels (the band above
 a signal's K cosine values, by frequency; no tokenizer is built) and writes ``<stage1>/compare/fluct.csv``. Torch is loaded at import by the modules this script uses; `train` defers the CUDA
 device choice until after its refusals (`CUDA_VISIBLE_DEVICES` is set before any CUDA call).
 
@@ -26,6 +27,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import importlib.util
+import inspect
 import json
 import math
 import os
@@ -60,6 +62,7 @@ DEFAULT_LR, DEFAULT_STEPS = 3e-4, 20000   # `train.TrainConfig`'s (a test holds 
 RUN_FILES = ("result.json", "recoder.json", "best.pt", "train_log.csv", "norm.npz", "table.npz", "ranges.npz",
              "config.json", "trained_by.json")        # what a run writes, `result.json` first and so first to go
 STORE_HASHES = ("assignment_sha256", "fit_sha256", "stats_sha256")     # what a validation store must share with its training store
+RULE7_MIN_ENTROPY = inspect.signature(compare.usage).parameters["min_entropy"].default   # rule 7's 0.3, read from where `compare.usage` defines it
 BANDCAT_TOKENS = 54                       # tokens of 8 = 432 values: v1's 3 x (32 + 7 x 16) per Mirnov signal (ruling C4)
 
 
@@ -568,11 +571,44 @@ def _unfinished(run_dir: Path, force: bool) -> None:
                       "again, or give another --seed or --variant")
 
 
+def rule7_usage(values: np.ndarray, rows: np.ndarray) -> dict:
+    """Rule 7 for one signal, read as ruling C33 reads it, and the plan's literal reading beside it.
+
+    `values` is ``(M, n_tok, n_val)``, a network's bounded values (unitless, in [-1, 1]) on the signal's M
+    validation examples. `rows` is ``(M, d)``, the encoder's input of the same examples (example units and the
+    stream's row in the identity table, as one float row): two examples are one example only when their values
+    and their identity are the same. Examples with a NaN anywhere in `values` are left out of everything.
+
+    Returns, from `compare.usage` on all finite examples (the plan's reading, unchanged): `collapsed_any_token`
+    (some token's first value is under 0.3 normalised entropy), `first_value_entropy` and `active_values`, with
+    `n_examples`. Then, on the distinct examples (an exact duplicate row counted once): `n_distinct_examples`;
+    `first_value_entropy_by_token`, a list over the tokens; `active_tokens`, how many of them reach
+    `RULE7_MIN_ENTROPY` (reported, it decides nothing); and `collapsed`, True when none does (C33 b: the verdict).
+    `share_most_common_row` is the share, over all finite examples, of the most common row. For a one-token arm
+    with no repeated row `collapsed` is `collapsed_any_token`. `compare.usage`'s `ValueError` (no finite
+    example) is not caught."""
+    v = np.asarray(values, dtype=np.float64)
+    r = np.asarray(rows)
+    if v.ndim != 3 or r.ndim != 2 or len(r) != len(v):
+        raise ValueError(f"values must be (M, n_tok, n_val) and rows (M, d) of the same M, got {v.shape} and {r.shape}")
+    plan = compare.usage(v)                                   # all finite examples; ValueError if none is left
+    finite = np.isfinite(v).all(axis=(1, 2))
+    _, first, counts = np.unique(r[finite], axis=0, return_index=True, return_counts=True)
+    distinct = v[finite][first]
+    by_token = [compare.usage(distinct[:, t:t + 1, :])["first_value_entropy"] for t in range(v.shape[1])]
+    active = sum(h >= RULE7_MIN_ENTROPY for h in by_token)
+    return {"first_value_entropy": plan["first_value_entropy"], "active_values": plan["active_values"],
+            "collapsed_any_token": plan["collapsed"], "n_examples": plan["n_examples"],
+            "n_distinct_examples": int(len(first)), "share_most_common_row": float(counts.max() / counts.sum()),
+            "first_value_entropy_by_token": [float(h) for h in by_token], "active_tokens": int(active),
+            "collapsed": bool(active == 0)}
+
+
 def run_train(args: argparse.Namespace) -> int:
     """Train the network of one arm on the training store, validate on the validation store, write the run into
     ``<stage1>/recoders/<arm>.s<seed>[.<variant>]`` and print its last line. Exit 2 for a refusal (the options, the
     arm, a finished run, a busy GPU: before any store is read), 1 for a loss that is not finite, 3 if the network
-    collapsed (`compare.usage`), else 0. Written: `config.json` and `trained_by.json` before the first step,
+    collapsed (`rule7_usage`: some signal has no token whose first value is used, ruling C33), else 0. Written: `config.json` and `trained_by.json` before the first step,
     `train.lock` while it trains, `train_log.csv` and `best.pt` during it, then `recoder.json`, `norm.npz` and
     `table.npz` (a network's values have the even grid: no ranges) and last `result.json`."""
     _refuse_train_options(args)
@@ -682,10 +718,13 @@ def run_train(args: argparse.Namespace) -> int:
                 print(f"{name} {n}: no validation examples, no verdict", flush=True)
                 continue
             values = recoder.encode(e, ident)
-            usage[n] = compare.usage(values.reshape(len(values), arm.n_tok, arm.n_val))
-            print(f"{name} {n}: first value entropy {usage[n]['first_value_entropy']:.3f}, active values "
-                  f"{usage[n]['active_values']} of {arm.n_val}, {usage[n]['n_examples']} examples, "
-                  f"{'COLLAPSED' if usage[n]['collapsed'] else 'not collapsed'}", flush=True)
+            rows = np.concatenate([e.astype(np.float64), ident[:, None].astype(np.float64)], axis=1)   # the example and its identity
+            usage[n] = u = rule7_usage(values.reshape(len(values), arm.n_tok, arm.n_val), rows)
+            print(f"{name} {n}: {'COLLAPSED' if u['collapsed'] else 'not collapsed'} (C33), "
+                  f"{'collapsed' if u['collapsed_any_token'] else 'not collapsed'} on any token (plan's reading), "
+                  f"active tokens {u['active_tokens']} of {arm.n_tok}, active values {u['active_values']} of {arm.n_val}, "
+                  f"{u['n_distinct_examples']} distinct of {u['n_examples']} examples, "
+                  f"most common row {u['share_most_common_row']:.1%}", flush=True)
         collapsed = any(u["collapsed"] is True for u in usage.values())
         meta = {"signals": info, "arm": arm.name, "seed": args.seed, "variant": args.variant,
                 "date": datetime.now(timezone.utc).isoformat(), "n_train_examples": int(len(train_ex[0])),
@@ -698,8 +737,10 @@ def run_train(args: argparse.Namespace) -> int:
         rh._release_lock(lock)
     unchecked = [n for n, u in usage.items() if u["collapsed"] is None]
     note = f" ({len(unchecked)} of {len(usage)} signals unchecked: no validation examples)" if unchecked else ""
+    differ = [n for n, u in usage.items() if u["collapsed"] is not None and u["collapsed"] != u["collapsed_any_token"]]
+    tail = f" (rule 7 readings differ on: {', '.join(differ)}; C33 decides)" if differ else ""
     print(f"{name}: best val_mse {result['best_val_mse']:.4g} at step {result['best_step']} of {result['steps']}, "
-          f"plateau {'yes' if plateau else 'no'}, collapsed {'yes' if collapsed else 'no'}{note}, {result['seconds']:.0f} s",
+          f"plateau {'yes' if plateau else 'no'}, collapsed {'yes' if collapsed else 'no'}{note}, {result['seconds']:.0f} s{tail}",
           flush=True)
     return 3 if collapsed else 0
 

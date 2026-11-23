@@ -115,7 +115,8 @@ def test_provenance_names_the_recoders_bytes(tmp_path):
     cache_root, fit_dir = provenance_fixture(tmp_path)
     table = identity.StreamTable({"summary-ip": (0, 1)}, np.zeros((1, identity.N_FEAT), dtype=np.float32))
     norm = store.Norm(np.zeros((1, 16)), np.ones(1))
-    meta = {"signals": {"summary-ip": {"kind": "frame_dct", "domain": "linear", "n_streams": 1, "values_per_token": 1}}}
+    meta = {"signals": {"summary-ip": {"kind": "frame_dct", "domain": "linear", "n_streams": 1, "values_per_token": 1}},
+            "store": {"fit_sha256": fit.fit_sha256(fit_dir), "stats_sha256": transform.stats_sha256(cache_root / "stats.npz")}}
     for name, shift in (("klt.x", 0.0), ("klt.y", 1.0)):
         recode.save_recoder(tmp_path / "recoders" / name, recode.LinearRecoder(np.full(16, shift), np.eye(16)),
                             {"summary-ip": norm}, table, meta)
@@ -302,7 +303,9 @@ def save_toy_recoder(tmp_path, fits, zs):
     r = recode.fit_linear(e, 16)
     ranges = grid.fit_ranges(r.encode(e, np.zeros(len(e), dtype=np.int64)).reshape(-1, 1, 16))
     table = identity.StreamTable({"summary-ip": (0, 1)}, np.zeros((1, identity.N_FEAT), dtype=np.float32))
-    meta = {"signals": {"summary-ip": {"kind": "frame_dct", "domain": "linear", "n_streams": 1, "values_per_token": 1}}}
+    meta = {"signals": {"summary-ip": {"kind": "frame_dct", "domain": "linear", "n_streams": 1, "values_per_token": 1}},
+            "store": {"fit_sha256": fit.fit_sha256(tmp_path / "stage1" / "fit" / "v1"),
+                      "stats_sha256": transform.stats_sha256(tmp_path / "cache" / "v1" / "stats.npz")}}
     recode.save_recoder(tmp_path / "stage1" / "recoders" / "klt.ip", r, {"summary-ip": norm}, table, meta,
                         {"summary-ip": ranges})
 
@@ -342,3 +345,130 @@ def test_floor_still_refuses_the_gpu_flags_for_a_recoded_assignment(tmp_path, mo
     assert "uses no GPU" in capsys.readouterr().err
     assert not (tmp_path / "stage1" / "recoders").exists()                      # refused before any file was read
     assert not (tmp_path / "stage1" / "cache").exists()
+
+
+# ------------------------------------------------------------------ a recoder is tied to its fit and statistics (Minor 1)
+
+def edit_recoder_meta(directory, **store_changes):
+    """Rewrite the store hashes that a recoder recorded (`recoder.json` ``meta.store``); None removes one."""
+    path = Path(directory) / "recoder.json"
+    doc = json.loads(path.read_text())
+    for k, v in store_changes.items():
+        if v is None:
+            doc["meta"]["store"].pop(k)
+        else:
+            doc["meta"]["store"][k] = v
+    path.write_text(json.dumps(doc, indent=2) + "\n")
+
+
+def test_provenance_refuses_a_recoder_made_on_another_fit_or_statistics(tmp_path):
+    rt = load("run_tokenizer")
+    cache_root, fit_dir = provenance_fixture(tmp_path)
+    table = identity.StreamTable({"summary-ip": (0, 1)}, np.zeros((1, identity.N_FEAT), dtype=np.float32))
+    norm = store.Norm(np.zeros((1, 16)), np.ones(1))
+    now_fit, now_stats = fit.fit_sha256(fit_dir), transform.stats_sha256(cache_root / "stats.npz")
+    meta = {"signals": {"summary-ip": {"kind": "frame_dct", "domain": "linear", "n_streams": 1, "values_per_token": 1}},
+            "store": {"fit_sha256": now_fit, "stats_sha256": now_stats}}
+    recode.save_recoder(tmp_path / "recoders" / "klt.x", recode.LinearRecoder(np.zeros(16), np.eye(16)),
+                        {"summary-ip": norm}, table, meta)
+    assign.save_assignment({"summary-ip": assign.Setting("recoded", (4,), source="klt.x")}, tmp_path / "x.json")
+    args = (tmp_path / "x.json", fit_dir, cache_root)
+    assert "sources_sha256" in rt.provenance_of(*args, recoders_root=tmp_path / "recoders")        # it matches
+    for key, now in (("fit_sha256", now_fit), ("stats_sha256", now_stats)):
+        edit_recoder_meta(tmp_path / "recoders" / "klt.x", **{key: "ab" * 32})
+        with pytest.raises(ValueError, match=rf"recoder klt\.x: its {key} is abababab, the {key} in use is {now[:8]}"):
+            rt.provenance_of(*args, recoders_root=tmp_path / "recoders")
+        edit_recoder_meta(tmp_path / "recoders" / "klt.x", **{key: now})
+    edit_recoder_meta(tmp_path / "recoders" / "klt.x", fit_sha256=None)                            # no data is not a match
+    with pytest.raises(ValueError, match=r"recoder klt\.x records no fit_sha256"):
+        rt.provenance_of(*args, recoders_root=tmp_path / "recoders")
+
+
+def test_the_gate_refuses_a_recoder_made_on_another_fit_before_any_write(tmp_path, monkeypatch, capsys, toy_task):
+    root, _, fits, zs, _ = toy_world(tmp_path, monkeypatch)
+    save_toy_recoder(tmp_path, fits, zs)
+    edit_recoder_meta(tmp_path / "stage1" / "recoders" / "klt.ip", fit_sha256="cd" * 32)
+    assign.save_assignment({"summary-ip": assign.Setting("recoded", (4,), "linear", source="klt.ip")}, tmp_path / "r1.json")
+    rt = gate_script(monkeypatch, toy_task)
+    assert rt.main(gate_args(tmp_path, root, "r1.json")) == 2
+    err = capsys.readouterr().err
+    assert "refused" in err and "recoder klt.ip: its fit_sha256 is cdcdcdcd" in err
+    assert not (tmp_path / "stage1" / "gate").exists()
+
+
+def recode_world(tmp_path, monkeypatch, capsys):
+    """The toy world with its stores, the linear recoder ``klt.series`` and the trained network ``net.series.s0.t``
+    (3 steps); returns the stage1 recoders directory and the run_tokenizer module."""
+    root, _, _, _, _ = toy_world(tmp_path, monkeypatch)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    tt = toy_script(monkeypatch, "train_tokenizer")
+    monkeypatch.setattr(tt, "arms", lambda *a: {"klt.series": tt.Arm("klt.series", ("summary-ip",), False, False, 1, 16),
+                                                "net.series": tt.Arm("net.series", ("summary-ip",), False, True, 1, 16)})
+    assert tt.main(["store", "--n-val", "2", "--workers", "1", "--cache-dir", str(root)]) == 0
+    assert tt.main(["linear", "--arm", "klt.series"]) == 0
+    real = tt.TrainConfig if hasattr(tt, "TrainConfig") else None
+    from tokamak_foundation_model.ignite.mast.tokenizers.learned import train as trainer
+    real = trainer.TrainConfig
+    monkeypatch.setattr(trainer, "TrainConfig", lambda **kw: real(**{**dict(d_model=32, depth=1, batch=64, warmup=2,
+                                                                          val_every=3), **kw}))
+    assert tt.main(["train", "--arm", "net.series", "--cpu", "--steps", "3", "--variant", "t"]) in (0, 3)
+    capsys.readouterr()
+    return tmp_path / "stage1" / "recoders", toy_script(monkeypatch, "run_tokenizer")
+
+
+def set_collapsed(run, value):
+    """Rewrite the verdict of a trained network's `result.json` (None removes the file)."""
+    path = Path(run) / "result.json"
+    if value is None:
+        path.unlink()
+        return
+    doc = json.loads(path.read_text())
+    doc["collapsed"] = value
+    path.write_text(json.dumps(doc, indent=2) + "\n")
+
+
+def recode_argv(name, arm):
+    return ["recode", "--name", name, "--from", "v1", "--arm", arm]
+
+
+def test_recode_takes_a_network_that_finished_and_did_not_collapse(tmp_path, monkeypatch, capsys):
+    recoders, rt = recode_world(tmp_path, monkeypatch, capsys)
+    set_collapsed(recoders / "net.series.s0.t", False)
+    assert rt.main(recode_argv("t-net", "net.series.s0.t")) == 0
+    made = assign.load_assignment(tmp_path / "stage1" / "assignments" / "t-net.json")
+    assert made["summary-ip"].codec == "recoded" and made["summary-ip"].source == "net.series.s0.t"
+
+
+@pytest.mark.parametrize("verdict, why", [(True, "collapsed under rule 7 (C33)"),
+                                          (None, "has no result.json: its training did not finish")])
+def test_recode_refuses_a_network_that_collapsed_or_did_not_finish(tmp_path, monkeypatch, capsys, verdict, why):
+    recoders, rt = recode_world(tmp_path, monkeypatch, capsys)
+    set_collapsed(recoders / "net.series.s0.t", verdict)
+    assert rt.main(recode_argv("t-net", "net.series.s0.t")) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("refused: ") and "net.series.s0.t" in err and why in err
+    assert not (tmp_path / "stage1" / "assignments" / "t-net.json").exists()
+    assert rt.main(recode_argv("t-lin", "klt.series")) == 0                    # a linear recoder has no verdict to ask for
+
+
+def test_recode_refuses_a_result_whose_verdict_is_not_false(tmp_path, monkeypatch, capsys):
+    recoders, rt = recode_world(tmp_path, monkeypatch, capsys)
+    set_collapsed(recoders / "net.series.s0.t", None)
+    (recoders / "net.series.s0.t" / "result.json").write_text(json.dumps({"best_val_mse": 0.1}) + "\n")
+    assert rt.main(recode_argv("t-net", "net.series.s0.t")) == 2               # no `collapsed` is not False
+    assert "no `collapsed`" in capsys.readouterr().err
+    assert not (tmp_path / "stage1" / "assignments" / "t-net.json").exists()
+
+
+@pytest.mark.parametrize("arm", ["klt.series", "net.series.s0.t"])
+@pytest.mark.parametrize("key", ["fit_sha256", "stats_sha256"])
+def test_recode_refuses_a_recoder_made_on_another_fit_or_statistics(tmp_path, monkeypatch, capsys, arm, key):
+    recoders, rt = recode_world(tmp_path, monkeypatch, capsys)
+    set_collapsed(recoders / "net.series.s0.t", False)
+    assert rt.main(recode_argv("t-ok", arm)) == 0                              # it matches the fit and statistics in use
+    now = json.loads((recoders / arm / "recoder.json").read_text())["meta"]["store"][key]
+    edit_recoder_meta(recoders / arm, **{key: "ef" * 32})
+    assert rt.main(recode_argv("t-bad", arm)) == 2
+    err = capsys.readouterr().err
+    assert f"recoder {arm}: its {key} is efefefef, the {key} in use is {now[:8]}" in err
+    assert not (tmp_path / "stage1" / "assignments" / "t-bad.json").exists()

@@ -36,7 +36,9 @@ whose `source` is a directory of ``<stage1>/recoders/`` (made by `train_tokenize
 sub-command builds its codecs through `learned.build`, and the provenance of such an assignment adds
 `learned_code_sha256` and `sources_sha256` (the bytes of each recoder it names). `recode --name NEW --from OLD
 --arm R[,R...]` writes `<stage1>/assignments/NEW.json` from OLD with the signals of each recoder behind it, the
-values per frame kept (`--scale` sizes a concatenated recoder); it refuses a name that exists. `score --instrument
+values per frame kept (`--scale` sizes a concatenated recoder); it refuses a name that exists, a network that
+collapsed or has no `result.json`, and a recoder made on another fit or statistics than the ones in use (so do
+`score`, `gate` and `compare` for an assignment that names one). `score --instrument
 floor` runs on the CPU for a network recoder too (one torch thread), so it still refuses `--gpu`. The gate reads
 a recoded assignment through a copy of `gate.cache_side_job` that builds its codecs with `learned.build`, and
 refuses a concatenated band codec, whose kept positions it cannot tell.
@@ -173,6 +175,25 @@ def _names_a_recoder(assignment: Mapping[str, assign.Setting]) -> bool:
         s.codec in (learned_build.RECODED, learned_build.RECODED_CONCAT) for s in assignment.values())
 
 
+def recoder_fit_mismatch(name: str, meta: Mapping[str, object], fit_sha256: str, stats_sha256: str) -> str | None:
+    """Why a recoder does not belong to the fit and statistics in use, or None if it does.
+
+    `meta` is the recoder's ``recoder.json`` meta. `train_tokenizer.py` records, under ``meta["store"]``, the
+    `fit_sha256` and `stats_sha256` of the stores the recoder was fitted on; a network over a fit's PCA basis
+    (net.profile, net.map) and every recoded codec (`learned.build` rebuilds the front from the current fit) read
+    in the wrong basis after a `fit --force`. A hash that is not recorded is a reason too: the recoder cannot be
+    tied to the fit (no data is not a match). The words name the recoder, the hash and both 8-character values."""
+    recorded = meta.get("store") if isinstance(meta.get("store"), dict) else {}
+    for key, now in (("fit_sha256", fit_sha256), ("stats_sha256", stats_sha256)):
+        got = recorded.get(key)
+        if not isinstance(got, str) or not got:
+            return f"recoder {name} records no {key}, so it cannot be tied to the fit and statistics in use ({now[:8]})"
+        if got != now:
+            return (f"recoder {name}: its {key} is {got[:8]}, the {key} in use is {now[:8]}: it was made on another "
+                    f"fit or statistics than these; make it again (`train_tokenizer.py linear` or `train`)")
+    return None
+
+
 def provenance_of(assignment_path: Path | None, fit_dir: Path | None, cache_root: Path,
                   checkpoint: Path | None = None, recoders_root: Path | None = None) -> dict[str, str]:
     """What a stored score must carry to be the score of the code and files in use now.
@@ -184,7 +205,9 @@ def provenance_of(assignment_path: Path | None, fit_dir: Path | None, cache_root
     that is not saved),
     `tokamark_revision` (from ``manifest.json`` of `cache_root`), `data_root`, and `checkpoint_sha256` (the
     sha256 of the file `checkpoint`). `ValueError` naming "statistics" if ``stats.npz``, the manifest and the
-    fit's meta do not carry one hash. Arrays are not read. An assignment that names no recoder gets exactly
+    fit's meta do not carry one hash, and `ValueError` (`recoder_fit_mismatch`) if a recoder it names was made on
+    another fit or statistics than these: every command that scores or gates an assignment reads its provenance
+    first, so none writes with such a recoder. Arrays are not read. An assignment that names no recoder gets exactly
     plan 1b's keys.
     """
     manifest = json.loads((Path(cache_root) / "manifest.json").read_text())
@@ -203,6 +226,10 @@ def provenance_of(assignment_path: Path | None, fit_dir: Path | None, cache_root
             root = Path(recoders_root) if recoders_root is not None else _default_recoders_root()
             out["learned_code_sha256"] = learned.code_sha256()
             out["sources_sha256"] = learned_build.sources_sha256(assignment, root)
+            for source in learned_build.sources(assignment):    # a recoder must belong to the fit and statistics in use
+                meta = json.loads((Path(root) / source / learned_recode.RECODER_JSON).read_text())["meta"]
+                if (why := recoder_fit_mismatch(source, meta, out["fit_sha256"], out["stats_sha256"])) is not None:
+                    raise ValueError(why)
     out["tokamark_revision"] = manifest["tokamark_revision"]
     out["data_root"] = str(paths.tokamark_zarr_root())
     if checkpoint is not None:
@@ -837,8 +864,10 @@ def run_recode(args: argparse.Namespace) -> int:
     `--arm` (a comma list of directories of ``<stage1>/recoders``) behind that recoder
     (`learned.build.recode_assignment`: the values per frame kept, `--scale` for a concatenated recoder,
     `--signals` to recode only some). The recoders' signals must not overlap after `--signals`. Prints, per
-    changed signal, the values per frame before and after. Exit 2 for a refusal (before any write); an
-    existing name is never overwritten."""
+    changed signal, the values per frame before and after. Exit 2 for a refusal (before any write): among them a
+    network recoder whose ``result.json`` is missing (its training did not finish) or does not say ``collapsed``
+    false (rule 7, ruling C33), and a recoder whose recorded fit or statistics are not the ones in use
+    (`recoder_fit_mismatch`). A linear recoder has no verdict. An existing name is never overwritten."""
     for label, value in (("--name", args.name), ("--from", args.from_.removesuffix(".json"))):
         if not _NAME.fullmatch(value):
             raise Refused(f"{label} {value!r} is not a file name (letters, digits, . _ -)")
@@ -859,6 +888,31 @@ def run_recode(args: argparse.Namespace) -> int:
         if not (recoders_root() / a / learned_recode.RECODER_JSON).is_file():
             raise Refused(f"there is no recoder {recoders_root() / a}: `train_tokenizer.py linear --arm {a}` "
                           "(or `train`) makes it")
+    for a in sources:                                       # rule 7: a network that collapsed, or never got its verdict, is out
+        run = recoders_root() / a
+        try:
+            kind = json.loads((run / learned_recode.RECODER_JSON).read_text())["kind"]
+        except (OSError, KeyError, ValueError) as e:
+            raise Refused(f"recoder {a} cannot be read ({type(e).__name__}: {e})") from e
+        if kind != "net":
+            continue
+        if not (run / "result.json").is_file():
+            raise Refused(f"recoder {a} has no result.json: its training did not finish, so it has no rule 7 verdict")
+        try:
+            doc = json.loads((run / "result.json").read_text())
+            collapsed = doc["collapsed"]
+        except (OSError, ValueError, TypeError) as e:
+            raise Refused(f"recoder {a}: result.json cannot be read ({type(e).__name__}: {e})") from e
+        except KeyError:
+            raise Refused(f"recoder {a}: result.json has no `collapsed`, so the network has no rule 7 verdict") from None
+        if collapsed is True:
+            raise Refused(f"recoder {a} collapsed under rule 7 (C33): a collapsed tokenizer takes part in no comparison")
+        if collapsed is not False:
+            raise Refused(f"recoder {a}: result.json says collapsed {collapsed!r}, not false: no verdict, no comparison")
+    try:
+        in_use = _fit_provenance(stage1 / "fit" / FIT_VERSION, _cache_root(args))
+    except (OSError, KeyError, ValueError) as e:
+        raise Refused(f"the fit and statistics in use cannot be read ({type(e).__name__}: {e})") from e
     try:
         base = assign.load_assignment(old_path)
         notes = dict(json.loads(old_path.read_text()).get("notes", {}))
@@ -866,6 +920,9 @@ def run_recode(args: argparse.Namespace) -> int:
         loaded = [learned_recode.load_recoder(recoders_root() / a) for a in sources]
     except (OSError, KeyError, ValueError) as e:
         raise Refused(f"the inputs cannot be read ({type(e).__name__}: {e})") from e
+    for a, got in zip(sources, loaded):                     # a recoder must belong to the fit and statistics in use
+        if (why := recoder_fit_mismatch(a, got.meta, in_use["fit_sha256"], in_use["stats_sha256"])) is not None:
+            raise Refused(why)
     owner: dict[str, str] = {}
     for a, got in zip(sources, loaded):
         for n in got.meta["signals"]:
@@ -1342,15 +1399,27 @@ def run_compare(args: argparse.Namespace) -> int:
 
 def run_seeds(args: argparse.Namespace) -> int:
     """From the stored comparison files of `--pairs` (``a:b`` names, comma-separated, at least two, one per seed
-    of the network, `b` the same in each) print, per signal, the gaps of the seeds, their spread and the verdict of
-    the first pair with that spread (rule 2: a gap above the spread over the seeds is above 0 in every seed).
-    Exit 2 naming a file that is missing; nothing is written."""
+    of the network, `b` the same in each and every `a` different) print, per signal, the `n_shots` of each pair,
+    the a-over-b gaps of the seeds and their spread, the b-over-a gaps and their spread, and the verdict of the
+    first pair (rule 2: a gap above the spread over the seeds is above 0 in every seed). "a beats b" is read
+    against the spread of the `gap`s, "b beats a" against that of the `gap_ba`s (largest minus smallest; the two
+    differ, because the b-over-a gap is over the mean of a and the a-over-b gap over the mean of b):
+    `learned_compare.word` takes one spread for both directions, so it is called once with each and each call is
+    read for its own direction only. A signal whose pairs were measured over different numbers of shots gets no
+    verdict ("shots differ: n1, n2, ...": a gap over other shots is not the same comparison), and one with a gap
+    not measured gets "no data". Exit 2 for a refusal (a differing `b`, a repeated `a`, a missing file); nothing
+    is written."""
     if not _NAME.fullmatch(args.label):
         raise Refused(f"--label {args.label!r} is not a label (letters, digits, . _ -)")
     pairs = [p for p in args.pairs.split(",") if p]
     names = [p.split(":") for p in pairs]
     if len(pairs) < 2 or any(len(n) != 2 or not all(_NAME.fullmatch(x) for x in n) for n in names):
         raise Refused(f"--pairs {args.pairs!r} must be at least two pairs a:b of assignment names, comma-separated")
+    if len({b for _, b in names}) != 1:
+        raise Refused(f"the pairs must all have the same b (one baseline); --pairs has {sorted({b for _, b in names})}")
+    if len({a for a, _ in names}) != len(names):
+        repeated = sorted({a for a, _ in names if [x for x, _ in names].count(a) > 1})
+        raise Refused(f"the a of each pair is one seed of the network, so the a's must differ; {repeated} repeat")
     stage1 = paths.stage1_dir()
     files = [stage1 / "compare" / f"{a}__{b}.{args.label}.csv" for a, b in names]
     gone = [str(f) for f in files if not f.is_file()]
@@ -1360,18 +1429,30 @@ def run_seeds(args: argparse.Namespace) -> int:
         frames_ = [pd.read_csv(f).set_index("signal") for f in files]
     except (OSError, KeyError, ValueError) as e:
         raise Refused(f"a comparison file cannot be read ({type(e).__name__}: {e})") from e
+
+    def show(values: list[float]) -> str:
+        return ", ".join("nan" if not math.isfinite(g) else f"{g:.4f}" for g in values)
+
     for signal in frames_[0].index:
         rows = [f.loc[signal] if signal in f.index else None for f in frames_]
         gaps = [math.nan if r is None else float(r["gap"]) for r in rows]
-        spread = learned_compare.seed_spread(gaps)
-        if rows[0] is None or not all(math.isfinite(g) for g in gaps):
+        gaps_ba = [math.nan if r is None else float(r["gap_ba"]) for r in rows]
+        shots = [math.nan if r is None else float(r["n_shots"]) for r in rows]
+        spread, spread_ba = learned_compare.seed_spread(gaps), learned_compare.seed_spread(gaps_ba)
+        shots_text = ", ".join("nan" if not math.isfinite(n) else str(int(n)) for n in shots)
+        if rows[0] is None or not all(math.isfinite(g) for g in (*gaps, *gaps_ba)):
             verdict = "no data"
+        elif len(set(shots)) != 1:
+            verdict = f"shots differ: {shots_text}"
         else:
             ab = {k: float(rows[0][k]) for k in ("gap", "lo", "hi")}
             ba = {k: float(rows[0][f"{k}_ba"]) for k in ("gap", "lo", "hi")}
-            verdict = learned_compare.word(ab, ba, spread)
-        print(f"{signal}: gaps {', '.join('nan' if not math.isfinite(g) else f'{g:.4f}' for g in gaps)}; "
-              f"spread {spread:.4f}; {verdict}")
+            word_a = learned_compare.word(ab, ba, spread)               # read for "a beats b" only
+            word_b = learned_compare.word(ab, ba, spread_ba)            # read for "b beats a" only
+            verdict = word_a if word_a.startswith("a ") else word_b if word_b.startswith("b ") else (
+                "no data" if word_a == "no data" else "tie")
+        print(f"{signal}: n_shots {shots_text}; gaps {show(gaps)}; spread {spread:.4f}; "
+              f"gaps b over a {show(gaps_ba)}; spread {spread_ba:.4f}; {verdict}")
     return 0
 
 
@@ -1433,6 +1514,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--arm", required=True, help="recoder directories of <stage1>/recoders, comma-separated")
     p.add_argument("--scale", type=float, default=1.0, help="a concatenated recoder keeps this part of the values")
     p.add_argument("--signals", default=None, help="recode only these signals (comma-separated)")
+    p.add_argument("--cache-dir", default=None, help="the cache whose statistics are in use (default <root>/cache/v1)")
     p.set_defaults(run=run_recode)
 
     p = sub.add_parser("gate", help="judge every (task, signal) pair from the stored floors and the cache")

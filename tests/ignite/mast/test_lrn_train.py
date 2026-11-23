@@ -359,3 +359,102 @@ def test_the_last_line_is_unchanged_when_every_signal_was_checked(tmp_path, monk
     tt.main(["train", "--arm", "net.two", "--cpu", "--steps", "3", "--variant", "t"])
     last = capsys.readouterr().out.strip().splitlines()[-1]
     assert "unchecked" not in last and "collapsed " in last and last.endswith(" s")
+
+
+# ------------------------------------------------------------------ rule 7 as ruling C33 reads it
+
+def spread_values(n, n_tok, n_val, seed):
+    """Bounded ``(n, n_tok, n_val)`` values spread evenly over the 8 levels (unitless, in [-1, 1])."""
+    return np.random.default_rng(seed).uniform(-1.0, 1.0, (n, n_tok, n_val))
+
+
+def test_rule7_a_token_that_never_varies_beside_one_that_does_is_not_a_collapse(monkeypatch):
+    tt = load_script(monkeypatch)
+    values = spread_values(400, 2, 3, 0)
+    values[:, 1, 0] = 0.0                                  # token 1's first value is constant
+    rows = np.arange(400.0)[:, None]                       # every row distinct
+    u = tt.rule7_usage(values, rows)
+    assert u["collapsed"] is False and u["collapsed_any_token"] is True and u["active_tokens"] == 1
+    assert u["n_examples"] == 400 and u["n_distinct_examples"] == 400 and u["share_most_common_row"] == 1 / 400
+    assert len(u["first_value_entropy_by_token"]) == 2
+    assert u["first_value_entropy_by_token"][0] > 0.9 and u["first_value_entropy_by_token"][1] == 0.0
+    assert {"first_value_entropy", "active_values"} <= set(u)
+
+
+def test_rule7_rows_that_repeat_are_counted_once(monkeypatch):
+    tt = load_script(monkeypatch)
+    m = 1000
+    rows = np.zeros((m, 2))
+    rows[900:, 0] = np.arange(100) + 1.0                   # 90% of the rows are one row, the rest all differ
+    values = np.zeros((m, 1, 4))
+    values[900:] = spread_values(100, 1, 4, 1)
+    u = tt.rule7_usage(values, rows)
+    assert u["share_most_common_row"] == pytest.approx(0.9) and u["n_distinct_examples"] == 101 and u["n_examples"] == m
+    assert u["collapsed"] is False and u["collapsed_any_token"] is True        # the readings differ here
+    assert u["active_tokens"] == 1
+
+
+def test_rule7_equal_values_with_different_identity_are_distinct_examples(monkeypatch):
+    tt = load_script(monkeypatch)
+    values = np.zeros((6, 1, 2))
+    rows = np.column_stack([np.zeros(6), np.arange(6.0)])  # same example, six streams
+    assert tt.rule7_usage(values, rows)["n_distinct_examples"] == 6
+    assert tt.rule7_usage(values, np.zeros((6, 2)))["n_distinct_examples"] == 1
+
+
+def test_rule7_every_token_constant_is_a_collapse(monkeypatch):
+    tt = load_script(monkeypatch)
+    values = np.zeros((300, 3, 2))
+    values[:, 0] = 0.5
+    values[:, 2] = -1.0
+    u = tt.rule7_usage(values, np.arange(300.0)[:, None])
+    assert u["collapsed"] is True and u["collapsed_any_token"] is True and u["active_tokens"] == 0
+
+
+def test_rule7_a_one_token_arm_is_the_plans_rule(monkeypatch):
+    tt = load_script(monkeypatch)
+    rows = np.arange(300.0)[:, None]
+    for values in (spread_values(300, 1, 4, 2), np.full((300, 1, 4), 0.2)):
+        u = tt.rule7_usage(values, rows)
+        plan = tt.compare.usage(values)
+        assert u["collapsed"] == u["collapsed_any_token"] == plan["collapsed"]
+        assert u["first_value_entropy"] == plan["first_value_entropy"]
+        assert u["first_value_entropy_by_token"] == [plan["first_value_entropy"]]
+
+
+def test_rule7_the_threshold_is_the_one_compare_defines(monkeypatch):
+    import inspect
+    tt = load_script(monkeypatch)
+    assert tt.RULE7_MIN_ENTROPY == inspect.signature(tt.compare.usage).parameters["min_entropy"].default == 0.3
+
+
+def test_the_run_records_both_readings_of_rule_7_per_signal(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    toy_stage1(tmp_path, monkeypatch)
+    tt = load_script(monkeypatch)
+    shrink(monkeypatch)
+    rc = tt.main(["train", "--arm", "net.series", "--cpu", "--steps", "3", "--variant", "t"])
+    out = capsys.readouterr().out.strip().splitlines()
+    result = json.loads((tmp_path / "stage1" / "recoders" / "net.series.s0.t" / "result.json").read_text())
+    u = result["usage"][NAME]
+    assert {"collapsed", "collapsed_any_token", "first_value_entropy", "active_values", "n_examples", "n_distinct_examples",
+            "share_most_common_row", "first_value_entropy_by_token", "active_tokens"} <= set(u)
+    assert u["n_examples"] == 30 and len(u["first_value_entropy_by_token"]) == 1 and 0 < u["n_distinct_examples"] <= 30
+    assert result["collapsed"] is u["collapsed"] and rc == (3 if u["collapsed"] else 0)
+    line = next(x for x in out if x.startswith(f"net.series.s0.t {NAME}:"))
+    assert f"active tokens {u['active_tokens']} of 1" in line and f"{u['n_distinct_examples']} distinct of 30" in line
+    assert "most common row" in line and "any token" in line
+    if u["collapsed"] == u["collapsed_any_token"]:
+        assert "readings differ" not in out[-1]
+
+
+def test_the_last_line_names_the_signals_whose_two_readings_differ(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    toy_stage1(tmp_path, monkeypatch)
+    tt = load_script(monkeypatch)
+    shrink(monkeypatch)
+    real = tt.rule7_usage
+    monkeypatch.setattr(tt, "rule7_usage", lambda v, r: {**real(v, r), "collapsed": False, "collapsed_any_token": True})
+    tt.main(["train", "--arm", "net.series", "--cpu", "--steps", "3", "--variant", "t"])
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert last.endswith(f" s (rule 7 readings differ on: {NAME}; C33 decides)")

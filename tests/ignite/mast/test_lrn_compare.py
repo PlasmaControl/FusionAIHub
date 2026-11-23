@@ -246,7 +246,8 @@ def array_world(tmp_path, monkeypatch):
     r = recode.fit_linear(e, 48, concat=True, n_val=6)
     ranges = grid.fit_ranges(r.encode(e, np.full(len(e), -1, dtype=np.int64)).reshape(-1, 1, 48))
     table = identity.StreamTable({ARR: (0, 3)}, np.zeros((3, identity.N_FEAT), dtype=np.float32))
-    meta = {"signals": {ARR: {"kind": "frame_dct", "domain": "linear", "n_streams": 3, "values_per_token": 1}}}
+    meta = {"signals": {ARR: {"kind": "frame_dct", "domain": "linear", "n_streams": 3, "values_per_token": 1}},
+            "store": {"fit_sha256": fit.fit_sha256(tmp_path / "stage1" / "fit" / "v1"), "stats_sha256": sha}}
     recode.save_recoder(tmp_path / "stage1" / "recoders" / "pca.arr", r, {ARR: norm}, table, meta, {ARR: ranges})
     assign.save_assignment({ARR: assign.Setting("recoded_concat", (6,), "linear", source="pca.arr")}, assigns / "rc.json")
     return root
@@ -355,11 +356,13 @@ def test_compare_refuses_before_it_reads_or_writes(tmp_path, monkeypatch, capsys
     assert row["gap"] == 0 and row["one_seed"] == "tie"                                # the same codec twice
 
 
-def write_comparison(tmp_path, a, b, label, gap, lo, hi, signal="sig"):
+def write_comparison(tmp_path, a, b, label, gap, lo, hi, signal="sig", n_shots=100, gap_ba=None, lo_ba=None, hi_ba=None):
+    """A stored comparison file; the b-over-a side is the mirror of the a-over-b side unless given."""
     out = tmp_path / "stage1" / "compare"
     out.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame([{"signal": signal, "source": "cache", "values_a": 8, "values_b": 8, "n_shots": 100, "mean_a": 0.1,
-                   "mean_b": 0.1 / (1 - gap), "gap": gap, "lo": lo, "hi": hi, "gap_ba": -gap, "lo_ba": -hi, "hi_ba": -lo,
+    gap_ba, lo_ba, hi_ba = (-gap if gap_ba is None else gap_ba), (-hi if lo_ba is None else lo_ba), (-lo if hi_ba is None else hi_ba)
+    pd.DataFrame([{"signal": signal, "source": "cache", "values_a": 8, "values_b": 8, "n_shots": n_shots, "mean_a": 0.1,
+                   "mean_b": 0.1 / (1 - gap), "gap": gap, "lo": lo, "hi": hi, "gap_ba": gap_ba, "lo_ba": lo_ba, "hi_ba": hi_ba,
                    "one_seed": "x"}]).to_csv(out / f"{a}__{b}.{label}.csv", index=False)
 
 
@@ -370,10 +373,12 @@ def test_seeds_judges_the_first_gap_against_the_spread_of_all(tmp_path, monkeypa
         write_comparison(tmp_path, name, "base", "L", gap, gap - 0.05, gap + 0.05)
     assert rt.main(["seeds", "--pairs", "n0:base,n1:base,n2:base", "--label", "L"]) == 0
     line = capsys.readouterr().out.strip()
-    assert line == "sig: gaps 0.2500, 0.2000, 0.2800; spread 0.0800; a clearly beats b"
+    assert line == ("sig: n_shots 100, 100, 100; gaps 0.2500, 0.2000, 0.2800; spread 0.0800; "
+                    "gaps b over a -0.2500, -0.2000, -0.2800; spread 0.0800; a clearly beats b")
     write_comparison(tmp_path, "n3", "base", "L", -0.10, -0.15, -0.05)                    # a seed that loses: spread 0.35
     assert rt.main(["seeds", "--pairs", "n0:base,n3:base", "--label", "L"]) == 0
-    assert capsys.readouterr().out.strip() == "sig: gaps 0.2500, -0.1000; spread 0.3500; tie"
+    assert capsys.readouterr().out.strip() == (
+        "sig: n_shots 100, 100; gaps 0.2500, -0.1000; spread 0.3500; gaps b over a -0.2500, 0.1000; spread 0.3500; tie")
     assert rt.main(["seeds", "--pairs", "n0:base,n9:base", "--label", "L"]) == 2
     err = capsys.readouterr().err
     assert "n9__base.L.csv" in err and "n0__base" not in err
@@ -381,7 +386,55 @@ def test_seeds_judges_the_first_gap_against_the_spread_of_all(tmp_path, monkeypa
     assert rt.main(["seeds", "--pairs", "n0:base,n1", "--label", "L"]) == 2
     write_comparison(tmp_path, "n4", "base", "L", float("nan"), float("nan"), float("nan"))
     assert rt.main(["seeds", "--pairs", "n0:base,n4:base", "--label", "L"]) == 0
-    assert capsys.readouterr().out.strip() == "sig: gaps 0.2500, nan; spread nan; no data"
+    assert capsys.readouterr().out.strip() == (
+        "sig: n_shots 100, 100; gaps 0.2500, nan; spread nan; gaps b over a -0.2500, nan; spread nan; no data")
+
+
+def test_seeds_refuses_pairs_that_do_not_share_b_or_repeat_an_a(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
+    rt = lc.load("run_tokenizer")
+    for a, b in (("n0", "base"), ("n1", "base"), ("n2", "other")):
+        write_comparison(tmp_path, a, b, "L", 0.25, 0.2, 0.3)
+    assert rt.main(["seeds", "--pairs", "n0:base,n1:base,n2:other", "--label", "L"]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("refused: ") and "same b" in err and "base" in err and "other" in err
+    assert rt.main(["seeds", "--pairs", "n0:base,n1:base,n0:base", "--label", "L"]) == 2
+    err = capsys.readouterr().err
+    assert "n0" in err and "differ" in err
+    assert rt.main(["seeds", "--pairs", "n0:base,n1:base", "--label", "L"]) == 0       # the same pairs, valid
+
+
+def test_seeds_gives_no_verdict_when_the_pairs_have_different_shots(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
+    rt = lc.load("run_tokenizer")
+    for name, n in (("n0", 100), ("n1", 100), ("n2", 97)):
+        write_comparison(tmp_path, name, "base", "L", 0.25, 0.2, 0.3, n_shots=n)
+    assert rt.main(["seeds", "--pairs", "n0:base,n1:base,n2:base", "--label", "L"]) == 0
+    line = capsys.readouterr().out.strip()
+    assert line.startswith("sig: n_shots 100, 100, 97; gaps 0.2500, 0.2500, 0.2500; spread 0.0000;")
+    assert line.endswith("; shots differ: 100, 100, 97") and "beats" not in line and "tie" not in line
+
+
+def test_seeds_reads_the_b_direction_against_the_spread_of_the_b_over_a_gaps(tmp_path, monkeypatch, capsys):
+    """b beats a with gap_ba 0.30 (interval above 0) in seed 0; the a-over-b gaps spread 0.20 and the b-over-a gaps
+    0.45. Against the old single spread (the a-over-b one) b beats a stands; against its own it does not."""
+    monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
+    rt = lc.load("run_tokenizer")
+    write_comparison(tmp_path, "n0", "base", "L", -0.25, -0.30, -0.20, gap_ba=0.30, lo_ba=0.20, hi_ba=0.40)
+    write_comparison(tmp_path, "n1", "base", "L", -0.05, -0.10, 0.0, gap_ba=-0.15, lo_ba=-0.2, hi_ba=-0.1)
+    assert rt.main(["seeds", "--pairs", "n0:base,n1:base", "--label", "L"]) == 0
+    line = capsys.readouterr().out.strip()
+    assert "spread 0.2000; gaps b over a 0.3000, -0.1500; spread 0.4500; tie" in line
+
+
+def test_seeds_keeps_the_a_direction_against_the_spread_of_the_a_over_b_gaps(tmp_path, monkeypatch, capsys):
+    """a beats b with gap 0.30 in seed 0; the a-over-b gaps spread 0.20 and the b-over-a gaps 0.45: a wins."""
+    monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
+    rt = lc.load("run_tokenizer")
+    write_comparison(tmp_path, "n0", "base", "L", 0.30, 0.20, 0.40, gap_ba=-0.30, lo_ba=-0.4, hi_ba=-0.2)
+    write_comparison(tmp_path, "n1", "base", "L", 0.10, 0.05, 0.15, gap_ba=0.15, lo_ba=-0.2, hi_ba=0.5)
+    assert rt.main(["seeds", "--pairs", "n0:base,n1:base", "--label", "L"]) == 0
+    assert capsys.readouterr().out.strip().endswith("spread 0.2000; gaps b over a -0.3000, 0.1500; spread 0.4500; a clearly beats b")
 
 
 # ------------------------------------------------------------------------------ `joint`, on stored examples
