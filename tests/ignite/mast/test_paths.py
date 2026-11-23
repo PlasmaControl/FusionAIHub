@@ -88,3 +88,8 @@ def test_a_sibling_whose_name_starts_alike_is_allowed(monkeypatch, tmp_path):
     """Only the directory itself and what is inside it are refused, not a name that begins the same way."""
     monkeypatch.setenv("IGNITE_MAST_TOKAMARK", str(tmp_path / "tokamark_store"))
     assert paths.prepare_write_root(tmp_path / "tokamark_store_scores").is_dir()
+
+
+def test_stage1_dir_is_under_the_root(monkeypatch, tmp_path):
+    monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
+    assert paths.stage1_dir() == tmp_path / "stage1"

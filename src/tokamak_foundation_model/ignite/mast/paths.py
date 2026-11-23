@@ -45,6 +45,11 @@ def stage0_dir() -> Path:
     return mast_root() / "stage0"
 
 
+def stage1_dir() -> Path:
+    """Stage 1's outputs (tokenizer fits, token caches, scores)."""
+    return mast_root() / "stage1"
+
+
 def tokamind_runs_dir() -> Path:
     """TokaMind's replication runs, read-only."""
     return Path(os.environ.get("IGNITE_MAST_TOKAMIND_RUNS", _TOKAMIND_RUNS_DEFAULT))
