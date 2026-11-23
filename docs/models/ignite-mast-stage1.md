@@ -79,6 +79,34 @@ shots, and the floor is read on validation shots. The floor of TokaMind's
 representation (stage 0) is the comparison, and the "own mean" floor is the
 reference that a tokenizer with more values has to beat (see the rules).
 
+**The "own mean" reference.** It is the assignment that `assign --reference`
+writes (`assign.reference_assignment`), scored in the `unquantized` read-out
+(`scores/.../tok.ref.unquantized`), and what it keeps depends on the codec:
+
+- `frame_dct`: K = 1, the mean of the valid samples of each 5 ms frame and
+  channel, in linear units, repeated over the frame. The example is read, at
+  the resolution of a frame.
+- `band_dct`: K = 1 in every band, the band's mean power in the frame (the
+  frame's columns averaged, valid columns only), flat over the 32 bins of the
+  band. The example is read, at the resolution of a frame and a band.
+- `linear`: 0 components, in the `signal` domain. There is no token, so the
+  decode is the training mean profile (or map) for every frame, whatever the
+  example is. It is a constant fitted on training shots and reads nothing of
+  the example.
+
+The gate's `own_mean` column is that floor, and rule 7 compares it only for a
+setting that keeps more values per frame than the reference does (1 per channel,
+1 per band, 0 components). So for a `linear` signal the test is to beat a
+profile that does not depend on the example, which is the easiest of the three;
+whether it can ever block one is not measured. Checked 2026-11-23 against
+`tokenizers/assign.py:156-167` (`reference_assignment`), against the docstrings
+of `FrameDCT` ("value 0 is the frame mean"), `BandDCT` ("value 0 is the band's
+mean power in units of `band_scale`") and `LinearCodec` ("with `n_values = 0`
+... `decode` gives the mean profile for every frame") in `tokenizers/codecs.py`,
+and against `tokenizers/gate.py:11-13` and `:221-225` (the floor of `ref.json`
+is `own_mean`; a setting with `values > reference_values` blocks unless its
+`unquantized` floor is below it).
+
 ## The tokenizers
 
 All three codecs turn one signal's window, in physical units, into token values
@@ -110,10 +138,17 @@ is one example, flattened row-major. `n_values` coefficients are split into
 profile and 2 for the map, so a prefix of the tokens is a coarser profile.
 `n_values` runs over 0, 8, 16, 24, 32, 48, 64 and 96, up to the number of
 points. The coefficients of a profile with missing points are solved from the
-valid points with a small ridge, and a profile with no valid point has NaN
-values. With 0 values there is no token and the decode is the mean profile.
-Boundary coordinates `lcfs_r` and `lcfs_z` have separate bases. The domain is
-one of `signal` (TokaMark units), `linear` and, for an asinh signal,
+valid points with a ridge, and a profile with no valid point has NaN values.
+The ridge is the variance that the kept components leave, per point, and it is 0
+for a signal in which no example has a missing point. For a signal where some do
+(the Thomson profiles), `LinearCodec.encode_domain` applies it to every row,
+complete rows too, and it shrinks each coefficient of a complete row by
+`e / (e + ridge)` for its component's eigenvalue `e` (derived from that formula,
+not measured). So the floor of such a signal includes the shrinkage, which is
+small only for components whose eigenvalue is large against the ridge. With 0
+values there is no token and the decode is the mean profile. Boundary
+coordinates `lcfs_r` and `lcfs_z` have separate bases. The domain is one of
+`signal` (TokaMark units), `linear` and, for an asinh signal,
 `compressed`.
 
 **`band_dct`: a cosine transform over the bins of each band.** It serves the
@@ -236,6 +271,26 @@ score and the ladders of this stage replace it.
   No measurement is behind the number 64. Stage 2 owns the loss (the number of
   bins per value and the smoothing of the bin targets) and may change it, and
   the assignment records the number it was made with.
+- **No collapse rule.** The design says (in "What blocks and what does not"): "A
+  tokenizer that has collapsed, or that does not beat replacing each window by
+  its own mean, blocks." Here only the second half blocks (rule 7). Reason: the
+  design's own account of this tokenizer is "It has no weights, so it cannot
+  collapse", and collapse is a learned codebook that uses a few codes. A fixed
+  grid that wastes its bins shows in `bins_used_min`, a column of the gate table
+  that has no threshold, and as a `ranged` floor above the `unquantized` one
+  (rule 6, which the gate prints as a line). So a fixed tokenizer with a badly
+  used grid passes the gate with its numbers shown. The collapse rule binds for
+  the learned tokenizers of plan 1c. No measurement is behind this choice.
+- **The "own mean" is a frame mean, not a window mean.** The design says "replacing
+  each window by its own mean". Here it is defined per codec as above: the mean
+  of each 5 ms frame, the mean power of each band and frame, or, for the
+  profiles and the flux map, the training mean profile with no use of the
+  example. Reason: the reference has to be a point on the ladder of its own
+  codec, with K = 1 or 0 components, so that "more values than the reference" is
+  a count the gate can make (`values_per_frame`). A frame mean is a finer
+  reference than a window mean, so beating it is harder for the signals that
+  have one, and the profile reference is an easier one (see above). No
+  measurement is behind this choice.
 
 ## How to run
 
@@ -266,13 +321,13 @@ names are `task_1-1` to `task_4-5`. What each one writes under `$S1`:
 
 | Job | After | Command | GPU | Duration | What is read from the output |
 |---|---|---|---|---|---|
-| K1 fit | the `fit` command | `CUDA_VISIBLE_DEVICES="" $RT fit --workers 64` | none | 15 to 40 min | 39 lines. No signal says "no data". `n_skipped` of `magnetics-b_field_tor_probe_cc_field` is about a third of 2,000 and of Thomson about a fifth; the soft X-ray cameras skip a few shots (sampling-rate mismatch). If a signal has under 500 shots, stop and report. |
+| K1 fit | the `fit` command | `CUDA_VISIBLE_DEVICES="" $RT fit --workers 64` | none | 15 to 40 min | 39 lines. No signal says "no data". `n_skipped` of `magnetics-b_field_tor_probe_cc_field` is about a third of 2,000 and of Thomson about a fifth; the soft X-ray cameras skip about 5% (102 and 104 of 2,000 shots, measured 2026-11-23 at K1; sampling-rate mismatch). If a signal has under 500 shots, stop and report. |
 | K2 ladders | K1, the `ladder` command | `$RT ladder --task T [--variant V --gpu N --share-gpu]` for the six ladder tasks (`task_1-2`, `task_1-3`, `task_2-1`, `task_3-1`, `task_3-2`, `task_4-5`), and `$RT ladder --inputs`, all at once | one GPU for a few minutes per task with a variant; may be shared | 15 to 60 min each, about 1 h together | `$S1/ladders/*.csv`. Per signal: the floor falls with K; the first rung equals the "own mean" reference. For task 4-5: the frame oracle (the row `k0 = 32`), the mean baseline on the same shots, the contrast per rung. These three numbers and TokaMind's floor (0.3605 on `val_report`) go to the owner the same day (open decision 1). |
 | K3 assign | K2 | `$RT assign --name v1` and `$RT assign --name ref --reference` | none | seconds | The printed table: which signals miss their target, and the total of values per frame (stage 2's sequence length follows from it). |
 | K4 input round-trip | K3 | for tasks 1-1, 1-2, 2-1, 4-1: `$RT score --task T --split val_select --n-shots 100 --instrument raw --variant V --gpu N --share-gpu`, and the same with `--instrument inputs --assignment $S1/assignments/v1.json --mode unquantized` | one each, may be shared | 8 passes of 3 to 10 min | Per task the added error of rule 4 over the task's best published score, and the ratio `inputs / raw - 1`. Above 0.2 on any task: `$RT assign --name v1r --from v1 --raise-inputs`, repeat the four `inputs` passes with `v1r` once, and use `v1r` from here on. Both costs are recorded. |
 | K5 confirmation | K4 | for the 14 tasks: `CUDA_VISIBLE_DEVICES="" $RT score --task T --split val_report --assignment A --mode M --num-workers 16` for the three read-outs, and with `--assignment $S1/assignments/ref.json --mode unquantized` | none | 56 passes of 10 to 40 min; about 2 to 3 h in waves of 14 | The last line of each pass. A pass that ends with a non-finite score or an error stops the wave. |
 | K6 costs on `val_report` | K5 | `--instrument raw` and `--instrument passthrough --mode ranged` for every task with a signal that misses its target (expected: 3-2, 4-1, 4-2) and for 1-2 as a control; `--instrument inputs --mode ranged` and `raw` for 1-1, 1-2, 2-1, 4-1 | one each, may be shared | about 14 passes of 15 to 45 min; about 2 h on 4 GPUs | Per task and signal the pass-through cost; per task the input round-trip cost. A pass-through cost above 1% on `val_report` for a signal chosen by rule 3 is reported, and K is not changed again. |
-| K7 gate | K5, the `gate` command | `CUDA_VISIBLE_DEVICES="" $RT gate --assignment $S1/assignments/<name>.json` | none | 5 to 15 min | The table and the last line. `exit 1` means a row blocks: a transform with more values than its reference can only lose to it through the read-out or a bug, so the controller stops and reports instead of lowering K. |
+| K7 gate | K5, the `gate` command | `CUDA_VISIBLE_DEVICES="" $RT gate --assignment $S1/assignments/<name>.json` | none | 5 to 15 min | The table, any `range too narrow` lines (rule 6: `ranged` more than 1% above `unquantized`; reported, no verdict changes), and the last line. `exit 1` means a row blocks: a transform with more values than its reference can only lose to it through the read-out or a bug, so the controller stops and reports instead of lowering K. |
 
 The variant `V` of a task is the one whose score the headroom table shows for it
 (`scripts/mast/py.sh scripts/mast/run_headroom.py --table`, and `--table-all`
@@ -355,7 +410,10 @@ Not measured yet.
   measured on the test split, and nothing in this stage reads the test split.
   Stage 0's floors differ between the splits by up to 0.002 on every task but
   4-5 (measured 2026-11-22, TokaMind's floor, test against `val_report`), and
-  the same predictor differs between the two splits by up to 0.04.
+  the same predictor differs between the two splits by up to 0.04 (measured
+  2026-11-22 in [stage 0](./ignite-mast-stage0.md), `val_report` against test:
+  persistence on task 4-5 scores 0.9097 and 0.8701, the mean predictor on 4-5
+  0.6852 and 0.6533, persistence on 4-1 0.2978 and 0.3247).
 - **The rough looks of 2026-11-22 are not results.** Every rough look of
   2026-11-22 quoted on this page was made on the CPU from cache v1 on 24 to 96
   training shots with the code of that day (24 shots for the cosine truncation,
@@ -409,6 +467,10 @@ Not measured yet.
   cameras, D-alpha and the saddle coils have a fast fluctuation that no fixed
   transform here keeps at K of at most 16. No benchmark task scores the band, and
   plan 1c holds it as its last item.
-- **No data is not a negative.** A "no data" cell is a signal that no fitted
-  shot has, and an empty cell is a score nobody has stored yet. Neither is a
-  good result and neither is 0.
+- **No data is not a negative.** In the gate table a "no data" cell, in the
+  columns measured from the cache, is a signal that none of the 200 `val_report`
+  shots read for them has (a signal that the fit has no training shot for gets
+  the same cells). In the ladders the note `no data` is a signal that none of
+  the 100 `val_select` shots has, and `not fitted: no training shot has it`
+  tells the other case apart. An empty cell is a score nobody has stored yet.
+  None of them is a good result and none is 0.
