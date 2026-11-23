@@ -8,8 +8,8 @@ title: "IGNITE on MAST: stage 0 results"
 The scoring harness reproduces the published baselines, the standardized cache
 exists, and TokaMind's representation floor, two cheap predictors and one direct
 supervised model per task are scored on the seven stage-0 tasks. Our replication
-of TokaMind is complete. In the table printed at 23:54, after the last three
-direct-model runs had finished, the direct model is behind the best published
+of TokaMind is complete. In the table printed at 23:54, after the three direct-model
+runs that were training at 13:45 had finished, the direct model is behind the best published
 score on tasks 1-1 and 2-1, ahead on tasks 1-2, 4-1 and 4-4 (on 4-4 by less than
 the difference between the splits) and tied on tasks 3-1 and 4-5, and its
 projected 14-task mean is 0.1929 against the bar of 0.183. In the table printed
@@ -47,7 +47,7 @@ never recomputed here.
 | Direct supervised model: seven base runs | 05:08 to 09:50 | `--predictor direct --train` |
 | Direct supervised model: thirteen variant runs | from 05:53; three were still training when the table was printed at 13:45 and finished at 16:12, 19:23 and 20:20 | `--predictor direct --variant <name> --train` |
 | Code review of the whole branch and its one fix wave | 05:57 to 08:53 | commits `459ae466` to `752b15a7` |
-| Headroom table | first print 09:55; printed again at 13:45, after five more variants had finished, and at 23:54, after the last three | `scripts/mast/run_headroom.py --table` |
+| Headroom table | first print 09:55; printed again at 13:45, after five more variants had finished, and at 23:54, after the three that were training at 13:45 had finished | `scripts/mast/run_headroom.py --table` |
 
 Scores are stored as
 `/models/intermediate/mast/stage0/scores/<task>/<predictor>/<split>/score.json`,
@@ -58,7 +58,9 @@ computed from (a fit, a checkpoint, TokaMind's coefficient indices). The `git_re
 is the HEAD of the checkout when the scoring code was loaded. It can predate
 uncommitted code, so the hashes are the provenance and the revision is a hint.
 All 96 scores stored when the table was printed (2026-11-22 13:45) carry the
-same scoring-code hash, `173e2747...`.
+same scoring-code hash, `173e2747...`. Measured 2026-11-23 by the review of the
+whole branch: all 135 records stored then, the three late direct scores
+included, carry `173e2747` as well.
 
 Splits. Everything fitted (`shrunk`, `ridge`, the direct model) is scored on
 `val_report`, the validation shots at odd positions of the sorted list; models
@@ -318,8 +320,11 @@ the score moved by 0.0021 to 0.0061.
 - *TokaMark's mean baseline is one scalar per signal, and that is most of its
   error on task 1-2.* A per-channel training mean alone, which is what `shrunk`
   falls back to without an anchor, scores about 0.22 on `val_report` on task
-  1-2 (`shrunk` 0.2204), against 1.0005 for the scalar mean. The error of the
-  mean baseline on that task is the fixed shape of the boundary, not its motion.
+  1-2 (`shrunk` 0.2204), against 1.0005 for the scalar mean, so about 0.22 of
+  the 1.0005 remains when the mean is taken per channel. Inferred, not
+  measured: most of the scalar mean's error is then the fixed shape of the
+  boundary across channels, not its motion; the 0.22 that remains is not
+  attributed.
   Ridge on frame means scores 0.0809 there, about twice the best published
   score (0.0412, test split, a different split).
 - *How close the published models are to the cheap references.* Measured: on
@@ -622,8 +627,9 @@ Limits to carry with every direct number: the score is on validation shots
 and the published scores it is compared with are on test shots; one seed per
 run; one model size, and a training budget that every test of it found too
 small (tasks 1-1 and 2-1 improved with three times the steps and task 4-4 with
-four times the batch; a model with more steps or a different size would score
-better); and the windows come from TokaMark's loader. A training that stops
+four times the batch, batch 256 lowered the score on task 4-1 by 0.021 and on
+task 4-5 by 0.011, and 90,000 steps lowered it on task 4-5 by 0.0069; a model
+with more steps or a different size would score better); and the windows come from TokaMark's loader. A training that stops
 before its `max_steps` is marked in the table (‡), and a direct score worse
 than our TokaMind replication is marked "not competitive", because a weak
 model is not a headroom finding. The table takes the variant with the lowest
@@ -993,6 +999,49 @@ the direct supervised model cannot reach the numbers of goal G4 on the probe
 tasks, the bar goes back to Nathaniel with the table before stage 2 is
 committed to it." The bar is not changed on this page; the decision is his.
 
+**The per-task conditions of G4 give a second, independent reason.** Goal G4
+(`ignite-mast-design.md`, "Proposed reading of 'by far the best'") has three
+numbers: a mean at or below 0.183 (question 3, above); better, beyond noise,
+than both GenToka's published score and our TokaMind replication on at least 10
+of the 14 tasks; and worse beyond noise on none. "Beyond noise" is read by the
+two rules of this page: the interval rule of the table (the comparison score is
+outside the direct model's 95% interval over `val_report` shots) and the
+split-difference rule in the limits below (a verdict whose margin, the distance
+from the nearer end of the interval to the comparison score, is smaller than the
+mean baseline's `|mean val - mean test|` on the task is undetermined). Both are
+applied here to each comparison, against GenToka's score and against our
+replication separately. Measured 2026-11-23 from the scores stored for the
+print of 23:54 (GenToka's scores are the last column of `_PUBLISHED` in
+`tasks.py`); each cell gives the interval verdict of the direct model, its
+margin, and what the split-difference rule says:
+
+| task | direct val [95% interval] | mean baseline, val minus test | against GenToka | against our replication |
+|---|---|---|---|---|
+| 1-1 | 0.1235 [0.1148, 0.1342] | 0.0033 | behind, 0.0207, stands (GenToka 0.0941) | ahead, 0.0161, stands (0.1503) |
+| 1-2 | 0.0362 [0.0350, 0.0375] | 0.0021 | ahead, 0.0037, stands (0.0412) | ahead, 0.0058, stands (0.0433) |
+| 2-1 | 0.1347 [0.1270, 0.1434] | 0.0006 | behind, 0.0390, stands (0.0880) | ahead, 0.0375, stands (0.1809) |
+| 3-1 | 0.3267 [0.3091, 0.3461] | 0.0103 | tie (0.3311) | tie (0.3457) |
+| 4-1 | 0.1727 [0.1553, 0.1923] | 0.0153 | ahead, 0.0375, stands (0.2298) | ahead, 0.0224, stands (0.2147) |
+| 4-4 | 0.2859 [0.2656, 0.3062] | 0.0093 | ahead, 0.0054, undetermined (0.3116) | ahead, 0.0440, stands (0.3502) |
+| 4-5 | 0.6361 [0.5833, 0.6938] | 0.0319 | ahead, 0.0549, stands (0.7487) | tie (0.6499) |
+
+On the seven tasks that have a row, the direct model is better than both beyond
+noise on 2 (tasks 1-2 and 4-1). By the interval rule alone it would be 3, with
+task 4-4, but its margin against GenToka (0.0054) is smaller than the split
+difference (0.0093), so by the second rule that comparison is undetermined. It
+is worse beyond noise than GenToka on 2, tasks 1-1 and 2-1, and worse than our
+replication on none. So the condition "worse beyond noise on none" already
+fails on its own, on tasks 1-1 and 2-1, independently of the mean. For the
+count of "10 of 14": the other seven tasks have no direct row on this page (the
+14-task table of plan 1a covers them), and 2 plus all seven of them is 9, so
+this direct model cannot reach 10 of 14 (3 plus seven is exactly 10, with the
+interval rule alone). The verdict that the headroom check did not pass is
+therefore unchanged, and it now has two reasons: the mean (0.1929 against
+0.183) and G4's per-task conditions. The 0.0033, 0.0006 and 0.0093 in the table
+are unrounded differences of the mean baseline's two columns; the text of the
+limits below, which used the printed four-digit values, gives 0.003, 0.001 and
+0.0094 for the same differences.
+
 What the result shows and what it does not:
 
 - *Shown (measured):* one supervised model per task with 14 to 18 million
@@ -1077,7 +1126,14 @@ answer did not change: 0.1929 is above 0.183.
   by up to 0.04 (the columns `mean test` and `mean val` give that difference
   per task). A verdict whose margin, the distance from the nearer end of the
   interval to the published score, is smaller than that difference on its task
-  is undetermined, whatever the column says. In the print of 13:45 and in that
+  is undetermined, whatever the column says. From commit `e3957208` on, the
+  table prints the outcome of this rule in its own column, `split rule`
+  (`split_rule` in the CSV), beside the verdict: "stands" or "undetermined" for
+  an ahead or behind verdict (undetermined also when a mean baseline score is
+  missing), empty for a tie. The `verdict` column itself still uses the
+  interval only. Printed 2026-11-23 from the stored scores, it reads stands on
+  tasks 1-1, 1-2, 2-1 and 4-1, undetermined on task 4-4, and is empty on tasks
+  3-1 and 4-5. In the print of 13:45 and in that
   of 23:54 the two "behind" verdicts have margins of 0.021 (task 1-1) and 0.039
   (task 2-1)
   where the mean baseline differs by 0.003 and 0.001 between the splits, so
