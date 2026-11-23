@@ -416,10 +416,11 @@ def _common_frames(examples: Mapping[str, np.ndarray], stores: Mapping[str, stor
 def run_joint(args: argparse.Namespace) -> int:
     """For `--sizes` k, the share of the validation examples' energy (example units) left out by keeping k values per
     stream in all, in three ways: the joint basis of all streams of all the listed signals (one example is a frame
-    of every signal, fitted on the training frames in which every listed signal has data), each signal's own
+    of every signal, fitted on the training frames in which every listed signal is present), each signal's own
     concatenated basis (the fit of `linear --arm pca.<signal>`, ``k * S`` values of each signal), and one per-stream
     basis pooled over all their streams (k values of each stream). The validation examples are the frames in which
-    every listed signal has data; a stream missing in a frame is encoded as 0 and counts in neither sum
+    every listed signal is present, meaning it has at least one finite stream in the frame; a missing stream is
+    encoded as 0 and counts in neither sum, as `linear` and ruling C21 do
     (`compare.left_over_sums` with ``masked``: a probe that is dead in every frame leaves no frame in which all
     streams are finite, measured 2026-11-23 on the stage-1c trial store: 0 of 167 validation frames). The three
     measures see the same observed streams (a pooled basis, which takes one stream at a time, the streams with all
@@ -532,7 +533,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--cache-dir", default=None, help="the cache whose registry.csv names the streams (default: the store's)")
     p.set_defaults(run=run_linear)
 
-    p = sub.add_parser("joint", help="the left-over of one basis over the streams of several signals, against the own ones")
+    p = sub.add_parser("joint", help="the left-over of one basis over the streams of several signals, against the own ones; a frame counts when every signal has a finite stream in it, and a missing stream is encoded as 0 and counts in neither sum")
     p.add_argument("--signals", required=True, help="signals, short (ccbv,obr,obv,flux,cc,omv) or full names, comma-separated")
     p.add_argument("--sizes", default="1,2,4,8", help="values per stream in all (default 1,2,4,8)")
     p.set_defaults(run=run_joint)

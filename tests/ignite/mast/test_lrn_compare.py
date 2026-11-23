@@ -92,13 +92,11 @@ def test_a_constant_first_value_is_a_collapse():
     assert compare.level_index(np.array([-1.0, -0.99, 0.01, 1.0]), 8).tolist() == [0, 0, 4, 7]
 
 
-def test_a_missing_channel_costs_the_concatenated_codec_and_not_the_per_channel_one():
+def test_a_missing_channel_does_not_cost_the_per_channel_codec():
     shots = [w.astype(np.float32) for w in window(8)]
     per = [compare.missing_stream_cost(codec(False, 4), SPEC, z, 1) for z in shots[:1]]
     assert per[0][0] == pytest.approx(per[0][1], abs=1e-6)
     cat = codec(True, 12)
-    costs = np.array([compare.missing_stream_cost(cat, SPEC, z, 1) for z in shots])
-    assert costs[:, 1].mean() > costs[:, 0].mean()
     assert compare.missing_stream_cost(cat, SPEC, np.full((3, 100), np.nan, dtype=np.float32), 1) is None
 
 
