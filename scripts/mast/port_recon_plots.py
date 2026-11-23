@@ -428,15 +428,20 @@ def run_recon_plots(
 
     device = _resolve_device(device_spec)
     cam_codec = cam_fit = cam_frames_dir = None
-    has_camera = camera.CAMERA_MODALITY in (manifest.get("modalities") or {})
+    manifest_modalities = manifest.get("modalities") or {}
+    has_camera = any(m in manifest_modalities for m in camera.CAMERA_MODALITIES)
     if has_camera:
         cam_paths = camera.resolve_manifest_camera(manifest)
-        if cam_paths is not None:
-            cam_codec, _vcfg = td._load_codec("video", cam_paths["codec_path"])
-            cam_codec = cam_codec.to(device)
-            cam_fit = camera.load_camera_fit(cam_paths["fit_path"])
-            cam_frames_dir = cam_paths["frames_dir"]
-            names = names + list(camera.CAMERA_MODALITIES)
+        if cam_paths is None:
+            raise ValueError(
+                "manifest modalities include camera-rgb / camera-rgb-stats "
+                "but camera_codec_path / camera_fit_path / camera_frames_dir are absent"
+            )
+        cam_codec, _vcfg = td._load_codec("video", cam_paths["codec_path"])
+        cam_codec = cam_codec.to(device)
+        cam_fit = camera.load_camera_fit(cam_paths["fit_path"])
+        cam_frames_dir = cam_paths["frames_dir"]
+        names = names + list(camera.CAMERA_MODALITIES)
 
     model = cfg = step = None
     if ckpt is not None:

@@ -895,8 +895,29 @@ def build_manifest(
             "codec_n_tok": int(codec.n_tok),
             "codec_n_val": int(codec.n_val),
         }
-    has_camera = camera_codec_path is not None
+    cam_paths = (camera_codec_path, camera_fit_path, camera_frames_dir)
+    cam_shas = (camera_codec_sha256, camera_fit_sha256, camera_frames_index_sha256)
+    has_camera = any(p is not None for p in cam_paths) or any(s is not None for s in cam_shas)
     if has_camera:
+        if any(p is None for p in cam_paths):
+            raise ValueError(
+                "build_manifest: camera_codec_path, camera_fit_path, and camera_frames_dir "
+                "must all be provided when camera is enabled"
+            )
+        missing_shas = [
+            name
+            for name, val in (
+                ("camera_codec_sha256", camera_codec_sha256),
+                ("camera_fit_sha256", camera_fit_sha256),
+                ("camera_frames_index_sha256", camera_frames_index_sha256),
+            )
+            if not val or not str(val).strip()
+        ]
+        if missing_shas:
+            raise ValueError(
+                "build_manifest: camera enabled without non-empty sha256(s): "
+                + ", ".join(missing_shas)
+            )
         cam_n_tok = 48 if camera_n_tok is None else int(camera_n_tok)
         cam_n_codes = 1000 if camera_codebook_size is None else int(camera_codebook_size)
         modalities["camera-rgb"] = {

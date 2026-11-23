@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import contextlib
 import hashlib
 import io
@@ -69,8 +70,6 @@ DEFAULT_SPLITS_PATH: Path = Path(
 )
 
 _FIXED_TIME = (1980, 1, 1, 0, 0, 0)
-_ORIG_VIDEO_DATASET = tc.VideoCodecPairDataset
-_ORIG_MAKE_VIDEO_LOADER = tc.make_video_loader
 
 
 # ----------------------------------------------------------------------- codec config & hashing
@@ -121,17 +120,27 @@ def _utc_now_from_date() -> str:
 
 # ----------------------------------------------------------------------- zarr completeness & reading
 
+def _read_json_dict(path: Path) -> dict[str, Any] | None:
+    """Read a non-empty JSON object file, returning ``None`` if absent, empty, or invalid."""
+    try:
+        if not path.is_file() or path.stat().st_size <= 0:
+            return None
+        doc = json.loads(path.read_text())
+    except (OSError, ValueError, TypeError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
 def _check_zarray_chunks(arr_dir: Path) -> tuple[bool, list[int] | None]:
     """Verify ``.zarray`` exists and every expected chunk file exists with non-zero size."""
-    zarray_path = arr_dir / ".zarray"
-    if not zarray_path.is_file() or zarray_path.stat().st_size == 0:
+    meta = _read_json_dict(arr_dir / ".zarray")
+    if meta is None:
         return False, None
     try:
-        meta = json.loads(zarray_path.read_text())
         shape = [int(v) for v in meta["shape"]]
         chunks = [int(v) for v in meta["chunks"]]
-        sep = str(meta.get("dimension_separator", "."))
-    except (OSError, ValueError, KeyError, TypeError):
+        sep = str(meta.get("dimension_separator") or ".")
+    except (ValueError, KeyError, TypeError):
         return False, None
     if not shape or len(shape) != len(chunks):
         return False, None
@@ -152,13 +161,20 @@ def _check_zarray_chunks(arr_dir: Path) -> tuple[bool, list[int] | None]:
 def check_rgb_zarr_complete(shot_zarr_dir: Path | str) -> tuple[bool, str]:
     """Check whether ``<shot>.zarr/rgb`` is completely downloaded before reading.
 
-    Returns ``(True, "ok")`` if ``data`` and ``time`` have every expected non-zero chunk
-    and matching frame counts, else ``(False, "no_rgb")`` or ``(False, "incomplete")``.
+    Requires non-empty ``rgb/.zgroup`` and ``rgb/.zattrs``, complete ``data`` and ``time``
+    arrays with matching frame counts, and a valid positive ``exposure`` attribute in
+    ``rgb/.zattrs``. Returns ``(True, "ok")``, ``(False, "no_rgb")``,
+    ``(False, "incomplete")``, or ``(False, "no_exposure_attr")``.
     """
     shot_dir = Path(shot_zarr_dir)
     rgb_dir = shot_dir / "rgb"
     if not shot_dir.is_dir() or not rgb_dir.is_dir():
         return False, "no_rgb"
+    if _read_json_dict(rgb_dir / ".zgroup") is None:
+        return False, "incomplete"
+    zattrs = _read_json_dict(rgb_dir / ".zattrs")
+    if zattrs is None:
+        return False, "incomplete"
     data_ok, data_shape = _check_zarray_chunks(rgb_dir / "data")
     if not data_ok or data_shape is None or len(data_shape) != 3:
         return False, "incomplete"
@@ -167,11 +183,19 @@ def check_rgb_zarr_complete(shot_zarr_dir: Path | str) -> tuple[bool, str]:
         return False, "incomplete"
     if time_shape[0] != data_shape[0]:
         return False, "incomplete"
+    try:
+        extract_exposure_s(zattrs)
+    except ValueError:
+        return False, "no_exposure_attr"
     return True, "ok"
 
 
-def extract_exposure_s(attrs: Mapping[str, Any], time: np.ndarray) -> float:
-    """Exposure duration in seconds from zarr attrs (microseconds on FAIR-MAST) or median dt."""
+def extract_exposure_s(attrs: Mapping[str, Any], time: np.ndarray | None = None) -> float:
+    """Exposure duration in seconds from zarr ``exposure`` attr (microseconds on FAIR-MAST).
+
+    Raises :class:`ValueError` if ``exposure`` is absent, non-finite, or non-positive.
+    """
+    del time  # kept optional for signature compatibility; never used as a fallback
     raw = attrs.get("exposure")
     if raw is not None:
         try:
@@ -181,13 +205,7 @@ def extract_exposure_s(attrs: Mapping[str, Any], time: np.ndarray) -> float:
         if math.isfinite(val) and val > 0.0:
             # FAIR-MAST IPX headers store exposure in microseconds (e.g. 9090.0 us).
             return val * 1e-6 if val > 1.0 else val
-    t = np.asarray(time, dtype=np.float64)
-    if t.size >= 2:
-        diffs = np.diff(t)
-        pos = diffs[np.isfinite(diffs) & (diffs > 0.0)]
-        if pos.size > 0:
-            return float(np.median(pos))
-    return 0.00909
+    raise ValueError(f"missing or invalid 'exposure' attribute in rgb/.zattrs: {raw!r}")
 
 
 def read_rgb_zarr(
@@ -206,7 +224,7 @@ def read_rgb_zarr(
             f"rgb shape mismatch in {rgb_dir}: data={data.shape}, time={time.shape}"
         )
     attrs = dict(grp.attrs)
-    exposure_s = extract_exposure_s(attrs, time)
+    exposure_s = extract_exposure_s(attrs)
     return data, time, exposure_s, attrs
 
 
@@ -354,6 +372,48 @@ def exposure_intervals(
     )
 
 
+def valid_exposure_indices(times: np.ndarray) -> np.ndarray:
+    """Indices of the longest strictly increasing subsequence of finite timestamps.
+
+    Non-finite timestamps, duplicates, and glitched jumps are excluded; duplicate ties
+    keep the earliest index.
+    """
+    t = np.asarray(times, dtype=np.float64).reshape(-1)
+    n = t.size
+    if n == 0:
+        return np.empty(0, dtype=np.int64)
+    if np.isfinite(t).all() and (n == 1 or bool((np.diff(t) > 0.0).all())):
+        return np.arange(n, dtype=np.int64)
+
+    tails_val: list[float] = []
+    tails_idx: list[int] = []
+    prev = np.full(n, -1, dtype=np.int64)
+    for i in range(n):
+        v = float(t[i])
+        if not math.isfinite(v):
+            continue
+        pos = bisect.bisect_left(tails_val, v)
+        if pos == len(tails_val):
+            tails_val.append(v)
+            tails_idx.append(i)
+            if pos > 0:
+                prev[i] = tails_idx[pos - 1]
+        elif v < tails_val[pos]:
+            tails_val[pos] = v
+            tails_idx[pos] = i
+            if pos > 0:
+                prev[i] = tails_idx[pos - 1]
+    if not tails_idx:
+        return np.empty(0, dtype=np.int64)
+    out: list[int] = []
+    cur = tails_idx[-1]
+    while cur != -1:
+        out.append(cur)
+        cur = int(prev[cur])
+    out.reverse()
+    return np.asarray(out, dtype=np.int64)
+
+
 def map_frames_to_exposures(
     times: np.ndarray,
     exposure_s: float,
@@ -364,20 +424,32 @@ def map_frames_to_exposures(
     convention: str = "centre",
     min_overlap_s: float = CAMERA_MIN_OVERLAP_S,
 ) -> np.ndarray:
-    """Map each 5 ms frame ``f`` in ``[0, n_frames)`` to its best-overlapping exposure index, or ``-1``."""
+    """Map each 5 ms frame ``f`` in ``[0, n_frames)`` to its best-overlapping valid exposure, or ``-1``."""
     n_f = int(n_frames)
     out = np.full(n_f, -1, dtype=np.int64)
-    t = np.asarray(times, dtype=np.float64)
-    if n_f <= 0 or t.size == 0 or float(exposure_s) <= 0.0:
+    t = np.asarray(times, dtype=np.float64).reshape(-1)
+    exp_s = float(exposure_s)
+    t0_f = float(t0)
+    dt_f = float(dt_frame)
+    if (
+        n_f <= 0
+        or t.size == 0
+        or not (math.isfinite(exp_s) and exp_s > 0.0)
+        or not (math.isfinite(t0_f) and math.isfinite(dt_f) and dt_f > 0.0)
+    ):
         return out
-    exp_lo, exp_hi = exposure_intervals(t, float(exposure_s), convention)
-    f_lo = float(t0) + np.arange(n_f, dtype=np.float64) * float(dt_frame)
-    f_hi = f_lo + float(dt_frame)
+    valid_idx = valid_exposure_indices(t)
+    if valid_idx.size == 0:
+        return out
+    exp_lo, exp_hi = exposure_intervals(t[valid_idx], exp_s, convention)
+    f_lo = t0_f + np.arange(n_f, dtype=np.float64) * dt_f
+    f_hi = f_lo + dt_f
     ov = np.minimum(f_hi[:, None], exp_hi[None, :]) - np.maximum(f_lo[:, None], exp_lo[None, :])
-    best_idx = np.argmax(ov, axis=1)
-    best_ov = ov[np.arange(n_f), best_idx]
-    ok = best_ov >= float(min_overlap_s) - 1e-12
-    out[ok] = best_idx[ok]
+    ov = np.where(np.isfinite(ov), ov, -np.inf)
+    best_pos = np.argmax(ov, axis=1)
+    best_ov = ov[np.arange(n_f), best_pos]
+    ok = np.isfinite(best_ov) & (best_ov >= float(min_overlap_s) - 1e-12)
+    out[ok] = valid_idx[best_pos[ok]]
     return out
 
 
@@ -475,8 +547,9 @@ def measure_timing_convention(
         t_hi = t0 + n_frames * dt_frame
 
         fr = load_frames_npz(frames_path / f"{shot}.npz", load_u=False)
-        cam_t = fr["time"]
-        cam_mean = fr["raw_mean_counts"].astype(np.float64)
+        valid_idx = valid_exposure_indices(fr["time"])
+        cam_t = fr["time"][valid_idx]
+        cam_mean = fr["raw_mean_counts"].astype(np.float64)[valid_idx]
         exp_s = float(fr["exposure_s"])
 
         in_plasma = (cam_t >= t_lo) & (cam_t <= t_hi)
@@ -918,6 +991,7 @@ def make_mast_video_loader(
     else:
         sampler = None
         dl_shuffle = shuffle
+    per_rank = len(sampler) if sampler is not None else len(dataset)
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -929,7 +1003,7 @@ def make_mast_video_loader(
         pin_memory=False,
         persistent_workers=num_workers > 0,
         prefetch_factor=2 if num_workers > 0 else None,
-        drop_last=len(dataset) >= batch_size,
+        drop_last=per_rank >= batch_size,
     )
 
 
@@ -1045,8 +1119,10 @@ def encode_camera_codes(
     uniq_codes = torch.cat(code_chunks, dim=0).to(torch.int64)  # (K, n_tok)
     uniq_stats = camera_fit.stats_codec.encode(fr["m"][uniq_exp], fr["s"][uniq_exp])  # (K, 2)
 
-    codes = torch.full((n_f, n_tok), CAMERA_MISSING_CODE, dtype=torch.int64)
-    stats_codes = torch.full((n_f, 2), CAMERA_STATS_MISSING_CODE, dtype=torch.int64)
+    cam_missing_code = int(codec.codebook_size)
+    stats_missing_code = int(camera_fit.stats_codec.missing_code)
+    codes = torch.full((n_f, n_tok), cam_missing_code, dtype=torch.int64)
+    stats_codes = torch.full((n_f, 2), stats_missing_code, dtype=torch.int64)
     inv_t = torch.from_numpy(inv.astype(np.int64))
     valid_idx = torch.from_numpy(np.flatnonzero(valid).astype(np.int64))
     codes[valid_idx] = uniq_codes[inv_t]

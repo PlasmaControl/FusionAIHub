@@ -475,11 +475,12 @@ def decode_and_score_rollout(
                 ceil_cov = float((gt_f_ok & ce_f_ok).sum() / denom_f)
             else:
                 pred_cov = ceil_cov = float("nan")
+            cam_missing_code = int(camera_codec.codebook_size)
             pred_miss = _missing_token_frac(
-                rollout.pred_codes[cam_name], k0, n_frames, camera.CAMERA_MISSING_CODE
+                rollout.pred_codes[cam_name], k0, n_frames, cam_missing_code
             )
             ceil_miss = _missing_token_frac(
-                rollout.gt_codes[cam_name], k0, n_frames, camera.CAMERA_MISSING_CODE
+                rollout.gt_codes[cam_name], k0, n_frames, cam_missing_code
             )
             decoded[cam_name] = {
                 "present": True,
@@ -703,15 +704,23 @@ def plot_shot_rollout(
         ax.spines["right"].set_visible(False)
 
         m = metrics.get(spec.name, {})
-        r_val = m.get("rollout_nrmse", float("nan"))
-        c_val = m.get("ceiling_nrmse", float("nan"))
         ann_parts = []
         if ch_tag:
             ann_parts.append(ch_tag)
-        if math.isfinite(r_val):
-            ann_parts.append(f"roll {r_val:.3f}")
-        if math.isfinite(c_val):
-            ann_parts.append(f"ceil {c_val:.3f}")
+        if log_floor is not None and ("rollout_dlog10" in m or "ceiling_dlog10" in m):
+            r_val = m.get("rollout_dlog10", float("nan"))
+            c_val = m.get("ceiling_dlog10", float("nan"))
+            if math.isfinite(r_val):
+                ann_parts.append(f"roll |dlog10| {r_val:.3f} dec")
+            if math.isfinite(c_val):
+                ann_parts.append(f"ceil |dlog10| {c_val:.3f} dec")
+        else:
+            r_val = m.get("rollout_nrmse", float("nan"))
+            c_val = m.get("ceiling_nrmse", float("nan"))
+            if math.isfinite(r_val):
+                ann_parts.append(f"roll {r_val:.3f}")
+            if math.isfinite(c_val):
+                ann_parts.append(f"ceil {c_val:.3f}")
         if ann_parts:
             ax.text(
                 0.995, 0.94, " | ".join(ann_parts),

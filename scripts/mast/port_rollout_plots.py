@@ -23,11 +23,13 @@ import torch
 
 from tokamak_foundation_model.ignite.mast import paths, registry
 from tokamak_foundation_model.ignite.mast.port import (
+    camera,
     framecache,
     layout,
     logspec,
     rollout as port_rollout,
 )
+from tokamak_foundation_model.ignite.mast.port.layout import td
 
 
 def _resolve_device(spec: str) -> torch.device:
@@ -130,6 +132,21 @@ def run_rollout_plots(
     stats_sha = str(manifest.get("stats_sha256") or "") or None
 
     device = _resolve_device(device_spec)
+    cam_codec = cam_fit = cam_frames_dir = None
+    manifest_modalities = manifest.get("modalities") or {}
+    has_camera = any(m in manifest_modalities for m in camera.CAMERA_MODALITIES)
+    if has_camera:
+        cam_paths = camera.resolve_manifest_camera(manifest)
+        if cam_paths is None:
+            raise ValueError(
+                "manifest modalities include camera-rgb / camera-rgb-stats "
+                "but camera_codec_path / camera_fit_path / camera_frames_dir are absent"
+            )
+        cam_codec, _vcfg = td._load_codec("video", cam_paths["codec_path"])
+        cam_codec = cam_codec.to(device)
+        cam_fit = camera.load_camera_fit(cam_paths["fit_path"])
+        cam_frames_dir = cam_paths["frames_dir"]
+
     model, cfg, step = port_rollout.load_mast_model(ckpt, cache_dir, device)
 
     signals = registry.all_signals()
@@ -170,6 +187,10 @@ def run_rollout_plots(
             present=entry.get("present"),
             stats_sha256=stats_sha,
             signal_stds=signal_stds,
+            camera_codec=cam_codec,
+            camera_fit=cam_fit,
+            camera_frames_dir=cam_frames_dir,
+            shot=str(shot),
         )
         cf_nbi = (
             port_rollout.counterfactual_nbi_physical(edited_act, act_stats, stats)
