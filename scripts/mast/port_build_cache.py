@@ -38,6 +38,7 @@ DEFAULT_CACHE_ROOT = "/models/intermediate/mast/cache/v1"
 _STATS_STATE: tuple | None = None
 _ENCODE_STATE: tuple | None = None
 _CAMERA_ENCODE_STATE: tuple | None = None
+_LIVE_ONLY: bool = False
 
 
 def _limit_worker_threads() -> None:
@@ -67,7 +68,7 @@ def _stats_job(shot_path_str: str):
 
 
 def _init_encode_worker(state: tuple) -> None:
-    global _ENCODE_STATE, _CAMERA_ENCODE_STATE
+    global _ENCODE_STATE, _CAMERA_ENCODE_STATE, _LIVE_ONLY
     _limit_worker_threads()
     (
         signals,
@@ -82,7 +83,9 @@ def _init_encode_worker(state: tuple) -> None:
         out_dir,
         force,
         camera_spec,
+        live_only,
     ) = state
+    _LIVE_ONLY = bool(live_only)
     codecs, stats, _assignment = framecache.build_mast_codecs(
         signals,
         Path(cache_root),
@@ -131,6 +134,7 @@ def _encode_job(item: tuple[str, str, str]):
             act_stats,
             stats,
             stats_sha256=stats_sha,
+            live_only=_LIVE_ONLY,
         )
         if entry is None:
             return shot, split, reason, 0, None, None
@@ -294,8 +298,12 @@ def build_cache(
     workers: int = 8,
     max_shots: int = 0,
     force: bool = False,
+    live_only: bool = False,
 ) -> dict:
-    """Build (or resume) the MAST Phase-B frame-code cache under ``out_dir``."""
+    """Build (or resume) the MAST Phase-B frame-code cache under ``out_dir``.
+
+    ``live_only``: drop the positions a codec never uses (`framecache.live_mask`) from every frame.
+    """
     cam_args = (camera_codec, camera_fit, camera_frames)
     if any(x is not None for x in cam_args) and not all(x is not None for x in cam_args):
         raise ValueError(
@@ -412,6 +420,7 @@ def build_cache(
         camera_frames_index_sha256=cam_frames_sha,
         camera_n_tok=cam_n_tok,
         camera_codebook_size=cam_codebook,
+        live_only=live_only,
     )
     framecache.save_json_atomic(manifest, manifest_path)
 
@@ -439,6 +448,7 @@ def build_cache(
         str(out_dir),
         force,
         camera_spec,
+        live_only,
     )
 
     if workers <= 1 or len(shot_items) <= 1:
@@ -538,6 +548,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--workers", type=int, default=8, help="Spawn worker count")
     p.add_argument("--max-shots", type=int, default=0, help="Cap total shots (0 = all)")
     p.add_argument("--force", action="store_true", help="Overwrite existing {shot}.pt files")
+    p.add_argument(
+        "--live-only",
+        action="store_true",
+        help="Drop the positions each codec never uses (band-DCT values past k, zero linear modes) from every frame",
+    )
     return p
 
 
@@ -555,6 +570,7 @@ def main(argv=None) -> int:
         workers=args.workers,
         max_shots=args.max_shots,
         force=args.force,
+        live_only=args.live_only,
     )
     return 1 if summary.get("n_errors", 0) > 0 else 0
 

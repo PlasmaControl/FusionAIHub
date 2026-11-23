@@ -545,3 +545,23 @@ def test_real_omv_val_shot_roundtrip_and_log_accuracy():
 
     med_dlog = float(np.median(np.concatenate(dlog_chunks)))
     assert med_dlog < 0.15, f"median |dlog10| = {med_dlog:.4f} >= 0.15"
+
+
+def test_live_mask_drops_only_the_positions_past_k_and_decode_puts_them_back():
+    """live-only frames hold exactly the kept values, and decode gives the full-width result."""
+    k = [32, 16]
+    codec, _floor, _log_mean = _make_synthetic_codec(p=2, n_bins_freq=64, k=k, with_grids=True)
+    live = framecache.live_mask(codec)
+    assert live.shape == (codec.n_tok * codec.n_val,)
+    # 2 probes x 2 bands of 32 values; band 1 keeps 16, so 2 x 16 positions are dead
+    assert int(live.sum()) == 2 * (32 + 16)
+    assert live.reshape(codec.n_tok, codec.n_val).sum(axis=1).tolist() == [32, 16, 32, 16]
+
+    rng = np.random.default_rng(3)
+    full = rng.integers(0, 64, size=(6, codec.n_tok * codec.n_val)).astype(np.int32)
+    live_only = full[:, live]
+    # whatever sits at the dead positions of the full frame must not change the decode
+    d_full = framecache.decode_signal_codes(codec, full)
+    d_live = framecache.decode_signal_codes(codec, live_only)
+    assert d_full.shape == d_live.shape
+    assert np.allclose(d_full, d_live, rtol=0.0, atol=0.0, equal_nan=True)

@@ -605,7 +605,42 @@ def _encode_domain_by_frame_index(
     raise TypeError(f"unsupported codec type for time-aligned encoding: {type(codec).__name__}")
 
 
+def live_mask(codec: tok_codecs.Codec) -> np.ndarray:
+    """Which of the codec's ``n_tok * n_val`` flat positions carry information, ``bool[n_tok * n_val]``.
+
+    A band-DCT codec pads every token to ``n_val = max(k)`` values, so the values from
+    ``k[band]`` on are dropped by the codec and always encode the same code. Measured
+    2026-11-23: the two Mirnov arrays hold 672 such positions of their 1,536 (v1b ``k``).
+    A linear codec keeps ``n_values`` of its positions (eigenvalue > 0). Anything else is live.
+    """
+    n_flat = int(codec.n_tok * codec.n_val)
+    if hasattr(codec, "_keep"):
+        return np.asarray(codec._keep, dtype=bool).reshape(n_flat)
+    if isinstance(codec, tok_codecs.LinearCodec) and codec.n_values > 0:
+        return (codec.eigenvalues[: codec.n_values] > 0).reshape(n_flat)
+    return np.ones(n_flat, dtype=bool)
+
+
 def encode_signal_codes(
+    codec: tok_codecs.Codec,
+    cs: cache.CachedSignal | None,
+    t0: float,
+    n_frames: int,
+    dt_frame: float = DT_FRAME,
+    live_only: bool = False,
+) -> tuple[torch.Tensor, bool]:
+    """`_encode_signal_codes_full`, keeping only the live positions when ``live_only``.
+
+    ``live_only`` drops the positions the codec never uses (`live_mask`), so the frame is
+    shorter and nothing is lost: `decode_signal_codes` puts them back.
+    """
+    codes, present = _encode_signal_codes_full(codec, cs, t0, n_frames, dt_frame=dt_frame)
+    if live_only:
+        codes = codes[:, torch.from_numpy(live_mask(codec))]
+    return codes, present
+
+
+def _encode_signal_codes_full(
     codec: tok_codecs.Codec,
     cs: cache.CachedSignal | None,
     t0: float,
@@ -745,9 +780,16 @@ def decode_signal_codes(
     mapping instead of ``frames.frame_index(n_samples, codec.dt)``.
     """
     arr = codes.detach().cpu().numpy() if isinstance(codes, torch.Tensor) else np.asarray(codes)
-    if arr.ndim != 2 or arr.shape[1] != codec.n_tok * codec.n_val:
+    n_flat = int(codec.n_tok * codec.n_val)
+    if arr.ndim == 2 and arr.shape[1] != n_flat:
+        live = live_mask(codec)
+        if arr.shape[1] == int(live.sum()):  # live-only frame: put the dropped positions back (code 0)
+            full = np.zeros((arr.shape[0], n_flat), dtype=arr.dtype)
+            full[:, live] = arr
+            arr = full
+    if arr.ndim != 2 or arr.shape[1] != n_flat:
         raise ValueError(
-            f"{codec.name}: expected (F, {codec.n_tok * codec.n_val}), got {arr.shape}"
+            f"{codec.name}: expected (F, {n_flat}), got {arr.shape}"
         )
     n_frames = int(arr.shape[0])
     n_bins = int(codec.grids.n_bins)
@@ -780,6 +822,7 @@ def encode_shot(
     ip_threshold_a: float = PLASMA_IP_THRESHOLD_A,
     dt_frame: float = DT_FRAME,
     min_frames: int = MIN_CACHED_FRAMES,
+    live_only: bool = False,
 ) -> tuple[dict | None, str]:
     """Encode one MAST cache-v1 HDF5 shot into a Phase-B frame-code cache entry.
 
@@ -809,7 +852,7 @@ def encode_shot(
         codec = codecs[name]
         _n_bins, _missing_code, vocab = codec_vocab(codec)
         sig_codes, is_present = encode_signal_codes(
-            codec, shot_data.get(name), t0, n_frames, dt_frame=dt_frame
+            codec, shot_data.get(name), t0, n_frames, dt_frame=dt_frame, live_only=live_only
         )
         codes[name] = sig_codes
         vocabs[name] = vocab
@@ -863,8 +906,12 @@ def build_manifest(
     plasma_ip_threshold_a: float = PLASMA_IP_THRESHOLD_A,
     dt_frame: float = DT_FRAME,
     t0_start: float = 0.0,
+    live_only: bool = False,
 ) -> dict:
-    """Build the ``_codec_manifest.json`` payload for a MAST frame-code cache."""
+    """Build the ``_codec_manifest.json`` payload for a MAST frame-code cache.
+
+    ``live_only``: each modality's ``n_tok`` counts only its live positions (`live_mask`).
+    """
     if stats is not None and (act_stats.mu_phys is None or act_stats.sd_phys is None):
         compress, mu_phys, sd_phys = compose_physical_actuator_stats(act_stats, stats)
         act_stats = ActuatorStats(
@@ -888,7 +935,7 @@ def build_manifest(
         bin_counts.add(n_bins)
         modalities[spec.name] = {
             "family": map_family(spec),
-            "n_tok": int(codec.n_tok * codec.n_val),
+            "n_tok": int(live_mask(codec).sum()) if live_only else int(codec.n_tok * codec.n_val),
             "codebook_size": int(vocab),
             "n_bins": int(n_bins),
             "missing_code": int(missing_code),
