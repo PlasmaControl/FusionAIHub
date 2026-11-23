@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from tokamak_foundation_model.ignite.mast import transform
-from tokamak_foundation_model.ignite.mast.tokenizers import codecs, grid
+from tokamak_foundation_model.ignite.mast.tokenizers import codecs, frames, grid
 
 RNG = np.random.default_rng(0)
 
@@ -164,3 +164,119 @@ def test_the_signal_domain_is_tokamarks_standardization():
     assert np.allclose(c.domain_from_model(transform.to_model(w[0], st)), (w[0] - 2.0) / 4.0)
     with pytest.raises(ValueError, match="multiple"):
         codecs.LinearCodec("p", 0.005, (30,), st, np.zeros(30), np.eye(30), np.ones(30), 10, 4)
+
+
+def band(k, probes=2):
+    shape = (probes, 256)
+    st = transform.ChannelStats(compress="asinh", scale=np.full(shape, 2.0), mean=np.zeros(shape), std=np.ones(shape))
+    return codecs.BandDCT("m", 0.001024, shape, st, k)
+
+
+def power(*shape):
+    return np.abs(RNG.standard_normal(shape)) + 0.1
+
+
+def test_all_coefficients_give_each_frames_mean_spectrum():
+    c = band([32] * 8)
+    x = power(1, 2, 256, 98)
+    v = c.encode(x)
+    assert v.shape == (1, 20, 16, 32) and (c.n_tok, c.n_val, c.domain) == (16, 32, "band")
+    out = c.decode(v, 98)
+    idx = frames.frame_index(98, 0.001024)
+    for f in (0, 4, 19):
+        assert np.allclose(out[..., idx == f], x[..., idx == f].mean(-1, keepdims=True))
+
+
+def test_a_window_of_98_columns_decodes_to_98_columns():
+    c = band([4] * 8)
+    x = power(3, 2, 256, 98)
+    assert c.encode(x).shape == (3, 20, 16, 4) and c.roundtrip(x).shape == x.shape
+
+
+def test_the_first_value_is_the_band_mean_power_over_the_band_scale():
+    c = band([1] * 8)
+    x = power(1, 2, 256, 5)                                                  # one frame of 5 columns
+    v = c.encode(x)
+    assert np.allclose(v[0, 0, :, 0], x[0].mean(-1).reshape(2, 8, 32).mean(-1).ravel() / 2.0)
+    assert np.allclose(c.decode(v, 5)[0, 1, 32:64, 3], x[0, 1, 32:64].mean())
+
+
+def test_k_is_per_band():
+    c = band([32, 2, 2, 2, 2, 2, 2, 1])
+    x = power(1, 2, 256, 5)
+    v = c.encode(x)
+    assert c.n_val == 32 and (v[0, 0, 1, 2:] == 0).all() and (v[0, 0, 7, 1:] == 0).all() and (v[0, 0, 9, 2:] == 0).all()
+    assert np.allclose(c.decode(v, 5)[0, :, :32], x[0, :, :32].mean(-1, keepdims=True))    # the lowest band is whole
+
+
+def test_the_band_transform_averages_linear_power():
+    c = band([32] * 8, probes=1)
+    x = np.ones((1, 1, 256, 5))
+    x[..., 0] = 1e4                                                          # one column four orders above the others
+    assert np.allclose(c.roundtrip(x), (1e4 + 4.0) / 5.0)
+    assert np.allclose(c.domain_from_model(transform.to_model(x[0], c.stats)), x[0] / 2.0)
+
+
+def test_a_column_that_is_missing_is_left_out_of_the_frame_mean():
+    c = band([32] * 8, probes=1)
+    x = power(1, 1, 256, 5)
+    x[..., 2] = np.nan
+    out = c.roundtrip(x)
+    assert np.allclose(out[..., 0], np.nanmean(x, -1)) and np.isnan(c.roundtrip(np.full((1, 1, 256, 5), np.nan))).all()
+
+
+def test_a_spectrogram_whose_bins_do_not_make_whole_bands_is_refused():
+    st = transform.ChannelStats(compress="asinh", scale=np.ones((1, 100)), mean=np.zeros((1, 100)), std=np.ones((1, 100)))
+    with pytest.raises(ValueError, match="32"):
+        codecs.BandDCT("m", 0.001024, (1, 100), st, [1, 1, 1])
+    with pytest.raises(ValueError, match="k"):
+        band([1] * 7)                                                        # 8 bands need 8 values of k
+
+
+def test_the_grid_read_does_not_put_back_the_values_a_band_dropped():          # ruling B10
+    k = [4, 2, 2, 2, 2, 2, 2, 1]
+    c = band(k, probes=1)
+    c.grids = grid.GridSet(lo=np.full((8, 4), 0.3), hi=np.full((8, 4), 2.3), width=np.ones((8, 4)), n_bins=5)
+    x = power(1, 1, 256, 10)
+    v = c.encode(x)
+    for mode in ("ranged", "nearest"):
+        # the grids' range excludes 0, so a plain read of a dropped 0 would be 0.3
+        assert (c.grids.read(v, mode)[0, 0, 1, 2:] > 0.2).all()
+        r = c.read(v, mode)
+        for band_i, kb in enumerate(k):
+            assert (r[..., band_i, kb:] == 0).all() and (r[..., band_i, :kb] > 0.2).all()
+        assert np.allclose(c.roundtrip(x, mode), c.decode(r, 10))
+
+
+def test_no_data_stays_nan_through_a_roundtrip_in_each_codec():
+    c = codecs.FrameDCT("s", 0.0025, (2,), stats("none", 2), k=2)               # 2 samples per frame, 3 frames
+    x = RNG.standard_normal((1, 2, 6))
+    x[0, 0, 2:4] = np.nan                                                    # channel 0 has no sample in frame 1
+    x[0, 1, 2] = np.nan                                                      # channel 1 keeps one
+    out = c.roundtrip(x)
+    assert np.isnan(out[0, 0, 2:4]).all() and np.isfinite(out[0, 0, [0, 1, 4, 5]]).all() and np.isfinite(out).sum() == 10
+    b = band([32] * 8, probes=2)
+    y = power(1, 2, 256, 10)
+    y[0, 0, 32:64, 5:] = np.nan                                              # probe 0, band 1: frame 1 is all missing
+    y[0, 1, 0:32, 5:9] = np.nan                                              # probe 1, band 0: one column of frame 1 stays
+    o = b.roundtrip(y)
+    assert np.isnan(o[0, 0, 32:64, 5:]).all() and np.isfinite(o[0, 0, 32:64, :5]).all()
+    assert np.isfinite(o[0, 1, 0:32]).all() and np.isfinite(o[0, 0, :32]).all() and np.isfinite(o[0, 0, 64:]).all()
+
+
+def test_zero_values_keep_a_frame_without_data_nan_through_a_roundtrip():      # ruling B22
+    c, x = linear_codec(0, 2)
+    w = x[:3].T[None].copy()                                                 # (1, 30, 3)
+    w[0, :, 1] = np.nan                                                      # frame 1 has no valid point
+    out = c.roundtrip(w)
+    assert np.isnan(out[0, :, 1]).all()
+    assert np.allclose(out[0, :, [0, 2]], c.profile_mean[None, :])          # the others: the mean profile
+    assert np.allclose(c.decode(c.encode(w), 3), np.repeat(c.profile_mean[None, :, None], 3, -1))   # decode alone sees no input
+
+
+def test_a_negative_number_of_values_is_refused():                           # ruling B22
+    x, _ = low_rank(100)
+    mean, basis, eig, _ = codecs.fit_pca(x, 6)
+    st = transform.ChannelStats(compress="none", scale=np.ones(30), mean=np.zeros(30), std=np.ones(30))
+    with pytest.raises(ValueError, match="negative"):
+        codecs.LinearCodec("p", 0.005, (30,), st, mean, basis, eig, -2, 2)

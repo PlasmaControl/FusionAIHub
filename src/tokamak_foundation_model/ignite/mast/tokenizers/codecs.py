@@ -5,15 +5,17 @@ A codec turns a signal ``(N, *values_shape, T)`` (physical units, time last, NaN
 `F` frames (`frames.frame_index`). The values are in the codec's *domain* (see `Codec`), ordered so
 that the first ``k`` of them are the best ``k``-value description of the token; `grids.GridSet` turns
 them into bins and back. A frame with no valid sample has NaN values and decodes to NaN: no data is
-not a value.
-
-This file grows in Task 5 (the band cosine transform).
+not a value. `Codec.roundtrip` keeps that for every codec, also when a codec has no token to carry
+the NaN: it sets to NaN the decoded samples of every token-frame whose input samples are all NaN. A
+token's samples are the codec's own grouping: a channel's samples in the frame for `FrameDCT`, the
+whole profile at one sample for `LinearCodec`, the 32 bins of the band times the frame's columns for
+`BandDCT`. `Codec.decode` alone sees no input and decodes what the values say.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Callable
+from typing import Callable, Sequence
 
 import numpy as np
 import scipy.fft
@@ -23,7 +25,8 @@ from ..transform import ChannelStats
 from . import frames
 from .grid import READ_MODES, GridSet
 
-DOMAINS = ("linear", "compressed", "signal")
+DOMAINS = ("linear", "compressed", "signal", "band")
+BAND_BINS = 32                   # frequency bins of one band of a spectrogram
 
 
 # ------------------------------------------------------------------------------ cosine transform
@@ -90,7 +93,8 @@ class Codec:
     signal; `stats` its `ChannelStats`; `domain` the unit the values are in: ``"linear"``
     (`frames.to_linear`: the data's own shape, so a frame mean is a mean of the data), ``"compressed"``
     (the cache's model units, `transform.to_model`: a mean on the asinh scale) or ``"signal"``
-    (TokaMark's units, ``(x - signal_mean) / signal_std``); `n_tok` tokens per frame and `n_val`
+    (TokaMark's units, ``(x - signal_mean) / signal_std``) or ``"band"`` (`BandDCT`: linear power over
+    a scale per band); `n_tok` tokens per frame and `n_val`
     values per token; `grids` the bins of the values (None before they are fitted).
     """
 
@@ -161,6 +165,20 @@ class Codec:
         """Values ``(N, F, n_tok, k)`` to the domain ``(N, *values_shape, n)``."""
         raise NotImplementedError
 
+    def data_mask(self, x: np.ndarray) -> np.ndarray:
+        """Where a sample's token-frame has data: `x` physical ``(N, *values_shape, T)`` -> bool, same shape.
+
+        True at a sample when at least one sample of its token in its frame is valid (the token's
+        samples are the codec's own grouping, see the module docstring); `roundtrip` sets the rest to NaN.
+        """
+        raise NotImplementedError
+
+    def read(self, values: np.ndarray, mode: str) -> np.ndarray:
+        """Values ``(N, F, n_tok, n_val)`` after the grid read of `mode` (`grids.GridSet.read`), same shape."""
+        if mode == "unquantized":
+            return np.asarray(values, dtype=np.float64)
+        return self.grids.read(values, mode)
+
     def encode(self, x: np.ndarray) -> np.ndarray:
         """Physical ``(N, *values_shape, T)`` to values ``(N, F, n_tok, n_val)``, ``F = frame_index(T, dt).max() + 1``."""
         x = np.asarray(x)
@@ -177,17 +195,17 @@ class Codec:
     def roundtrip(self, x: np.ndarray, mode: str = "unquantized") -> np.ndarray:
         """`x` physical ``(N, *values_shape, T)`` through the codec: ``decode(read(encode(x)), T)``.
 
-        `read` is the identity for ``unquantized`` and ``grids.read(values, mode)`` otherwise;
-        `ValueError` if the mode needs `grids` and there are none. NaN where the frame has no token.
+        `read` is the identity for ``unquantized`` and ``grids.read(values, mode)`` otherwise (a codec
+        may add to it, as `BandDCT` does); `ValueError` if the mode needs `grids` and there are none.
+        NaN where the token-frame has no valid input sample (`data_mask`), for every codec.
         """
         if mode not in READ_MODES:
             raise ValueError(f"unknown read mode {mode!r}; one of READ_MODES {READ_MODES}")
         if mode != "unquantized" and self.grids is None:
             raise ValueError(f"read mode {mode!r} needs grids, and codec {self.name!r} has none")
-        values = self.encode(x)
-        if mode != "unquantized":
-            values = self.grids.read(values, mode)
-        return self.decode(values, np.asarray(x).shape[-1])
+        x = np.asarray(x)
+        values = self.read(self.encode(x), mode)
+        return np.where(self.data_mask(x), self.decode(values, x.shape[-1]), np.nan)
 
 
 def _frame_groups(n: int, dt: float) -> list[tuple[int, np.ndarray, np.ndarray]]:
@@ -209,6 +227,15 @@ def _frame_groups(n: int, dt: float) -> list[tuple[int, np.ndarray, np.ndarray]]
     return out
 
 
+def _frame_any(valid: np.ndarray, dt: float) -> np.ndarray:
+    """Whether the sample's frame has a valid sample: `valid` bool ``(..., T)`` -> bool ``(..., T)``."""
+    n = valid.shape[-1]
+    f = frames.frame_index(n, dt)
+    _, first, lens = np.unique(f, return_index=True, return_counts=True)        # frames are contiguous
+    has = np.add.reduceat(valid.astype(np.int64), first, axis=-1) > 0
+    return np.repeat(has, lens, axis=-1)
+
+
 # --------------------------------------------------------------------------------- the frame DCT
 
 class FrameDCT(Codec):
@@ -225,6 +252,10 @@ class FrameDCT(Codec):
                          n_val=k, domain=domain, grids=grids, signal_mean=signal_mean,
                          signal_std=signal_std)
         self.k = k
+
+    def data_mask(self, x: np.ndarray) -> np.ndarray:
+        """A channel's frame has data when one of its samples in the frame is not NaN: bool like `x`."""
+        return _frame_any(~np.isnan(np.asarray(x, dtype=np.float64)), self.dt)
 
     def encode_domain(self, u: np.ndarray) -> np.ndarray:
         """Domain ``(N, *values_shape, T)`` to values ``(N, F, n_tok, k)`` float64."""
@@ -326,14 +357,17 @@ class LinearCodec(Codec):
     row with no missing point the first tokens' values do not depend on `n_values` (for an orthonormal
     basis), with missing points they do, slightly. A row with no valid point has NaN values. `decode`
     gives ``profile_mean + a @ basis[:n_values]`` at every point, also where the input was missing;
-    with ``n_values = 0`` there is no token and it is the mean profile (a NaN frame cannot be told
-    apart then). `profile_mean` ``(D,)`` and `basis` ``(m, D)`` are in the codec's domain.
+    with ``n_values = 0`` there is no token, so `decode` gives the mean profile for every frame (it
+    sees no input and cannot tell a NaN frame apart); `roundtrip` sets the samples without a valid
+    point to NaN itself (`data_mask`). `profile_mean` ``(D,)`` and `basis` ``(m, D)`` are in the codec's domain.
     """
 
     def __init__(self, name: str, dt: float, values_shape: tuple[int, ...], stats: ChannelStats,
                  profile_mean: np.ndarray, basis: np.ndarray, eigenvalues: np.ndarray, n_values: int,
                  values_per_token: int, domain: str = "linear", ridge: float = 0.0,
                  grids: GridSet | None = None, signal_mean: float = 0.0, signal_std: float = 1.0) -> None:
+        if n_values < 0:
+            raise ValueError(f"n_values must not be negative, got {n_values}")
         if values_per_token < 1 or n_values % values_per_token:
             raise ValueError(f"n_values={n_values} must be a multiple of values_per_token={values_per_token}")
         basis = np.asarray(basis, dtype=np.float64)
@@ -364,6 +398,13 @@ class LinearCodec(Codec):
         if n > 1 and (np.diff(f) < 1).any():
             raise ValueError(f"the linear codec wants one sample per frame; dt={self.dt} gives more")
         return f
+
+    def data_mask(self, x: np.ndarray) -> np.ndarray:
+        """A sample has data when one point of its profile is finite (the rule of `encode_domain`): bool like `x`."""
+        ok = np.isfinite(np.asarray(x, dtype=np.float64))
+        n, t = ok.shape[0], ok.shape[-1]
+        any_point = ok.reshape(n, self.n_points, t).any(1)                              # (N, T)
+        return np.broadcast_to(any_point.reshape((n,) + (1,) * len(self.values_shape) + (t,)), ok.shape)
 
     def encode_domain(self, u: np.ndarray) -> np.ndarray:
         """Domain ``(N, *values_shape, T)`` to values ``(N, F, n_tok, n_val)`` float64."""
@@ -409,3 +450,108 @@ class LinearCodec(Codec):
         out = self.profile_mean + a @ self.basis[: self.n_values]      # NaN in a row stays in that row
         out = out.reshape(v.shape[0], n, self.n_points)
         return np.moveaxis(out, 1, 2).reshape((v.shape[0],) + self.values_shape + (n,))
+
+
+# ------------------------------------------------------------------------------------ the band DCT
+
+class BandDCT(Codec):
+    """A spectrogram ``(P, n_bins)`` as a cosine transform over the bins of each band, per probe.
+
+    The bins fall into ``n_bands = n_bins // 32`` bands of `BAND_BINS` bins; one token is one
+    (probe, band), token index ``probe * n_bands + band``, so ``n_tok = P * n_bands``;
+    ``n_val = max(k)``. The domain is ``"band"``: linear power (physical) divided by `band_scale`
+    ``(P, n_bands)``, the mean of ``stats.scale`` over the band's bins. Encoding: the mean over the
+    frame's columns of each bin (valid columns only), `dct_values` across the band's 32 bins, then
+    the values from index ``k[band]`` on set to 0 (so ``k[band]`` values are kept; NaN stays NaN).
+    Decoding: `dct_decode` to 32 bins, the same spectrum for every column of the frame. Value 0 is the
+    band's mean power in units of `band_scale`; with ``k[band] = 32`` the decode is each bin's frame
+    mean. `read` applies the zero mask again after the grid read, so values a band dropped stay 0.
+    """
+
+    def __init__(self, name: str, dt: float, values_shape: tuple[int, int], stats: ChannelStats,
+                 k: Sequence[int], grids: GridSet | None = None) -> None:
+        values_shape = tuple(values_shape)
+        if len(values_shape) != 2 or values_shape[1] % BAND_BINS:
+            raise ValueError(f"values_shape must be (probes, n_bins) with n_bins a multiple of "
+                             f"{BAND_BINS}, got {values_shape}")
+        p, n_bins = values_shape
+        n_bands = n_bins // BAND_BINS
+        k = [int(v) for v in k]
+        if len(k) != n_bands or min(k) < 0 or max(k) < 1 or max(k) > BAND_BINS:
+            raise ValueError(f"k needs one value in 0..{BAND_BINS} (at least one above 0) for each of "
+                             f"the {n_bands} bands, got {k}")
+        scale = np.asarray(stats.scale, dtype=np.float64)
+        if scale.shape != values_shape:
+            raise ValueError(f"stats.scale must be {values_shape}, got {scale.shape}")
+        super().__init__(name, dt, values_shape, stats, n_tok=p * n_bands, n_val=max(k), domain="band",
+                         grids=grids)
+        self.k = k
+        self.n_bands = n_bands
+        self.band_scale = scale.reshape(p, n_bands, BAND_BINS).mean(-1)               # (P, n_bands)
+        self._bin_scale = np.repeat(self.band_scale, BAND_BINS, axis=1)               # (P, n_bins)
+        self._keep = np.arange(self.n_val)[None, :] < np.tile(k, p)[:, None]           # (n_tok, n_val)
+
+    # -- domain: linear power over the band's scale
+    def to_domain(self, x: np.ndarray) -> np.ndarray:
+        """Physical power ``(..., P, n_bins, T)`` to the band domain (float64, NaN kept)."""
+        return np.asarray(x, dtype=np.float64) / self._bin_scale[..., None]
+
+    def from_domain(self, u: np.ndarray) -> np.ndarray:
+        """The band domain to physical power ``(..., P, n_bins, T)``."""
+        return np.asarray(u, dtype=np.float64) * self._bin_scale[..., None]
+
+    def domain_from_model(self, z: np.ndarray) -> np.ndarray:
+        """Model units (the cache's) ``(..., P, n_bins, T)`` to the band domain."""
+        return self._per_signal(lambda a: transform.to_physical(a, self.stats), z) / self._bin_scale[..., None]
+
+    # -- values
+    def _mask(self, values: np.ndarray) -> np.ndarray:
+        """Zero the values from ``k[band]`` on, NaN kept: values ``(..., n_tok, k')`` with ``k' <= n_val``."""
+        keep = self._keep[:, : values.shape[-1]]
+        return np.where(keep | np.isnan(values), values, 0.0)
+
+    def read(self, values: np.ndarray, mode: str) -> np.ndarray:
+        """The grid read of `mode`, then the zero mask again: values ``(N, F, n_tok, n_val)``, same shape."""
+        return self._mask(super().read(values, mode))
+
+    def data_mask(self, x: np.ndarray) -> np.ndarray:
+        """A (probe, band) has data in a frame when one of its 32 bins at one of the frame's columns is not NaN."""
+        valid = ~np.isnan(np.asarray(x, dtype=np.float64))                             # (N, P, n_bins, T)
+        n, p, _, t = valid.shape
+        band_valid = valid.reshape(n, p, self.n_bands, BAND_BINS, t).any(3)            # (N, P, n_bands, T)
+        return np.repeat(_frame_any(band_valid, self.dt), BAND_BINS, axis=2)
+
+    def encode_domain(self, u: np.ndarray) -> np.ndarray:
+        """Band domain ``(N, P, n_bins, T)`` to values ``(N, F, n_tok, n_val)`` float64."""
+        u = np.asarray(u, dtype=np.float64)
+        n, p, n_bins, t = u.shape
+        n_frames = int(frames.frame_index(t, self.dt).max()) + 1
+        out = np.full((n, n_frames, self.n_tok, self.n_val), np.nan)       # a frame with no column stays NaN
+        for length, ids, starts in _frame_groups(t, self.dt):
+            cols = starts[:, None] + np.arange(length)                     # (m, length)
+            seg = u[..., cols]                                             # (N, P, n_bins, m, length)
+            ok = ~np.isnan(seg)
+            count = ok.sum(-1)
+            mean = np.divide(np.where(ok, seg, 0.0).sum(-1), count, out=np.full(count.shape, np.nan),
+                             where=count > 0)                              # (N, P, n_bins, m)
+            spec = np.moveaxis(mean.reshape(n, p, self.n_bands, BAND_BINS, -1), -1, 2)   # (N, P, m, n_bands, 32)
+            v = dct_values(spec, self.n_val)                               # (N, P, m, n_bands, n_val)
+            out[:, ids] = np.moveaxis(v, 2, 1).reshape(n, len(ids), self.n_tok, self.n_val)
+        return self._mask(out)
+
+    def decode_domain(self, values: np.ndarray, n: int) -> np.ndarray:
+        """Values ``(N, F, n_tok, k)`` to the band domain ``(N, P, n_bins, n)``; NaN for a NaN frame."""
+        v = np.asarray(values, dtype=np.float64)
+        if v.ndim != 4 or v.shape[2] != self.n_tok:
+            raise ValueError(f"values must be (N, F, {self.n_tok}, k), got {v.shape}")
+        n_frames = int(frames.frame_index(n, self.dt).max()) + 1
+        if v.shape[1] < n_frames:
+            raise ValueError(f"{n} samples need {n_frames} frames, values have {v.shape[1]}")
+        p, n_bins = self.values_shape
+        out = np.full((v.shape[0], p, n_bins, n), np.nan)
+        for length, ids, starts in _frame_groups(n, self.dt):
+            cols = starts[:, None] + np.arange(length)                     # (m, length)
+            d = dct_decode(v[:, ids].reshape(v.shape[0], len(ids), p, self.n_bands, v.shape[3]), BAND_BINS)
+            spec = np.moveaxis(d.reshape(v.shape[0], len(ids), p, n_bins), 1, -1)       # (N, P, n_bins, m)
+            out[..., cols] = spec[..., None]
+        return out
