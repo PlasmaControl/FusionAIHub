@@ -1032,8 +1032,8 @@ difference (0.0093), so by the second rule that comparison is undetermined. It
 is worse beyond noise than GenToka on 2, tasks 1-1 and 2-1, and worse than our
 replication on none. So the condition "worse beyond noise on none" already
 fails on its own, on tasks 1-1 and 2-1, independently of the mean. For the
-count of "10 of 14": the other seven tasks have no direct row on this page (the
-14-task table of plan 1a covers them), and 2 plus all seven of them is 9, so
+count of "10 of 14": the other seven tasks had no direct row at 23:54 (the
+stage-1a part below adds them), and 2 plus all seven of them is 9, so
 this direct model cannot reach 10 of 14 (3 plus seven is exactly 10, with the
 interval rule alone). The verdict that the headroom check did not pass is
 therefore unchanged, and it now has two reasons: the mean (0.1929 against
@@ -1193,7 +1193,8 @@ from the scores stored under `/models/intermediate/mast/stage0/scores`. The
 command also wrote `headroom_table_all.csv` beside the Markdown. The print of
 05:24 is kept beside them as `headroom_table_all.2026-11-23T0524.md`; the two
 differ in the row of task 2-2, the variant table of task 2-2 and the projected
-mean, and in nothing else (checked with `diff` on 2026-11-23). The section
+mean, and apart from the time in the second line in nothing else (checked with
+`diff` on 2026-11-23). The section
 was written on top of revision `8af4ca49` (`git rev-parse --short HEAD`, the
 page's revision before the section existed) and first committed as `22e16535`.
 These are revisions of the page, not of the scores: each score carries the
@@ -1289,7 +1290,7 @@ earlier ones (3-2: 0.2268 at 27,500 and 0.2250 at 30,000; 3-3: 0.2120 and
 |---|---|---|---|---|---|
 | 1-3 | `lr1e4` | 1e-4 | 0.1333 at step 25,000 | no | 0.1138 |
 | 2-2 | `lr1e4`, not chosen since the print of 10:36 | 1e-4 | 0.0434 at step 27,500 (0.0435 at the last validation) | yes | 0.0400 |
-| 2-2 | `lr1e4s90k` | 1e-4 | 0.0401 at step 90,000 (the last of its 36 validations, which is also the value at the last validation) | yes | 0.0371 |
+| 2-2 | `lr1e4s90k` | 1e-4 | 0.0401 at step 90,000 (the last of its 36 validations) | yes | 0.0371 |
 | 2-3 | `lr1e4` | 1e-4 | 0.0883 at step 27,500 | yes | 0.0813 |
 | 3-2 | base | 3e-4 | 0.2250 at step 30,000 | yes | 0.2309 |
 | 3-3 | base | 3e-4 | 0.2086 at step 30,000 | yes | 0.2194 |
@@ -1303,7 +1304,7 @@ the run `lr1e4s90k` has 36 (90,000 steps, one every 2,500), and its lowest
 curve's end: from `train_log.csv` of the run on 2026-11-23 (`val_select`), the
 last three validations are 0.0404 (step 85,000), 0.0401 (87,500) and 0.0401
 (90,000; 0.04013 and 0.04008 to five decimals). The marks on the other six
-chosen runs are those of the 05:24 print, and none of those six runs changed.
+chosen runs are those applied at 05:28 (above), and none of those six runs changed.
 Inferred, not measured: on those five tasks the direct model's score is an
 upper bound on the NRMSE that the configuration reaches at a longer budget,
 not its best. The ground for the inference is that every extension of a run
@@ -1426,7 +1427,7 @@ repeat of task 1-1 below: two runs of the same configuration and seed differ
 by +0.0041 (95% interval +0.0024 to +0.0058, over shots). It is one pair of
 runs on one task, a sample and not a variance, and whether it scales with the
 score was not measured; the scores of tasks 1-2 and 2-2 (0.0362 and 0.0371)
-are 0.27 and 0.27 of the 1-1 base run's 0.1361, so on them 0.0041 is a guide to
+are both 0.27 of the 1-1 base run's 0.1361, so on them 0.0041 is a guide to
 what to read with, not a measured value. With that figure in hand, the
 14 rows read as follows (every margin is the distance from the nearer end of
 the row's interval to the published score, in the print of 10:36):
@@ -1447,18 +1448,21 @@ the row's interval to the published score, in the print of 10:36):
   0.0016. The other two "stands" aheads clear it by more: task 4-1 by 0.0046
   (0.0199 - 0.0153) and task 4-2 by 0.0065 (0.0218 - 0.0153, where 0.0218 =
   0.2140 - 0.1922).
-- Two variant choices are closer than that on `val_select`. Task 1-3: 0.1348
+- Three variant choices are closer than that on `val_select`. Task 1-3: 0.1348
   against 0.1333, 0.0015 apart. Task 2-3: 0.0887 against 0.0883, 0.0004 apart;
   there the other variant has the lower `val_report` score (0.0796 against the
   table's 0.0813), so the printed score of 2-3 depends on a choice that is
-  smaller than the repeat difference.
-- The tie of task 2-2 rests on one extension. The `lr1e4s90k` run is lower than
-  `lr1e4` by 0.0033 on `val_select` (0.0401 against 0.0434) and by 0.0029 on
-  `val_report` (0.0371 against 0.0400), and the direct score is 0.0001 above
-  the published one (0.0371 against 0.0370). Both differences are smaller
-  than the repeat difference of task 1-1 (+0.0041), which was measured on a
-  task with a score about 3.7 times as large (0.1361 against 0.0371), so how
-  it carries over to task 2-2 was not measured.
+  smaller than the repeat difference. Task 2-2: `lr1e4s90k` has 0.0401 against
+  0.0434 for `lr1e4`, 0.0034 apart (0.043427 - 0.040075); unlike on 2-3, the
+  chosen run is also the lower on `val_report` (0.0371 against 0.0400, 0.0028
+  apart, from 0.039959 - 0.037135), the direct score is 0.0001 above the
+  published one (0.0371 against 0.0370), and the choice moves the verdict from
+  behind to tie, so the tie of task 2-2 rests on one extension. The two run
+  differences (0.0034 on `val_select`, 0.0028 on `val_report`) are smaller than
+  the repeat difference of task 1-1 (+0.0041 on `val_report`, 0.0053 on
+  `val_select`); that was measured on a task whose score is larger (2-2's
+  0.0371 is 0.27 of 1-1's 0.1361, above), and whether it carries over to task
+  2-2 was not measured.
 
 The split direction behind the two new "ahead (stands)" verdicts is a second
 reading, and it works for the model. On both tasks `val_report` is the easier
@@ -1481,7 +1485,7 @@ beside them.
 
 ### Runs beyond the plan's list
 
-Each comparison here is a paired bootstrap over shots (difference of the
+Each comparison here, except in the entry of task 2-2, is a paired bootstrap over shots (difference of the
 per-shot scores, seed 0, 10,000 resamples, `val_report`, 95% intervals). The
 script is the controller's scratch file `tmp/stage1a/paired_bootstrap.py`,
 not tracked in git.
@@ -1535,7 +1539,9 @@ not tracked in git.
   rule) in the print of 05:24, so the plan's extension rule applied to it, with
   the run's own learning rate of 1e-4 (the plan's `s90k` would have run the base
   configuration, which task 2-2 never trained). It ran on 2026-11-23 from 05:28:26
-  to 10:36:18 UTC on GPU 0, shared with other jobs, and ended with exit code 0:
+  to 10:36:18 UTC on GPU 0, which no other job used during the run (the controller's
+  `--share-gpu` mode; 286,524 MiB, the whole GPU, free at the start; the stage-1
+  jobs of that period ran on GPUs 1 to 3), and ended with exit code 0:
   90,000 steps in 18,390 s of training (batch 256, learning rate 1e-4, seed 0, a
   validation every 2,500 steps; the logs are `direct_streams.log` and
   `direct_task_2-2_lr1e4s90k.log` under `/models/intermediate/mast/stage0`). Its
@@ -1571,10 +1577,10 @@ the mean of the direct model's `val_report` score over all 14 tasks, each with
 the variant the table chose. The one row the line counts is task 4-3 (not
 competitive). In the print of 23:54 above the mean was 0.1929, with the direct
 model on the seven stage-0 tasks and the best published score on the other
-seven. No stage-0 row changed between the print of 05:24 and that of 10:36; the
-variant table of task 1-1 has one more run (`b256`, above), which is not the
-table's choice. Between the prints of 05:24 and 10:36 only task 2-2 changed
-(0.0400 to 0.0371), which lowers the mean by 0.0029 / 14 = 0.0002 (0.1899 to
+seven. No stage-0 row changed between the print of 23:54 and those of 05:24 and
+10:36; the variant table of task 1-1 has one more run in both (`b256`, above,
+added between 23:54 and 05:24), which is not the table's choice. Between the prints of 05:24 and 10:36 only task 2-2 changed
+(0.0400 to 0.0371), which lowers the mean by 0.0028 / 14 = 0.0002 (0.1899 to
 0.1897). The answer to the bar's question is unchanged: the projected mean,
 0.1897, is above the bar of 0.183. By the rule of the design the bar goes to the owner with the
 table; it is not changed on this page.
@@ -1598,12 +1604,13 @@ are", above). Each score is an upper bound on the NRMSE that this model reaches
 on its task: a longer, larger or differently trained model may reach a lower
 one. Five of the seven chosen runs (tasks 2-2, 2-3, 3-2, 3-3 and 4-2) meet the
 plan's rule for "still falling" (lowest validation at the last or second-last
-of 12), though on 2-3 and 4-2 the last validations are flat (as they were on
-2-2 for `lr1e4`, whose extension then lowered the score). Inferred, not
-measured: on tasks 2-3, 3-2, 3-3 and 4-2 the score is not the best this
-configuration reaches, because every extension of a run that met this rule
+of its validations: 12, or 36 for `lr1e4s90k`), though on 2-2, 2-3 and 4-2 the
+last validations are flat (on 2-2 `lr1e4s90k` has 0.0401 at 87,500 and 90,000;
+its 30,000-step `lr1e4` run was flat too, and its extension lowered the
+score). Inferred, not measured: on those five tasks the score is not the best
+this configuration reaches, because every extension of a run that met this rule
 lowered the NRMSE (tasks 1-1, 2-1, 4-5, 4-3 and 2-2), which is five runs, so the
-reading is a guess about trend and not a measured value for these four. The scores are on
+reading is a guess about trend and not a measured value for these five. The scores are on
 `val_report` shots and the published scores are on test shots; the verdict is read with the split rule beside it, and one
 of the seven new verdicts (task 4-3) is undetermined by it; task 2-2 is a tie,
 to which the rule does not apply. A cell
