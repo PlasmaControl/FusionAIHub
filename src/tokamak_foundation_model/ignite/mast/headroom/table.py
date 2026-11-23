@@ -11,7 +11,10 @@ see the test shots (`headroom.FITTED`, enforced by `run_headroom.py`). `direct_l
 95% interval of the direct model's mean over shots (`bootstrap_ci`); `tokamind_repl` is our replication
 of TokaMind's fine-tuned score (`TOKAMIND_REPLICATION`); `best_published` is `tasks.best_published` and
 `best_published_by` names whose score it is; `direct_over_best` and `verdict` compare the direct model with
-it. The published scores are on TokaMark's test split and the direct model's is on `val_report`: the same
+it. `split_rule` is the outcome of the results page's split-difference rule for a verdict of "ahead" or
+"behind": "stands" when the margin (the distance from the nearer end of the interval to `best_published`) is
+larger than the mean baseline's `|mean_val - mean_test|` on the task, "undetermined" when it is not or when
+either mean is missing; empty for every other verdict. `verdict` itself uses the interval only. The published scores are on TokaMark's test split and the direct model's is on `val_report`: the same
 predictor differs between the two splits by up to 0.04 (measured 2026-11-22, task 4-5 persistence 0.910
 against 0.870), which is why the baselines and the floor stay beside it on both splits. The verdict is a
 comparison across splits and says so on the page.
@@ -79,8 +82,8 @@ CELLS: tuple[tuple[str, str, str], ...] = (
     ("direct_val", "direct", "val_report"),
 )
 COLUMNS = (*(c for c, _, _ in CELLS), "direct_lo", "direct_hi", "direct_variant", "tokamind_repl",
-           "best_published", "best_published_by", "direct_over_best", "verdict", "not_competitive", "stale",
-           "unfinished")
+           "best_published", "best_published_by", "direct_over_best", "verdict", "split_rule",
+           "not_competitive", "stale", "unfinished")
 BASE_VARIANT = "base"
 # What the † mark says (the table's legend and the variants listing use it). Every reason the command's rule
 # can give is named; the last sentence is the limit of the rule (the record holds no TokaMark revision or data
@@ -116,6 +119,23 @@ def verdict(score: float, lo: float, hi: float, reference: float) -> str:
     if lo > reference:
         return "behind"
     return "tie"
+
+
+def split_rule(verdict_: str, lo: float, hi: float, reference: float, mean_val: float, mean_test: float) -> str:
+    """The outcome of the results page's split-difference rule for a verdict.
+
+    The interval is over `val_report` shots and the published score is on test shots, so a verdict is no finer
+    than the difference between the splits. For "ahead" or "behind": "stands" when the margin (the distance
+    from the nearer end of the interval to `reference`) is larger than the mean baseline's
+    `|mean_val - mean_test|` on the task, else "undetermined". A mean baseline score that is not finite gives
+    "undetermined": no data is not a pass. Every other verdict (tie, missing, no interval) gives "".
+    """
+    if verdict_ not in ("ahead", "behind"):
+        return ""
+    margin = reference - hi if verdict_ == "ahead" else lo - reference
+    if not all(math.isfinite(v) for v in (margin, mean_val, mean_test)):
+        return "undetermined"
+    return "stands" if margin > abs(mean_val - mean_test) else "undetermined"
 
 
 def _read_record(path: Path) -> dict | None:
@@ -264,7 +284,7 @@ def build_table(scores_dir: Path, tokamind_repl: dict[str, float | None],
     rows = []
     for task in task_names:
         row: dict = {c: math.nan for c in COLUMNS}
-        row.update(direct_variant="", verdict="missing", not_competitive="")
+        row.update(direct_variant="", verdict="missing", split_rule="", not_competitive="")
         stale, unfinished = [], []
         chosen = _chosen_direct(scores_dir, task)
         direct_record = None
@@ -301,6 +321,8 @@ def build_table(scores_dir: Path, tokamind_repl: dict[str, float | None],
             row["verdict"] = ("no interval" if math.isnan(row["direct_lo"]) else
                               verdict(row["direct_val"], row["direct_lo"], row["direct_hi"],
                                       row["best_published"]))
+            row["split_rule"] = split_rule(row["verdict"], row["direct_lo"], row["direct_hi"],
+                                           row["best_published"], row["mean_val"], row["mean_test"])
         if math.isfinite(row["direct_val"]) and math.isfinite(row["tokamind_repl"]) \
                 and row["direct_val"] > row["tokamind_repl"]:
             row["not_competitive"] = "yes"  # the promise of `direct.py`: worse than our replication on the task
@@ -369,7 +391,8 @@ def to_markdown(table: pd.DataFrame) -> str:
                      _cell(table, task, "tokamind_repl", marks), _cell(table, task, "best_published", marks),
                      str(table.loc[task, "best_published_by"]), _cell(table, task, "direct_over_best", marks, 2),
                      str(table.loc[task, "verdict"])
-                     + ("; not competitive" if table.loc[task, "not_competitive"] == "yes" else "")])
+                     + ("; not competitive" if table.loc[task, "not_competitive"] == "yes" else ""),
+                     str(table.loc[task, "split_rule"])])
         for column, kind in (("stale", "stale"), ("unfinished", "unfinished")):
             notes += [f"- {label} {entry} ({kind})" for entry in str(table.loc[task, column]).split(" | ") if entry]
     lines = ["Scores on the benchmark's windows, NRMSE (lower is better). `test` is TokaMark's test split, `val` is "
@@ -380,11 +403,15 @@ def to_markdown(table: pd.DataFrame) -> str:
              "Fitted predictors and the direct model on `val_report` (with the 95% interval of the direct model's "
              "mean over shots), against the published scores on the test split.", "",
              *_md(["task", "shrunk val", "ridge val", "direct val [95% interval]", "direct variant",
-                   "TokaMind replication test", "best published test", "by", "direct / best", "verdict"], head), "",
+                   "TokaMind replication test", "best published test", "by", "direct / best", "verdict",
+                   "split rule"], head), "",
              "missing: no score is stored. undefined: the benchmark defines no persistence for the task. "
              + STALE_LEGEND + " ‡ unfinished: the direct model's training "
              "stopped before `max_steps`. not competitive: the direct model's `val_report` score is worse than our "
-             "TokaMind replication's test score on the task."]
+             "TokaMind replication's test score on the task. split rule: for an ahead or behind verdict, 'stands' if its "
+             "margin (the distance from the nearer end of the interval to the published score) is larger than the "
+             "mean baseline's difference between the splits on the task, else 'undetermined'; empty for any other "
+             "verdict."]
     if notes:
         lines += ["", *notes]
     return "\n".join(lines) + "\n"

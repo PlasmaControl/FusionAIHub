@@ -127,6 +127,56 @@ def test_the_direct_cell_has_an_interval_a_ratio_and_a_verdict(tmp_path):
     assert row["verdict"] == "ahead" and row["unfinished"] == "" and row["not_competitive"] == ""
 
 
+def test_split_rule_stands_when_the_margin_beats_the_split_difference():
+    # task 1-1 of the 23:54 print: interval above 0.0941 by 0.021, mean baseline differs by 0.003 between splits
+    assert table.split_rule("behind", 0.1151, 0.1250, 0.0941, mean_val=0.5030, mean_test=0.5000) == "stands"
+    # task 4-4: margin 0.0054 against a split difference of 0.0094
+    assert table.split_rule("ahead", 0.3300, 0.3400, 0.3454, mean_val=0.9000, mean_test=0.9094) == "undetermined"
+    assert table.split_rule("ahead", 0.3300, 0.3400, 0.3454, mean_val=0.9094, mean_test=0.9000) == "undetermined"
+
+
+def test_split_rule_is_empty_unless_the_verdict_is_ahead_or_behind():
+    for verdict_ in ("tie", "missing", "no interval"):
+        assert table.split_rule(verdict_, 0.1, 0.2, 0.15, 0.5, 0.5) == ""
+    assert table.split_rule("tie", math.nan, math.nan, 0.15, math.nan, math.nan) == ""
+
+
+def test_split_rule_never_stands_without_both_mean_scores():
+    for mean_val, mean_test in ((math.nan, 0.5), (0.5, math.nan), (math.nan, math.nan)):
+        assert table.split_rule("behind", 0.2, 0.3, 0.1, mean_val, mean_test) == "undetermined"
+        assert table.split_rule("ahead", 0.01, 0.02, 0.1, mean_val, mean_test) == "undetermined"
+
+
+def test_split_rule_equal_margin_is_undetermined():
+    assert table.split_rule("behind", 0.75, 0.875, 0.5, mean_val=0.75, mean_test=0.5) == "undetermined"
+
+
+def test_the_table_prints_the_split_rule_beside_the_verdict(tmp_path):
+    stage0 = tmp_path / "stage0"
+    scores = stage0 / "scores"
+    done = {"trained_steps": 10, "max_steps": 10}
+    best = tasks.best_published("task_1-2")
+    # direct far above the published score: "behind", margin far above the split difference of the mean (0.01)
+    write_score(scores, "task_1-2", "direct", "val_report", np.full(50, best + 0.2), **done)
+    write_score(scores, "task_1-2", "mean", "test", [1.0])
+    write_score(scores, "task_1-2", "mean", "val_report", [0.99])
+    # direct inside the published score: a tie, an empty cell
+    write_score(scores, "task_3-1", "direct", "val_report", np.full(50, tasks.best_published("task_3-1")), **done)
+    # direct far above the published score, but the mean baseline has no val_report score: undetermined
+    write_score(scores, "task_4-1", "direct", "val_report", np.full(50, tasks.best_published("task_4-1") + 0.3),
+                **done)
+    write_score(scores, "task_4-1", "mean", "test", [1.0])
+    t = table.build_table(scores, REPL)
+    assert list(t.columns).index("split_rule") == list(t.columns).index("verdict") + 1
+    assert t.loc["task_1-2", "verdict"] == "behind" and t.loc["task_1-2", "split_rule"] == "stands"
+    assert t.loc["task_3-1", "verdict"] == "tie" and t.loc["task_3-1", "split_rule"] == ""
+    assert t.loc["task_4-1", "verdict"] == "behind" and t.loc["task_4-1", "split_rule"] == "undetermined"
+    assert t.loc["task_4-5", "verdict"] == "missing" and t.loc["task_4-5", "split_rule"] == ""
+    text = table.to_markdown(t)
+    assert " verdict | split rule |" in text and "| behind; not competitive | stands |" in text
+    assert "| behind; not competitive | undetermined |" in text and " split rule: " in text
+
+
 def test_a_direct_score_worse_than_the_replication_is_marked_not_competitive(tmp_path):
     stage0 = tmp_path / "stage0"
     done = {"trained_steps": 10, "max_steps": 10}
