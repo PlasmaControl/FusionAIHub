@@ -10,8 +10,8 @@ title: "IGNITE on MAST: stage 1 fixed tokenizers"
 
 Stage 1b gives each of the 39 cached MAST signals of TokaMark a tokenizer
 without learned weights, a frozen assignment that says how many values each
-signal keeps per 5 ms frame, and a measured representation floor per task in
-TokaMark's own units. Three codecs do the work: a cosine transform per frame
+signal keeps per 5 ms frame, and, once the long jobs have run, a measured
+representation floor per task in TokaMark's own units. Three codecs do the work: a cosine transform per frame
 (`frame_dct`), a principal-component basis for profiles and the flux map
 (`linear`) and a band transform for the two Mirnov spectrograms (`band_dct`).
 Stage 2 can start on these tokenizers alone, and every learned tokenizer of
@@ -230,6 +230,12 @@ score and the ladders of this stage replace it.
   fidelity target is judged on `ranged`, and all three are reported. Reason:
   the two-hot target of stage 2 can express no more than `ranged`, and a single
   sampled token says `nearest`. No measurement is behind this choice.
+- **Number of bins: 64 per value, asinh-spaced.** The design says each value
+  sits on a fine scale of ordered bins and leaves the number to the builder.
+  The plan chose 64 per value on 2026-11-22, with the bin centres asinh-spaced.
+  No measurement is behind the number 64. Stage 2 owns the loss (the number of
+  bins per value and the smoothing of the bin targets) and may change it, and
+  the assignment records the number it was made with.
 
 ## How to run
 
@@ -350,12 +356,14 @@ Not measured yet.
   Stage 0's floors differ between the splits by up to 0.002 on every task but
   4-5 (measured 2026-11-22, TokaMind's floor, test against `val_report`), and
   the same predictor differs between the two splits by up to 0.04.
-- **The rough looks of 2026-11-22 are not results.** Every rough look quoted on
-  this page was made on the CPU from cache v1 on 24 to 96 training shots with
-  the code of that day (24 shots for the cosine truncation, 72 fitted and 24
-  tested for the principal components, 40 for the spectrograms, 96 for the
+- **The rough looks of 2026-11-22 are not results.** Every rough look of
+  2026-11-22 quoted on this page was made on the CPU from cache v1 on 24 to 96
+  training shots with the code of that day (24 shots for the cosine truncation,
+  72 fitted and 24 tested for the principal components, 40 for the
+  spectrograms, 96 for the
   Thomson missing-data count). They set expectations only, and the ladders of
-  this stage replace them.
+  this stage replace them. The rough look of 2026-11-23 on 2 shots, below, is a
+  separate one, made on `val_select` shots with the code of the trial.
 - **Task 4-5's frame statistics (open decision 1 of the plan).** The design
   scores task 4-5 from frame statistics, one value per 5 ms frame and bin. The
   rough look of 2026-11-22 on 40 training shots says three things about it:
@@ -364,8 +372,9 @@ Not measured yet.
   poloidal ones is below 31 kHz); a perfect prediction of every frame's mean
   spectrum would still score about 74% of the mean baseline, because the
   targets are single 1 ms periodograms that scatter inside a frame; and
-  TokaMind's own floor is lower (0.3605 on `val_report`, measured 2026-11-22)
-  because it keeps detail inside 5 ms. What stage 0 measured on 2026-11-22 on
+  TokaMind's own floor is lower (0.3605 on `val_report`, measured 2026-11-22),
+  which the plan reads as because it keeps detail inside 5 ms (the plan's
+  reading, inferred, not measured). What stage 0 measured on 2026-11-22 on
   `val_report` (351 shots): the direct model, trained on the 1 ms columns,
   scores 0.6475 against the best published 0.6510 (a tie) and is below the mean
   baseline on the same shots by a paired 0.0377 (95% interval 0.0298 to 0.0461,
