@@ -1449,7 +1449,7 @@ the row's interval to the published score, in the print of 10:36):
   (0.0199 - 0.0153) and task 4-2 by 0.0065 (0.0218 - 0.0153, where 0.0218 =
   0.2140 - 0.1922).
 - Three variant choices are closer than that on `val_select`. Task 1-3: 0.1348
-  against 0.1333, 0.0015 apart. Task 2-3: 0.0887 against 0.0883, 0.0004 apart;
+  against 0.1333, 0.0015 apart as printed (0.0016 exact, 0.134841 - 0.133286). Task 2-3: 0.0887 against 0.0883, 0.0004 apart;
   there the other variant has the lower `val_report` score (0.0796 against the
   table's 0.0813), so the printed score of 2-3 depends on a choice that is
   smaller than the repeat difference. Task 2-2: `lr1e4s90k` has 0.0401 against
@@ -1459,8 +1459,8 @@ the row's interval to the published score, in the print of 10:36):
   published one (0.0371 against 0.0370), and the choice moves the verdict from
   behind to tie, so the tie of task 2-2 rests on one extension. The two run
   differences (0.0034 on `val_select`, 0.0028 on `val_report`) are smaller than
-  the repeat difference of task 1-1 (+0.0041 on `val_report`, 0.0053 on
-  `val_select`); that was measured on a task whose score is larger (2-2's
+  the repeat difference of task 1-1 (+0.0041 on `val_report`, 0.0054 on
+  `val_select`, from 0.148328 - 0.142958); that was measured on a task whose score is larger (2-2's
   0.0371 is 0.27 of 1-1's 0.1361, above), and whether it carries over to task
   2-2 was not measured.
 
@@ -1541,7 +1541,7 @@ not tracked in git.
   configuration, which task 2-2 never trained). It ran on 2026-11-23 from 05:28:26
   to 10:36:18 UTC on GPU 0, which no other job used during the run (the controller's
   `--share-gpu` mode; 286,524 MiB, the whole GPU, free at the start; the stage-1
-  jobs of that period ran on GPUs 1 to 3), and ended with exit code 0:
+  jobs of that period ran on GPUs 1 to 3 or on the CPU), and ended with exit code 0:
   90,000 steps in 18,390 s of training (batch 256, learning rate 1e-4, seed 0, a
   validation every 2,500 steps; the logs are `direct_streams.log` and
   `direct_task_2-2_lr1e4s90k.log` under `/models/intermediate/mast/stage0`). Its
@@ -1580,7 +1580,7 @@ model on the seven stage-0 tasks and the best published score on the other
 seven. No stage-0 row changed between the print of 23:54 and those of 05:24 and
 10:36; the variant table of task 1-1 has one more run in both (`b256`, above,
 added between 23:54 and 05:24), which is not the table's choice. Between the prints of 05:24 and 10:36 only task 2-2 changed
-(0.0400 to 0.0371), which lowers the mean by 0.0028 / 14 = 0.0002 (0.1899 to
+(0.0400 to 0.0371; 0.039959 to 0.037135 exact), which lowers the mean by 0.0028 / 14 = 0.0002 (0.1899 to
 0.1897). The answer to the bar's question is unchanged: the projected mean,
 0.1897, is above the bar of 0.183. By the rule of the design the bar goes to the owner with the
 table; it is not changed on this page.
@@ -1610,7 +1610,7 @@ its 30,000-step `lr1e4` run was flat too, and its extension lowered the
 score). Inferred, not measured: on those five tasks the score is not the best
 this configuration reaches, because every extension of a run that met this rule
 lowered the NRMSE (tasks 1-1, 2-1, 4-5, 4-3 and 2-2), which is five runs, so the
-reading is a guess about trend and not a measured value for these five. The scores are on
+reading is a guess about trend and not a measured value for these five tasks. The scores are on
 `val_report` shots and the published scores are on test shots; the verdict is read with the split rule beside it, and one
 of the seven new verdicts (task 4-3) is undetermined by it; task 2-2 is a tie,
 to which the rule does not apply. A cell
