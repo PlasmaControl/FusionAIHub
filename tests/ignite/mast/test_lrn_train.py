@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -65,7 +66,7 @@ def test_a_short_training_learns_a_low_rank_signal_and_keeps_its_best_weights(tm
 def test_a_loss_that_is_not_finite_stops_the_training(tmp_path):
     e, mask, ident = rank_two(500)
     cfg = train.TrainConfig(d_model=64, depth=1, steps=50, batch=64, val_every=50)
-    with pytest.raises(FloatingPointError):
+    with pytest.raises(FloatingPointError, match=r"the training loss is \S+ at step \d+"):
         train.train(CONFIG, cfg, (np.full_like(e, np.inf), mask, ident), (e, mask, ident), TABLE, tmp_path,
                     log=lambda line: None)
 
@@ -107,6 +108,7 @@ def test_the_same_seed_gives_the_same_training(tmp_path):
 # ------------------------------------------------------------------------------- the sub-command
 
 NAME = "summary-ip"
+NAME2 = "summary-q95"
 
 
 def load_script(monkeypatch):
@@ -116,10 +118,11 @@ def load_script(monkeypatch):
     spec.loader.exec_module(module)
     arm = module.Arm("net.series", (NAME,), False, True, 1, 16)
     monkeypatch.setattr(module.registry, "all_signals", lambda: [])
-    monkeypatch.setattr(module, "catalog", lambda specs: ([], [], [], {NAME: 1}))
+    monkeypatch.setattr(module, "catalog", lambda specs: ([], [], [], {NAME: 1, NAME2: 1}))
     monkeypatch.setattr(module, "arms", lambda *a: {
         "net.series": arm, "klt.series": module.Arm("klt.series", (NAME,), False, False, 1, 16),
-        "net.cat": module.Arm("net.cat", (NAME,), True, True, 2, 4)})
+        "net.cat": module.Arm("net.cat", (NAME,), True, True, 2, 4),
+        "net.two": module.Arm("net.two", (NAME, NAME2), False, True, 1, 16)})
     return module
 
 
@@ -131,23 +134,30 @@ def shrink(monkeypatch):
     return real
 
 
-def toy_stage1(tmp_path, monkeypatch):
-    """A stage1 root with a store of one 1-stream signal (60 train and 30 validation frames of 16 values)."""
+def toy_stage1(tmp_path, monkeypatch, names=(NAME,), val_missing=()):
+    """A stage1 root with a store of 1-stream signals (60 train and 30 validation frames of 16 values each);
+    the validation streams of the signals in `val_missing` are all NaN."""
     monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
     cache_root = tmp_path / "cache" / "v1"
     cache_root.mkdir(parents=True)
-    reg = pd.DataFrame([{"device": "mast", "signal": NAME, "channel": 0, "channel_name": "ip", "family": "slow",
+    reg = pd.DataFrame([{"device": "mast", "signal": n, "channel": 0, "channel_name": "ip", "family": "slow",
                          "dt": 0.00025, "units": "A", "imas_path": "", "r": np.nan, "z": np.nan, "tm_mean": 0.0,
                          "tm_std": 1.0, "roles": "inp+out", "sat_abs": np.nan, "valid_fraction": 1.0,
-                         "dead_fraction": 0.0, "compress": "none", "scale": 1.0, "mean": 0.0, "std": 1.0}])
+                         "dead_fraction": 0.0, "compress": "none", "scale": 1.0, "mean": 0.0, "std": 1.0}
+                        for n in names])
     registry.save_registry(reg, cache_root / "registry.csv")
-    meta = {"signals": {NAME: {"kind": "frame_dct", "domain": "linear", "n_streams": 1, "values_per_token": 1}},
+    meta = {"signals": {n: {"kind": "frame_dct", "domain": "linear", "n_streams": 1, "values_per_token": 1}
+                        for n in names},
             "cache_dir": str(cache_root), "assignment_sha256": "a" * 64, "fit_sha256": "f" * 64,
             "stats_sha256": "s" * 64, "learned_code_sha256": "old"}
     for key, m in (("train", 60), ("val", 30)):
-        values = (rank_two(m)[0] * 3.0 + 1.0).reshape(m, 1, 16)
-        store.save_store({NAME: store.Store(NAME, values, np.zeros(m, dtype=np.int64))},
-                         tmp_path / "stage1" / "store" / "v1" / key, meta)
+        stores = {}
+        for n in names:
+            values = (rank_two(m)[0] * 3.0 + 1.0).reshape(m, 1, 16)
+            if key == "val" and n in val_missing:
+                values[:] = np.nan
+            stores[n] = store.Store(n, values, np.zeros(m, dtype=np.int64))
+        store.save_store(stores, tmp_path / "stage1" / "store" / "v1" / key, meta)
     return tmp_path / "stage1" / "recoders"
 
 
@@ -230,3 +240,122 @@ def test_the_command_refuses_a_run_that_another_process_holds(tmp_path, monkeypa
     (run / "train.lock").write_text("1\n")                                         # pid 1 is alive
     assert tt.main(["train", "--arm", "net.series", "--cpu"]) == 2
     assert "another training" in capsys.readouterr().err and not (run / "config.json").exists()
+
+
+# ----------------------------------------------- the GPU path, the stores' meta and the last line
+
+class Sentinel(Exception):
+    """Raised by a patched `load_store` that records what it saw, to stop the command there."""
+
+
+def no_store_read(tt, monkeypatch):
+    monkeypatch.setattr(tt.store, "load_store", lambda *a, **k: pytest.fail("the store was read"))
+
+
+def test_a_busy_gpu_is_refused_before_the_store_is_read(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    recoders = toy_stage1(tmp_path, monkeypatch)
+    tt = load_script(monkeypatch)
+    rh = tt._run_headroom()
+    monkeypatch.setattr(rh, "_cuda_initialized", lambda: False)
+    monkeypatch.setattr(rh, "_look_up_gpu", lambda gpu: ("GPU-uuid-1", [4242]))
+    no_store_read(tt, monkeypatch)
+    assert tt.main(["train", "--arm", "net.series", "--gpu", "1"]) == 2
+    err = capsys.readouterr().err
+    assert "GPU 1 has compute processes (pids 4242)" in err
+    assert not recoders.exists() and os.environ["CUDA_VISIBLE_DEVICES"] == ""
+
+
+def test_a_failed_gpu_lookup_is_refused_before_the_store_is_read(tmp_path, monkeypatch):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    recoders = toy_stage1(tmp_path, monkeypatch)
+    tt = load_script(monkeypatch)
+    rh = tt._run_headroom()
+    monkeypatch.setattr(rh, "_cuda_initialized", lambda: False)
+    monkeypatch.setattr(rh, "_look_up_gpu", lambda gpu: None)
+    no_store_read(tt, monkeypatch)
+    assert tt.main(["train", "--arm", "net.series", "--gpu", "1"]) == 2
+    assert not recoders.exists() and os.environ["CUDA_VISIBLE_DEVICES"] == ""
+
+
+def test_an_initialized_cuda_is_refused_before_the_store_is_read(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    recoders = toy_stage1(tmp_path, monkeypatch)
+    tt = load_script(monkeypatch)
+    rh = tt._run_headroom()
+    monkeypatch.setattr(rh, "_cuda_initialized", lambda: True)
+    monkeypatch.setattr(rh, "_look_up_gpu", lambda gpu: pytest.fail("the GPU was looked up"))
+    no_store_read(tt, monkeypatch)
+    assert tt.main(["train", "--arm", "net.series", "--gpu", "1"]) == 2
+    assert "CUDA is already initialized" in capsys.readouterr().err
+    assert not recoders.exists() and os.environ["CUDA_VISIBLE_DEVICES"] == ""
+
+
+def test_a_free_gpu_is_selected_by_its_uuid_before_anything_uses_it(tmp_path, monkeypatch):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    toy_stage1(tmp_path, monkeypatch)
+    tt = load_script(monkeypatch)
+    rh = tt._run_headroom()
+    looked = []
+    monkeypatch.setattr(rh, "_cuda_initialized", lambda: False)
+    monkeypatch.setattr(rh, "_look_up_gpu", lambda gpu: looked.append(gpu) or ("GPU-uuid-1", []))
+    seen = []
+
+    def stop(*args, **kwargs):
+        seen.append(os.environ["CUDA_VISIBLE_DEVICES"])        # the first thing after the selection that reads data
+        raise Sentinel
+
+    monkeypatch.setattr(tt.store, "load_store", stop)
+    with pytest.raises(Sentinel):
+        tt.main(["train", "--arm", "net.series", "--gpu", "1"])
+    assert looked == [1] and seen == ["GPU-uuid-1"]
+
+
+def test_a_validation_store_that_does_not_match_the_training_store_is_refused(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    recoders = toy_stage1(tmp_path, monkeypatch)
+    doc_path = tmp_path / "stage1" / "store" / "v1" / "val" / "store.json"
+    doc = json.loads(doc_path.read_text())
+    doc["meta"]["stats_sha256"] = "t" * 64
+    doc_path.write_text(json.dumps(doc))
+    tt = load_script(monkeypatch)
+    assert tt.main(["train", "--arm", "net.series", "--cpu"]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("refused: ") and "stats_sha256" in err and "tttttttt" in err and "ssssssss" in err
+    assert not recoders.exists()
+
+
+def test_a_store_without_a_hash_is_refused_naming_it_and_nothing_is_written(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    recoders = toy_stage1(tmp_path, monkeypatch)
+    doc_path = tmp_path / "stage1" / "store" / "v1" / "train" / "store.json"
+    doc = json.loads(doc_path.read_text())
+    del doc["meta"]["fit_sha256"]
+    doc_path.write_text(json.dumps(doc))
+    tt = load_script(monkeypatch)
+    assert tt.main(["train", "--arm", "net.series", "--cpu"]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("refused: ") and "fit_sha256" in err
+    assert not recoders.exists()
+
+
+def test_the_last_line_says_how_many_signals_have_no_verdict(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    toy_stage1(tmp_path, monkeypatch, names=(NAME, NAME2), val_missing=(NAME2,))
+    tt = load_script(monkeypatch)
+    shrink(monkeypatch)
+    rc = tt.main(["train", "--arm", "net.two", "--cpu", "--steps", "3", "--variant", "t"])
+    out = capsys.readouterr().out.strip().splitlines()
+    assert f"net.two.s0.t {NAME2}: no validation examples, no verdict" in out
+    assert "(1 of 2 signals unchecked: no validation examples)" in out[-1]
+    assert out[-1].startswith("net.two.s0.t: best val_mse ") and rc in (0, 3)
+
+
+def test_the_last_line_is_unchanged_when_every_signal_was_checked(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    toy_stage1(tmp_path, monkeypatch, names=(NAME, NAME2))
+    tt = load_script(monkeypatch)
+    shrink(monkeypatch)
+    tt.main(["train", "--arm", "net.two", "--cpu", "--steps", "3", "--variant", "t"])
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert "unchecked" not in last and "collapsed " in last and last.endswith(" s")

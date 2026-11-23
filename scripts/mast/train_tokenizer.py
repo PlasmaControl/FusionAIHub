@@ -12,7 +12,8 @@ of several signals leaves out beside each signal's own concatenated basis and on
 their streams, at the same number of values in all. `train --arm NAME` trains the network of one network arm on
 the stores (on one GPU, or on the CPU with `--cpu`) and writes ``<stage1>/recoders/<NAME>.s<seed>[.<variant>]``:
 the weights of the best validation, the log, the provenance and, last, ``result.json`` with the collapse check;
-it exits 3 if the network collapsed. It is the only sub-command that imports torch, and only after its refusals.
+it exits 3 if the network collapsed. Torch is loaded at import by the modules this script uses; `train` defers the CUDA
+device choice until after its refusals (`CUDA_VISIBLE_DEVICES` is set before any CUDA call).
 
 Units. "Front values" are what a front codec's ``encode_domain`` returns (`store.Norm` takes them to "example
 units": per-stream standardized), and "recoder values" are what a recoder returns. This file does nothing at
@@ -54,9 +55,10 @@ SHORT = {"ccbv": MAGNETICS[0], "obr": MAGNETICS[1], "obv": MAGNETICS[2], "flux":
          "cc": BANDS[0], "omv": BANDS[1]}
 HEADROOM_SCRIPT = Path(__file__).resolve().with_name("run_headroom.py")
 _VARIANT = re.compile(r"[A-Za-z0-9_-]+")
-DEFAULT_LR, DEFAULT_STEPS = 3e-4, 20000   # `train.TrainConfig`'s (a test holds them equal; torch is not imported here)
+DEFAULT_LR, DEFAULT_STEPS = 3e-4, 20000   # `train.TrainConfig`'s (a test holds them equal; `train.py` is imported only after the refusals, with the CUDA choice)
 RUN_FILES = ("result.json", "recoder.json", "best.pt", "train_log.csv", "norm.npz", "table.npz", "ranges.npz",
              "config.json", "trained_by.json")        # what a run writes, `result.json` first and so first to go
+STORE_HASHES = ("assignment_sha256", "fit_sha256", "stats_sha256")     # what a validation store must share with its training store
 BANDCAT_TOKENS = 54                       # tokens of 8 = 432 values: v1's 3 x (32 + 7 x 16) per Mirnov signal (ruling C4)
 
 
@@ -608,10 +610,22 @@ def run_train(args: argparse.Namespace) -> int:
 
     try:
         train, train_meta = store.load_store(dirs["train"], list(arm.signals))
-        val, _ = store.load_store(dirs["val"], list(arm.signals))
+        val, val_meta = store.load_store(dirs["val"], list(arm.signals))
     except (OSError, KeyError, ValueError) as e:
         raise Refused(f"the stores do not hold the signals of {arm.name} ({type(e).__name__}: {e})") from e
-    info = {n: train_meta["signals"][n] for n in arm.signals}
+    try:                                                        # every store-meta value the run needs, before any write
+        info = {n: train_meta["signals"][n] for n in arm.signals}
+        specs = [(n, info[n]["kind"], info[n]["n_streams"]) for n in arm.signals]
+        cache_dir = train_meta["cache_dir"]
+        hashes = {k: train_meta[k] for k in STORE_HASHES}
+        val_hashes = {k: val_meta[k] for k in STORE_HASHES}
+    except KeyError as e:
+        raise Refused(f"the store's store.json has no {e.args[0]!r} (a store from an older `store`?): "
+                      "write the stores again with `store --force`") from e
+    for k in STORE_HASHES:
+        if hashes[k] != val_hashes[k]:
+            raise Refused(f"the validation store's {k} ({val_hashes[k][:8]}) is not the training store's "
+                          f"({hashes[k][:8]}): the two stores are not of one assignment and fit")
     if arm.concat and len(arm.signals) != 1:
         raise Refused(f"{arm.name} is concatenated over {len(arm.signals)} signals; plan 1c has one per such arm")
     for n in arm.signals:
@@ -622,10 +636,9 @@ def run_train(args: argparse.Namespace) -> int:
     if not arm.concat and len(set(depths.values())) != 1:
         raise Refused(f"{arm.name} takes one stream at a time, and its signals have {depths} values per stream")
     d_in = train[arm.signals[0]].values.shape[1] * depths[arm.signals[0]] if arm.concat else depths[arm.signals[0]]
-    root = Path(train_meta["cache_dir"])
+    root = Path(cache_dir)
     try:
-        table = identity.build_table(registry.load_registry(root / "registry.csv"),
-                                     [(n, info[n]["kind"], info[n]["n_streams"]) for n in arm.signals])
+        table = identity.build_table(registry.load_registry(root / "registry.csv"), specs)
     except (OSError, ValueError) as e:
         raise Refused(f"the stream table cannot be made from {root / 'registry.csv'} ({type(e).__name__}: {e})") from e
     norms = {n: store.fit_norm(train[n].values) for n in arm.signals}
@@ -651,8 +664,7 @@ def run_train(args: argparse.Namespace) -> int:
             "arm": arm.name, "seed": args.seed, "variant": args.variant, "train": dataclasses.asdict(cfg), "net": net_config})
         rh._write_json_atomic(run_dir / "trained_by.json", {
             "learned_code_sha256": learned.code_sha256(), "tokenizer_code_sha256": code_sha256(),
-            "assignment_sha256": train_meta["assignment_sha256"], "fit_sha256": train_meta["fit_sha256"],
-            "stats_sha256": train_meta["stats_sha256"], "argv": list(args.argv),
+            **hashes, "argv": list(args.argv),
             "date": datetime.now(timezone.utc).isoformat()})
         try:
             result = trainer.train(net_config, cfg, train_ex, val_ex, table, run_dir, device,
@@ -683,8 +695,10 @@ def run_train(args: argparse.Namespace) -> int:
                                                         "usage": usage})
     finally:
         rh._release_lock(lock)
+    unchecked = [n for n, u in usage.items() if u["collapsed"] is None]
+    note = f" ({len(unchecked)} of {len(usage)} signals unchecked: no validation examples)" if unchecked else ""
     print(f"{name}: best val_mse {result['best_val_mse']:.4g} at step {result['best_step']} of {result['steps']}, "
-          f"plateau {'yes' if plateau else 'no'}, collapsed {'yes' if collapsed else 'no'}, {result['seconds']:.0f} s",
+          f"plateau {'yes' if plateau else 'no'}, collapsed {'yes' if collapsed else 'no'}{note}, {result['seconds']:.0f} s",
           flush=True)
     return 3 if collapsed else 0
 
