@@ -4,7 +4,7 @@ title: "IGNITE on MAST: stage 1 fixed tokenizers"
 
 # IGNITE on MAST: stage 1 fixed tokenizers
 
-**Status: measured (2026-11-23). The assignment `v1` (1,470 values per 5 ms frame) passes the gate on all 57 (task, signal) pairs; five pairs miss the fidelity target, each recorded with its cost, and one input signal (`interferometer-n_e_line`, through one shot) misses its reconstruction target. Stage 1c's learned tokenizers are built and not measured yet.**
+**Status: measured (2026-11-23). The assignment `v1` (1,470 values per 5 ms frame) passes the gate on all 57 (task, signal) pairs; five pairs miss the fidelity target, each recorded with its cost, and one input signal (`interferometer-n_e_line`, through one shot) misses its reconstruction target. Stage 1c's learned tokenizers are measured (2026-11-23, see [Learned tokenizers (stage 1c)](#learned-tokenizers-stage-1c)): no network or shared learned tokenizer replaces a fixed codec, and the linear concatenated basis clearly beats the shared one on the four magnetics arrays.**
 
 ## What this is
 
@@ -459,6 +459,24 @@ Measured 2026-11-23 (job K3, `assign --name v1`, from the ladders on 100 `val_se
 
 Total: 1470 values per 5 ms frame.
 
+**The assignment `v1b` (ruling C29).** The solenoid current and the coil currents of task 2-1 are at K 1 in `v1`,
+where passing the direct model's prediction through the tokenizer costs 15.5% on the solenoid current
+(see [Results](#results) above, which left to the owner whether rule 2 should also bound the pass-through cost).
+Ruling C29 (2026-11-23, 06:38 UTC) applied the stated default of that owner item, since the owner had not said no
+and the numbers it needs were already measured: K 2 for both currents, the "2 to 4 values per frame" of the item.
+That is 11 more values per frame (1 for the solenoid current, 10 for the coil currents), so 1,481 values per frame
+instead of 1,470, in `assignments/v1b.json`; `v1` is untouched and only these two settings differ. Measured
+2026-11-23 on all 520 `val_report` shots of task 2-1 (the `s90k` model, `ranged`, `pass / raw - 1` on the same
+shots): the solenoid current costs +16.15% with `v1` and -0.34% with `v1b`, the coil currents +0.71% and -0.27%,
+the task's mean +0.17% and -0.01%. The input round-trip on `val_report`, `ranged`, is in
+[The decisions](#the-input-round-trip-of-v1-v1b-and-v2c): task 1-2, the task the plan reads it on, goes from
++1.21% with `v1` to +0.24% with `v1b`, and no task is above
++0.24%. The gate on `v1b` (2026-11-23, 07:40 UTC, all
+three read-outs on `val_report`) says `57 rows, 0 not scored, 0 block`, as for `v1`, and the two tables differ in
+two rows only, the two currents of task 2-1: `unquantized` floor 0.0161 to 0.0075 for the coil currents and 0.0133
+to 0.0021 for the solenoid current. If the owner says no, `v1b` is deleted (one file and its scores) and stage 2
+starts on `v1`; the cost of keeping it is 11 values per frame on two signals (0.75%).
+
 ### The gate
 
 One row per (task, output signal) pair, the columns of `gate_rows`. `target` is
@@ -589,14 +607,52 @@ Measured 2026-11-23 (job K4 on 100 `val_select` shots, `unquantized`; job K6 on 
 
 ## Learned tokenizers (stage 1c)
 
-Stage 1c's learned tokenizers are built and not measured yet. The code and its
-tests are committed. None of the controller jobs M1 to M10 under
-[How to run stage 1c](#how-to-run-stage-1c) has run, so every table under
-[Results of the comparison](#results-of-the-comparison) is empty and says "Not
-measured yet." No number in this section is a stage-1c result yet. The numbers
-of the design (sizes, probabilities, thresholds) are the plan's choices, and the
-measured facts it cites (rulings C15, C17 and C26) carry their date, their split
-and their number of shots. The plan is
+Stage 1c's learned tokenizers are built and measured. Jobs M1 to M10 of
+[How to run stage 1c](#how-to-run-stage-1c) ran on 2026-11-23. The bases and networks were fitted on the 2,000
+training shots of the fit and compared on 100 `val_select` shots (62 to 100 scored per signal), and where a rule
+asks for it the comparison was confirmed on all 557 `val_report` shots. The five tables under
+[Results of the comparison](#results-of-the-comparison) hold every number. Each error is a tokenizer floor in
+TokaMark units, the score of a perfect prediction of the tokens, and not an IGNITE score. What the tables say:
+
+- **No network tokenizer beats its linear counterpart.** Of the 13 networks, four collapsed under rule 7
+  (ruling C33), also after their 40,000-step runs: `net.series` on `interferometer-n_e_line` and the three Mirnov
+  per-stream arms. The other nine lost on all 30 signal rows of their ten comparisons (`val_select`, 62 to 100
+  shots; 26 rows clearly, the four rows of the Mirnov concatenated network by "b beats a"), and the nine retries at
+  learning rate 1e-4 lost too (rule 8), so no seeds 1 and 2 were trained. The checkpoints and the comparison use
+  the same 100 `val_select` shots, which favours the networks (inferred, see [The trainings](#the-trainings)), and
+  they still lose.
+- **The linear concatenated arm wins on the four magnetics arrays (rule 6).** `c-pca` clearly beats the best shared
+  arm `s-klt` on `ccbv`, `obr`, `obv` and `flux`, with gaps 0.643, 0.475, 0.635 and 0.791 on `val_select`
+  (100 shots) and 0.633, 0.474, 0.631 and 0.788 on `val_report` (557 shots); the low end of every 95% interval is
+  above 0.44 on both splits. Its cost is a missing channel: dropping one raises the error of the others by a
+  factor of 3.510 on `flux` (1.069 on `ccbv`, 1.009 on `obr`, 1.000 on `obv`; `val_report`), where the per-channel
+  arms are unaffected by construction.
+- **Own beats shared in linear form.** On `val_report` (557 shots) `o-klt` has a lower error than `s-klt` on all
+  four arrays (gaps 0.182 on `ccbv`, 0.008 on `obr`, 0.335 on `obv`, 0.426 on `flux`), so the owner's point that
+  one encoder fed more data does better does not hold in linear form on the magnetics. On the two Mirnov signals
+  the shared (`b-klt`) and own (`bo-klt`) arms tie (`val_select`, 62 shots), which ruling C17 expected.
+- **Nothing replaces the cosine transform (rule 4) or the linear baselines (rule 5).** `s-klt` loses to `v1` on 13
+  of the 17 series signals (clearly on 7), ties on 3 and beats it on one, the solenoid current at `v1`'s K 1 (gap
+  0.028, 89 shots). At `v1b`'s K 2 (ruling C42) `v1b` clearly beats `s-klt.b` on both currents (solenoid current
+  0.002212 against 0.005913, coil currents 0.007586 against 0.009755; `val_select`, 89 shots). The profile and map
+  networks lose clearly to `v1` at both learning rates (76 to 92 shots), and the Mirnov networks collapsed or lost
+  to `bc-pca`.
+- **`v2` equals `v1b`, and `v2c` exists.** No learned arm replaced anything, so `v2` was not built as a separate
+  file. `v2c` is `v1b` with `pca.ccbv`, `pca.obr`, `pca.obv` and `pca.flux` at `v1b`'s values per frame (160, 18, 36
+  and 30). Its input round-trip on `val_report` (`ranged`, `inputs / raw - 1` on the same shots) is
+  +0.08% on task 1-1 (520 shots), +0.11% on 1-2 (525),
+  +0.01% on 2-1 (520) and -0.63% on 4-1 (531), against +0.13%,
+  +0.24%, +0.03% and -0.63% for `v1b`
+  (the table under [The decisions](#the-input-round-trip-of-v1-v1b-and-v2c)).
+- **The token count is reported and not adopted (open decision 2).** On `val_report` (557 shots) `c-pca` reaches
+  0.0176 with 40 values per frame on `ccbv` and 12 on `flux`, where `s-klt` needs 160 and 30; on `obr` (18) and
+  `obv` (36) it needs what `o-klt` needs, and `s-klt` needs 72 on `obv`. `v2c` keeps `v1b`'s values per frame.
+- **Open decision 1 now applies, taken as the plan's author recommends.** Stage 2's smallest pretraining runs on
+  both `v2` and `v2c` and decides on the scores of tasks 1-1 and 1-2; nothing is adopted here. Stage 2 starts on
+  `v1b` (ruling C29, see [Rules of the comparison](#rules-of-the-comparison)).
+
+The numbers of the design (sizes, probabilities, thresholds) are the plan's choices, and the measured facts it cites
+(rulings C15, C17 and C26) carry their date, their split and their number of shots. The plan is
 `docs/superpowers/plans/2026-11-22-ignite-mast-stage1c-learned-tokenizers.md`.
 
 **What a recoder is.** A learned tokenizer of this stage is a recoder placed
@@ -759,9 +815,15 @@ the seven rules of [Rules](#rules) above and do not replace them.
 
     *Fixed before the measurement, 2026-11-22.*
 
+Written 2026-11-23, after the rules above and without changing them: stage 2 starts on `v1b`, not on `v1` (ruling
+C29, see [The assignment](#the-assignment)), and job M9 built `v2c` from `v1b`. Nothing learned replaced anything,
+so `v2` equals `v1b`.
+
 **Readings the controller added before any measurement.** Four readings, written
-on 2026-11-23 before any production store, recoder or comparison existed. None
-changes a rule above.
+on 2026-11-23. Three of them (rulings C11, C15 and C17) came before any production
+store, recoder or comparison existed. The fourth, C33, was written at 07:15 UTC,
+after the production store (written by 07:10:34) and the linear recoders (07:10:38
+to 07:10:58) were built and before any network was trained. None changes a rule above.
 
 - **`interferometer-n_e_line` is one shot's row (ruling C11).** Its cache-side error
   in a comparison is carried by one shot, 16575, one of the 100 `val_select` shots
@@ -807,6 +869,80 @@ changes a rule above.
   of each token's first value, the active tokens, the distinct and all examples and
   the share of the most common row are recorded per signal in `result.json`, so the
   literal reading can be applied afterwards without training again.
+
+**Readings added during the measurement.** Six more readings were written on 2026-11-23
+and, unlike the four above, each was written with some result in view. C37 (07:31 UTC) came
+one minute after M6 started and before any network result. C39 to C43 (07:43 to 08:10 UTC)
+came after M6's results were seen. None changes a rule above. Each says what was
+decided, why, and what it costs if wrong.
+
+- **A signal that cannot vary has no verdict (ruling C37).** When a training exits 3
+  (collapsed), a signal with fewer than 2 distinct finite validation rows
+  (`n_distinct_examples` under 2) has its verdict read as "no verdict" (its input
+  cannot vary, and no data is not a negative), and the arm's verdict is read again from
+  its other signals. Two distinct rows can reach a normalised entropy of ln 2 / ln 8 =
+  0.333, above 0.3, so 2 is the smallest count at which the verdict can be the
+  network's. No code changed. It was applied to no arm: every signal that failed has at
+  least 8,576 distinct validation rows (`n_distinct_examples` in `result.json`,
+  2026-11-23). If wrong, an arm whose only failing signal never varies is kept, and it
+  can win only on fidelity.
+- **Rule 8's extension covers the collapsed arms (ruling C39).** Every run whose
+  plateau is "no" was extended once (`--steps 40000 --variant long`), the four collapsed
+  ones included, because rule 8 triggers on the validation curve and not on a verdict.
+  Ten arms were extended and three were not (`net.mag`, `net.flux`, `net.bandcat.cc`).
+  From then on the long run is the arm's seed-0 run, for the collapse verdict and for
+  M7, whether or not its `val_mse` is lower: choosing between the two on `val_select`
+  would select twice on the same 100 shots. No arm is extended again and none gets a
+  further try for a collapse; the s0 runs stay on disk and are in
+  [the trainings table](#the-trainings). A retry at 1e-4 or seeds 1 and 2 use the
+  steps of the run they repeat. The four collapsed arms were collapsed again after
+  40,000 steps. Measured 2026-11-23 from `train_log.csv`: a long run repeats its s0
+  run's first 20 validation rows exactly for 5 of the 10 arms and differs for
+  the other 5 by up to 0.066 in `val_mse`, so it is a second training with
+  the same seed and not a continuation. If wrong, a collapsed arm got one training more
+  than the plan gives it; had its long run not collapsed, it would enter the comparisons,
+  where it can win only on fidelity, and the page would still show its s0 collapse.
+- **Which pairs M7 runs (ruling C40).** M7 runs the plan's pairs (M5's with the network in
+  place of the linear arm, without the scaled `.h` and `.q` arms that networks do not have,
+  plus `s-net0:s-klt`, `b-net0:b-klt`, `p-net0:v1` and `m-net0:v1`) and two more,
+  `c-net0:c-pca` and `bc-net0:bc-pca`. Reason: rule 4 picks "the better on `val_select`"
+  of the linear and network shared arms, and rule 6 picks the best concatenated arm the
+  same way, for which the plan lists no paired comparison. The two extra pairs need no new
+  floor. An assignment whose source `recode` refuses (collapsed, exit 2) is not built, and
+  its pairs are skipped and logged. If wrong, two extra tables that decide nothing the
+  others do not let one derive.
+- **Which networks "lost" at seed 0 (ruling C41).** A network loses when the comparison
+  for the slot it competes for goes against it. For `p-net0` and `m-net0` (rule 5) that is
+  `v1`; for the concatenated networks `c-net0` and `bc-net0` (rule 6's best concatenated
+  arm, chosen on `val_select`) it is `c-pca` and `bc-pca`; for `o-net0` (rule 6's own arm)
+  it is `o-klt`, so the pair `o-net0:o-klt` was added (cache side, no new floor). By that
+  reading all nine trained networks lost, and each was trained once more at learning rate
+  1e-4 (`--variant lr1e4`) with the steps of the run it repeats (40,000 for six, 20,000 for
+  `net.mag`, `net.flux` and `net.bandcat.cc`), recoded to `o-net0r`, `c-net0r`, `bc-net0r`,
+  `p-net0r` and `m-net0r`, and compared in the same pairs plus `o-net0r:o-klt`. A retry that
+  still loses leaves the loss standing; one that won would get seeds 1 and 2. If wrong,
+  the cost is nine trainings (109 to 604 s each, 2026-11-23) that rule 8 may not have
+  required; a retry that flipped a loss is read by the same rules.
+- **Rule 4 is read again at the K that `v1b` has (ruling C42).** Rule 4's only `val_select`
+  win in linear form is `s-klt` on the solenoid current, measured at `v1`'s K 1 (rule 3),
+  while `v2` is built from `v1b`, where the two currents have K 2 (ruling C29). A win at
+  K 1 says nothing about K 2: the `unquantized` floor of the solenoid current on
+  `val_report` is 0.0021 with `v1b` and 0.0133 with `v1`. So the two currents were
+  compared again at `v1b`'s K (`s-klt.b`, recoded from `v1b` with `klt.series`, against
+  `v1b`, floors of task 2-1 on `val_select`), and a signal enters `v2` only if it beats
+  `v1b` there and again on `val_report`. Every other series signal keeps `v1`'s verdict,
+  since `v1b` equals `v1` on it. If wrong, the currents would be judged at a K that stage 2
+  does not use; the cost was two floor passes on the CPU.
+- **The input round-trip of `v2c` is scored on four tasks (ruling C43).** `v2` equals `v1b`
+  unless a retry won (rule 4 none by C42, rule 5 all lost at seed 0), and `v1b`'s round-trip
+  was already measured (ruling C29). `v2c` is scored with `--instrument inputs` on all
+  `val_report` shots: `ranged` on tasks 1-1 (`s90k`), 1-2 (`lr1e4`), 2-1 (`s90k`) and 4-1
+  (`h050b256`), like for like with the `v1` of K6 and the `v1b` of C29; and `unquantized`,
+  the plan's mode, with `v1b` and `v2c` on 1-1 and 1-2. The magnetics arrays are inputs to
+  12 of 14 tasks (all but 3-1 and 3-2), so 2-1 and 4-1 were added to the plan's 1-1 and 1-2.
+  No task predicts a magnetics signal, so `v2c` changes no task's output and needs no floor
+  (M9 asks for floors "for every task with a changed output signal"). The gate on `v2` is
+  `v1b`'s (07:40 UTC, 57 rows, 0 block). If wrong, 8 GPU passes (52 s to 22 minutes each, 2026-11-23, `m9_inputs.meta`).
 
 ### Where stage 1c departs from the design
 
@@ -1036,15 +1172,18 @@ that guide the verdict of task 1-2 is not firm.
 
 After M9 the controller fills the five tables below, sets the status line of this
 page and commits with the numbers, their date, split and shot counts in the body.
-Stage 2 does not wait for any of this: it starts on `v1`.
+Stage 2 does not wait for any of this: it starts on `v1` (on `v1b` since ruling C29, see
+[Rules of the comparison](#rules-of-the-comparison)).
 
 ### Results of the comparison
 
-Five tables, each with column heads only. Each one is filled with its date, split
-and number of shots in the line above it, as the tables of
-[Results](#results) are, and none holds a number before the job that produces it
-has run. A cell that stays empty is a score nobody has stored; it is not 0 and not
-a good result.
+Five tables and one small one (the input round-trip of `v2c`, ruling C43), filled
+on 2026-11-23 by a script that reads the files stored under `$S1` and types no number
+by hand. Each has its date, split and number of shots in the line above it, as the
+tables of [Results](#results) are. A cell that is empty is a quantity nobody stored
+for that row (the text under each table says which); it is not 0 and not a good
+result, and "no data" is written where a quantity should exist and does not. Every error
+is a tokenizer floor, not an IGNITE score.
 
 #### The linear arms
 
@@ -1061,10 +1200,147 @@ two reach columns (`reach_a`, `reach_b`) are the smallest size of the arm, taken
 at 1/8, 1/4, 1/2, 1 and 2 times its values, whose error is at or under 0.0176
 (`--reach`), empty if none is.
 
-| Pair (a:b) | Signal | Source | Values per frame (a) | Values per frame (b) | Shots | Mean error (a) | Mean error (b) | Gap | Gap, low end | Gap, high end | Gap of b against a | Low end (b against a) | High end (b against a) | Word at one seed | Missing-channel ratio (a) | Missing-channel ratio (b) | Values to reach 0.0176 (a) | Values to reach 0.0176 (b) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+Measured 2026-11-23: the 13 pairs of job M5 (`compare --drop-channel --reach 0.0176`, 07:51 to
+07:52 UTC, label `val_select-n100`: 100 `val_select` shots asked, 62 to 100 scored per signal, the
+shots named in the "Shots" column); `s-klt.b:v1b` of ruling C42 (task 2-1, 89 shots); and the four
+`val_report` pairs of M9 (the confirmation of rule 6, all 557 `val_report` shots, the four magnetics arrays
+only). 18 pairs, 123 rows. The column "Label" is the split of the row. Tokenizers
+a and b hold the same values per frame, except the `.h` and `.q` arms, whose halves and quarters are rounded to
+whole tokens (rule 3).
 
-Not measured yet.
+| Pair (a:b) | Label | Signal | Source | Values per frame (a) | Values per frame (b) | Shots | Mean error (a) | Mean error (b) | Gap | Gap, low end | Gap, high end | Gap of b against a | Low end (b against a) | High end (b against a) | Word at one seed | Missing-channel ratio (a) | Missing-channel ratio (b) | Values to reach 0.0176 (a) | Values to reach 0.0176 (b) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `s-klt:v1` | `val_select-n100` | `gas_injection-total_injected` | cache | 1 | 1 | 88 | 0.007792 | 0.007902 | 0.014 | -0.034 | 0.053 | -0.014 | -0.056 | 0.032 | tie |  |  |  |  |
+| `s-klt:v1` | `val_select-n100` | `interferometer-n_e_line` | cache | 16 | 16 | 91 | 0.2267 | 0.2267 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | tie |  |  |  |  |
+| `s-klt:v1` | `val_select-n100` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.01627 | 0.01327 | -0.226 | -0.280 | -0.177 | 0.185 | 0.150 | 0.219 | b clearly beats a | 1.000 | 1.000 | 160 | 160 |
+| `s-klt:v1` | `val_select-n100` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.01596 | 0.01588 | -0.005 | -0.008 | -0.003 | 0.005 | 0.003 | 0.008 | b beats a | 1.000 | 1.000 | 18 | 18 |
+| `s-klt:v1` | `val_select-n100` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.01861 | 0.01242 | -0.498 | -0.523 | -0.473 | 0.333 | 0.321 | 0.343 | b clearly beats a | 1.000 | 1.000 | 72 | 36 |
+| `s-klt:v1` | `val_select-n100` | `magnetics-b_field_tor_probe_saddle_voltage` | cache | 12 | 12 | 98 | 0.01311 | 0.01278 | -0.026 | -0.033 | -0.020 | 0.025 | 0.019 | 0.032 | b beats a | 1.000 | 1.000 | 12 | 12 |
+| `s-klt:v1` | `val_select-n100` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.01221 | 0.007239 | -0.687 | -0.720 | -0.655 | 0.407 | 0.396 | 0.419 | b clearly beats a | 1.000 | 1.000 | 30 | 30 |
+| `s-klt:v1` | `val_select-n100` | `pf_active-coil_current` | task_2-1 | 10 | 10 | 89 | 0.01718 | 0.01714 | -0.003 | -0.011 | 0.005 | 0.003 | -0.005 | 0.011 | tie |  |  |  |  |
+| `s-klt:v1` | `val_select-n100` | `pf_active-coil_voltage` | cache | 16 | 16 | 99 | 0.0168 | 0.01597 | -0.052 | -0.091 | -0.043 | 0.050 | 0.041 | 0.083 | b beats a | 1.000 | 1.000 | 16 | 16 |
+| `s-klt:v1` | `val_select-n100` | `pf_active-solenoid_current` | task_2-1 | 1 | 1 | 89 | 0.01362 | 0.01402 | 0.028 | 0.018 | 0.040 | -0.029 | -0.041 | -0.019 | a beats b |  |  |  |  |
+| `s-klt:v1` | `val_select-n100` | `pulse_schedule-i_plasma` | cache | 2 | 2 | 98 | 0.01329 | 0.00989 | -0.344 | -0.452 | -0.267 | 0.256 | 0.210 | 0.311 | b clearly beats a |  |  |  |  |
+| `s-klt:v1` | `val_select-n100` | `pulse_schedule-n_e_line` | cache | 1 | 1 | 99 | 0.01176 | 0.009983 | -0.178 | -0.288 | -0.101 | 0.151 | 0.092 | 0.224 | b clearly beats a |  |  |  |  |
+| `s-klt:v1` | `val_select-n100` | `soft_x_rays-horizontal_cam_lower` | task_4-1 | 36 | 36 | 95 | 0.0519 | 0.05067 | -0.024 | -0.035 | -0.016 | 0.024 | 0.016 | 0.034 | b beats a |  |  |  |  |
+| `s-klt:v1` | `val_select-n100` | `soft_x_rays-horizontal_cam_upper` | task_4-1 | 72 | 72 | 95 | 0.04907 | 0.04804 | -0.021 | -0.033 | -0.014 | 0.021 | 0.014 | 0.032 | b beats a |  |  |  |  |
+| `s-klt:v1` | `val_select-n100` | `spectrometer_visible-filter_spectrometer_dalpha_voltage` | task_3-2 | 6 | 6 | 95 | 0.15 | 0.143 | -0.049 | -0.058 | -0.041 | 0.046 | 0.039 | 0.055 | b beats a |  |  |  |  |
+| `s-klt:v1` | `val_select-n100` | `summary-ip` | task_2-1 | 4 | 4 | 89 | 0.01894 | 0.01468 | -0.291 | -0.321 | -0.261 | 0.225 | 0.207 | 0.243 | b clearly beats a |  |  |  |  |
+| `s-klt:v1` | `val_select-n100` | `summary-power_nbi` | cache | 8 | 8 | 90 | 0.01705 | 0.01473 | -0.158 | -0.201 | -0.119 | 0.136 | 0.106 | 0.167 | b clearly beats a |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `gas_injection-total_injected` | cache | 1 | 1 | 88 | 0.007792 | 0.007902 | 0.014 | -0.034 | 0.053 | -0.014 | -0.056 | 0.032 | tie |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `interferometer-n_e_line` | cache | 16 | 16 | 91 | 0.2267 | 0.2267 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | tie |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.01627 | 0.01314 | -0.238 | -0.286 | -0.194 | 0.193 | 0.162 | 0.222 | b clearly beats a | 1.000 | 1.000 | 160 | 160 |
+| `s-klt:o-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.01596 | 0.01585 | -0.007 | -0.009 | -0.005 | 0.007 | 0.005 | 0.009 | b beats a | 1.000 | 1.000 | 18 | 18 |
+| `s-klt:o-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.01861 | 0.01223 | -0.521 | -0.546 | -0.496 | 0.343 | 0.331 | 0.353 | b clearly beats a | 1.000 | 1.000 | 72 | 36 |
+| `s-klt:o-klt` | `val_select-n100` | `magnetics-b_field_tor_probe_saddle_voltage` | cache | 12 | 12 | 98 | 0.01311 | 0.01278 | -0.026 | -0.033 | -0.020 | 0.025 | 0.019 | 0.032 | b beats a | 1.000 | 1.000 | 12 | 12 |
+| `s-klt:o-klt` | `val_select-n100` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.01221 | 0.007112 | -0.717 | -0.751 | -0.684 | 0.418 | 0.406 | 0.429 | b clearly beats a | 1.000 | 1.000 | 30 | 30 |
+| `s-klt:o-klt` | `val_select-n100` | `pf_active-coil_current` | task_2-1 | 10 | 10 | 89 | 0.01718 | 0.01714 | -0.003 | -0.011 | 0.005 | 0.003 | -0.005 | 0.011 | tie |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `pf_active-coil_voltage` | cache | 16 | 16 | 99 | 0.0168 | 0.01597 | -0.052 | -0.091 | -0.043 | 0.050 | 0.041 | 0.083 | b beats a | 1.000 | 1.000 | 16 | 16 |
+| `s-klt:o-klt` | `val_select-n100` | `pf_active-solenoid_current` | task_2-1 | 1 | 1 | 89 | 0.01362 | 0.01402 | 0.028 | 0.018 | 0.040 | -0.029 | -0.041 | -0.019 | a beats b |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `pulse_schedule-i_plasma` | cache | 2 | 2 | 98 | 0.01329 | 0.00989 | -0.344 | -0.452 | -0.267 | 0.256 | 0.210 | 0.311 | b clearly beats a |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `pulse_schedule-n_e_line` | cache | 1 | 1 | 99 | 0.01176 | 0.009983 | -0.178 | -0.288 | -0.101 | 0.151 | 0.092 | 0.224 | b clearly beats a |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `soft_x_rays-horizontal_cam_lower` | task_4-1 | 36 | 36 | 95 | 0.0519 | 0.05067 | -0.024 | -0.035 | -0.016 | 0.024 | 0.016 | 0.034 | b beats a |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `soft_x_rays-horizontal_cam_upper` | task_4-1 | 72 | 72 | 95 | 0.04907 | 0.04804 | -0.021 | -0.033 | -0.014 | 0.021 | 0.014 | 0.032 | b beats a |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `spectrometer_visible-filter_spectrometer_dalpha_voltage` | task_3-2 | 6 | 6 | 95 | 0.15 | 0.143 | -0.049 | -0.058 | -0.041 | 0.046 | 0.039 | 0.055 | b beats a |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `summary-ip` | task_2-1 | 4 | 4 | 89 | 0.01894 | 0.01468 | -0.291 | -0.321 | -0.261 | 0.225 | 0.207 | 0.243 | b clearly beats a |  |  |  |  |
+| `s-klt:o-klt` | `val_select-n100` | `summary-power_nbi` | cache | 8 | 8 | 90 | 0.01705 | 0.01473 | -0.158 | -0.201 | -0.119 | 0.136 | 0.106 | 0.167 | b clearly beats a |  |  |  |  |
+| `c-pca:o-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.005814 | 0.01314 | 0.558 | 0.519 | 0.590 | -1.260 | -1.438 | -1.078 | a clearly beats b | 1.072 | 1.000 | 40 | 160 |
+| `c-pca:o-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.008377 | 0.01585 | 0.472 | 0.438 | 0.501 | -0.893 | -1.004 | -0.781 | a clearly beats b | 1.011 | 1.000 | 18 | 18 |
+| `c-pca:o-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.006787 | 0.01223 | 0.445 | 0.421 | 0.467 | -0.803 | -0.876 | -0.728 | a clearly beats b | 1.000 | 1.000 | 36 | 36 |
+| `c-pca:o-klt` | `val_select-n100` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.002548 | 0.007112 | 0.642 | 0.629 | 0.655 | -1.792 | -1.901 | -1.692 | a clearly beats b | 3.518 | 1.000 | 12 | 30 |
+| `c-pca:s-klt` | `val_select-n100` | `gas_injection-total_injected` | cache | 1 | 1 | 88 | 0.007902 | 0.007792 | -0.014 | -0.056 | 0.032 | 0.014 | -0.034 | 0.053 | tie |  |  |  |  |
+| `c-pca:s-klt` | `val_select-n100` | `interferometer-n_e_line` | cache | 16 | 16 | 91 | 0.2267 | 0.2267 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | tie |  |  |  |  |
+| `c-pca:s-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.005814 | 0.01627 | 0.643 | 0.603 | 0.673 | -1.799 | -2.062 | -1.521 | a clearly beats b | 1.072 | 1.000 | 40 | 160 |
+| `c-pca:s-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.008377 | 0.01596 | 0.475 | 0.442 | 0.504 | -0.906 | -1.018 | -0.793 | a clearly beats b | 1.011 | 1.000 | 18 | 18 |
+| `c-pca:s-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.006787 | 0.01861 | 0.635 | 0.620 | 0.649 | -1.743 | -1.852 | -1.628 | a clearly beats b | 1.000 | 1.000 | 36 | 72 |
+| `c-pca:s-klt` | `val_select-n100` | `magnetics-b_field_tor_probe_saddle_voltage` | cache | 12 | 12 | 98 | 0.01278 | 0.01311 | 0.025 | 0.019 | 0.032 | -0.026 | -0.033 | -0.020 | a beats b | 1.000 | 1.000 | 12 | 12 |
+| `c-pca:s-klt` | `val_select-n100` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.002548 | 0.01221 | 0.791 | 0.784 | 0.799 | -3.793 | -3.970 | -3.628 | a clearly beats b | 3.518 | 1.000 | 12 | 30 |
+| `c-pca:s-klt` | `val_select-n100` | `pf_active-coil_current` | task_2-1 | 10 | 10 | 89 | 0.01714 | 0.01718 | 0.003 | -0.005 | 0.011 | -0.003 | -0.011 | 0.005 | tie |  |  |  |  |
+| `c-pca:s-klt` | `val_select-n100` | `pf_active-coil_voltage` | cache | 16 | 16 | 99 | 0.01597 | 0.0168 | 0.050 | 0.041 | 0.083 | -0.052 | -0.091 | -0.043 | a beats b | 1.000 | 1.000 | 16 | 16 |
+| `c-pca:s-klt` | `val_select-n100` | `pf_active-solenoid_current` | task_2-1 | 1 | 1 | 89 | 0.01402 | 0.01362 | -0.029 | -0.041 | -0.019 | 0.028 | 0.018 | 0.040 | b beats a |  |  |  |  |
+| `c-pca:s-klt` | `val_select-n100` | `pulse_schedule-i_plasma` | cache | 2 | 2 | 98 | 0.00989 | 0.01329 | 0.256 | 0.210 | 0.311 | -0.344 | -0.452 | -0.267 | a clearly beats b |  |  |  |  |
+| `c-pca:s-klt` | `val_select-n100` | `pulse_schedule-n_e_line` | cache | 1 | 1 | 99 | 0.009983 | 0.01176 | 0.151 | 0.092 | 0.224 | -0.178 | -0.288 | -0.101 | a clearly beats b |  |  |  |  |
+| `c-pca:s-klt` | `val_select-n100` | `soft_x_rays-horizontal_cam_lower` | task_4-1 | 36 | 36 | 95 | 0.05067 | 0.0519 | 0.024 | 0.016 | 0.034 | -0.024 | -0.035 | -0.016 | a beats b |  |  |  |  |
+| `c-pca:s-klt` | `val_select-n100` | `soft_x_rays-horizontal_cam_upper` | task_4-1 | 72 | 72 | 95 | 0.04804 | 0.04907 | 0.021 | 0.014 | 0.032 | -0.021 | -0.033 | -0.014 | a beats b |  |  |  |  |
+| `c-pca:s-klt` | `val_select-n100` | `spectrometer_visible-filter_spectrometer_dalpha_voltage` | task_3-2 | 6 | 6 | 95 | 0.143 | 0.15 | 0.046 | 0.039 | 0.055 | -0.049 | -0.058 | -0.041 | a beats b |  |  |  |  |
+| `c-pca:s-klt` | `val_select-n100` | `summary-ip` | task_2-1 | 4 | 4 | 89 | 0.01468 | 0.01894 | 0.225 | 0.207 | 0.243 | -0.291 | -0.321 | -0.261 | a clearly beats b |  |  |  |  |
+| `c-pca:s-klt` | `val_select-n100` | `summary-power_nbi` | cache | 8 | 8 | 90 | 0.01473 | 0.01705 | 0.136 | 0.106 | 0.167 | -0.158 | -0.201 | -0.119 | a clearly beats b |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `gas_injection-total_injected` | cache | 1 | 1 | 88 | 0.007902 | 0.007792 | -0.014 | -0.056 | 0.032 | 0.014 | -0.034 | 0.053 | tie |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `interferometer-n_e_line` | cache | 16 | 16 | 91 | 0.2267 | 0.2267 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | tie |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 80 | 160 | 100 | 0.009392 | 0.01627 | 0.423 | 0.386 | 0.455 | -0.733 | -0.834 | -0.628 | a clearly beats b | 1.219 | 1.000 | 40 | 160 |
+| `c-pca.h:s-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_obr_field` | cache | 6 | 18 | 100 | 0.06278 | 0.01596 | -2.933 | -3.498 | -2.466 | 0.746 | 0.711 | 0.778 | b clearly beats a | 1.170 | 1.000 |  | 18 |
+| `c-pca.h:s-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_obv_field` | cache | 18 | 36 | 100 | 0.01819 | 0.01861 | 0.023 | -0.026 | 0.066 | -0.023 | -0.071 | 0.025 | tie | 1.000 | 1.000 | 36 | 72 |
+| `c-pca.h:s-klt` | `val_select-n100` | `magnetics-b_field_tor_probe_saddle_voltage` | cache | 12 | 12 | 98 | 0.01278 | 0.01311 | 0.025 | 0.019 | 0.032 | -0.026 | -0.033 | -0.020 | a beats b | 1.000 | 1.000 | 12 | 12 |
+| `c-pca.h:s-klt` | `val_select-n100` | `magnetics-flux_loop_flux` | cache | 12 | 30 | 100 | 0.01451 | 0.01221 | -0.188 | -0.243 | -0.132 | 0.158 | 0.116 | 0.196 | b clearly beats a | 7.747 | 1.000 | 12 | 30 |
+| `c-pca.h:s-klt` | `val_select-n100` | `pf_active-coil_current` | task_2-1 | 10 | 10 | 89 | 0.01714 | 0.01718 | 0.003 | -0.005 | 0.011 | -0.003 | -0.011 | 0.005 | tie |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `pf_active-coil_voltage` | cache | 16 | 16 | 99 | 0.01597 | 0.0168 | 0.050 | 0.041 | 0.083 | -0.052 | -0.091 | -0.043 | a beats b | 1.000 | 1.000 | 16 | 16 |
+| `c-pca.h:s-klt` | `val_select-n100` | `pf_active-solenoid_current` | task_2-1 | 1 | 1 | 89 | 0.01402 | 0.01362 | -0.029 | -0.041 | -0.019 | 0.028 | 0.018 | 0.040 | b beats a |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `pulse_schedule-i_plasma` | cache | 2 | 2 | 98 | 0.00989 | 0.01329 | 0.256 | 0.210 | 0.311 | -0.344 | -0.452 | -0.267 | a clearly beats b |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `pulse_schedule-n_e_line` | cache | 1 | 1 | 99 | 0.009983 | 0.01176 | 0.151 | 0.092 | 0.224 | -0.178 | -0.288 | -0.101 | a clearly beats b |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `soft_x_rays-horizontal_cam_lower` | task_4-1 | 36 | 36 | 95 | 0.05067 | 0.0519 | 0.024 | 0.016 | 0.034 | -0.024 | -0.035 | -0.016 | a beats b |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `soft_x_rays-horizontal_cam_upper` | task_4-1 | 72 | 72 | 95 | 0.04804 | 0.04907 | 0.021 | 0.014 | 0.032 | -0.021 | -0.033 | -0.014 | a beats b |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `spectrometer_visible-filter_spectrometer_dalpha_voltage` | task_3-2 | 6 | 6 | 95 | 0.143 | 0.15 | 0.046 | 0.039 | 0.055 | -0.049 | -0.058 | -0.041 | a beats b |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `summary-ip` | task_2-1 | 4 | 4 | 89 | 0.01468 | 0.01894 | 0.225 | 0.207 | 0.243 | -0.291 | -0.321 | -0.261 | a clearly beats b |  |  |  |  |
+| `c-pca.h:s-klt` | `val_select-n100` | `summary-power_nbi` | cache | 8 | 8 | 90 | 0.01473 | 0.01705 | 0.136 | 0.106 | 0.167 | -0.158 | -0.201 | -0.119 | a clearly beats b |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `gas_injection-total_injected` | cache | 1 | 1 | 88 | 0.007902 | 0.007792 | -0.014 | -0.056 | 0.032 | 0.014 | -0.034 | 0.053 | tie |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `interferometer-n_e_line` | cache | 16 | 16 | 91 | 0.2267 | 0.2267 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | tie |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 40 | 160 | 100 | 0.01703 | 0.01627 | -0.047 | -0.109 | 0.010 | 0.045 | -0.010 | 0.098 | tie | 1.087 | 1.000 | 40 | 160 |
+| `c-pca.q:s-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_obr_field` | cache | 6 | 18 | 100 | 0.06278 | 0.01596 | -2.933 | -3.498 | -2.466 | 0.746 | 0.711 | 0.778 | b clearly beats a | 1.170 | 1.000 |  | 18 |
+| `c-pca.q:s-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_obv_field` | cache | 6 | 36 | 100 | 0.1063 | 0.01861 | -4.710 | -5.473 | -4.035 | 0.825 | 0.801 | 0.846 | b clearly beats a | 1.000 | 1.000 |  | 72 |
+| `c-pca.q:s-klt` | `val_select-n100` | `magnetics-b_field_tor_probe_saddle_voltage` | cache | 12 | 12 | 98 | 0.01278 | 0.01311 | 0.025 | 0.019 | 0.032 | -0.026 | -0.033 | -0.020 | a beats b | 1.000 | 1.000 | 12 | 12 |
+| `c-pca.q:s-klt` | `val_select-n100` | `magnetics-flux_loop_flux` | cache | 6 | 30 | 100 | 0.06952 | 0.01221 | -4.693 | -5.229 | -4.199 | 0.824 | 0.808 | 0.839 | b clearly beats a | 1.893 | 1.000 | 12 | 30 |
+| `c-pca.q:s-klt` | `val_select-n100` | `pf_active-coil_current` | task_2-1 | 10 | 10 | 89 | 0.01714 | 0.01718 | 0.003 | -0.005 | 0.011 | -0.003 | -0.011 | 0.005 | tie |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `pf_active-coil_voltage` | cache | 16 | 16 | 99 | 0.01597 | 0.0168 | 0.050 | 0.041 | 0.083 | -0.052 | -0.091 | -0.043 | a beats b | 1.000 | 1.000 | 16 | 16 |
+| `c-pca.q:s-klt` | `val_select-n100` | `pf_active-solenoid_current` | task_2-1 | 1 | 1 | 89 | 0.01402 | 0.01362 | -0.029 | -0.041 | -0.019 | 0.028 | 0.018 | 0.040 | b beats a |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `pulse_schedule-i_plasma` | cache | 2 | 2 | 98 | 0.00989 | 0.01329 | 0.256 | 0.210 | 0.311 | -0.344 | -0.452 | -0.267 | a clearly beats b |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `pulse_schedule-n_e_line` | cache | 1 | 1 | 99 | 0.009983 | 0.01176 | 0.151 | 0.092 | 0.224 | -0.178 | -0.288 | -0.101 | a clearly beats b |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `soft_x_rays-horizontal_cam_lower` | task_4-1 | 36 | 36 | 95 | 0.05067 | 0.0519 | 0.024 | 0.016 | 0.034 | -0.024 | -0.035 | -0.016 | a beats b |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `soft_x_rays-horizontal_cam_upper` | task_4-1 | 72 | 72 | 95 | 0.04804 | 0.04907 | 0.021 | 0.014 | 0.032 | -0.021 | -0.033 | -0.014 | a beats b |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `spectrometer_visible-filter_spectrometer_dalpha_voltage` | task_3-2 | 6 | 6 | 95 | 0.143 | 0.15 | 0.046 | 0.039 | 0.055 | -0.049 | -0.058 | -0.041 | a beats b |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `summary-ip` | task_2-1 | 4 | 4 | 89 | 0.01468 | 0.01894 | 0.225 | 0.207 | 0.243 | -0.291 | -0.321 | -0.261 | a clearly beats b |  |  |  |  |
+| `c-pca.q:s-klt` | `val_select-n100` | `summary-power_nbi` | cache | 8 | 8 | 90 | 0.01473 | 0.01705 | 0.136 | 0.106 | 0.167 | -0.158 | -0.201 | -0.119 | a clearly beats b |  |  |  |  |
+| `c-pca:v1` | `val_select-n100` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.005814 | 0.01327 | 0.562 | 0.522 | 0.595 | -1.282 | -1.471 | -1.094 | a clearly beats b | 1.072 | 1.000 | 40 | 160 |
+| `c-pca:v1` | `val_select-n100` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.008377 | 0.01588 | 0.473 | 0.439 | 0.502 | -0.896 | -1.008 | -0.783 | a clearly beats b | 1.011 | 1.000 | 18 | 18 |
+| `c-pca:v1` | `val_select-n100` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.006787 | 0.01242 | 0.454 | 0.430 | 0.475 | -0.831 | -0.906 | -0.755 | a clearly beats b | 1.000 | 1.000 | 36 | 36 |
+| `c-pca:v1` | `val_select-n100` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.002548 | 0.007239 | 0.648 | 0.635 | 0.661 | -1.841 | -1.950 | -1.740 | a clearly beats b | 3.518 | 1.000 | 12 | 30 |
+| `b-klt:v1` | `val_select-n100` | `magnetics-b_field_pol_probe_omv_voltage` | task_4-5 | 432 | 432 | 62 | 0.4028 | 0.403 | 0.001 | 0.000 | 0.001 | -0.001 | -0.001 | 0.000 | tie |  |  |  |  |
+| `b-klt:v1` | `val_select-n100` | `magnetics-b_field_tor_probe_cc_field` | task_4-5 | 432 | 432 | 62 | 0.6267 | 0.6267 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | tie |  |  |  |  |
+| `b-klt:bo-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_omv_voltage` | task_4-5 | 432 | 432 | 62 | 0.4028 | 0.4028 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | tie |  |  |  |  |
+| `b-klt:bo-klt` | `val_select-n100` | `magnetics-b_field_tor_probe_cc_field` | task_4-5 | 432 | 432 | 62 | 0.6267 | 0.6267 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | tie |  |  |  |  |
+| `bc-pca:bo-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_omv_voltage` | task_4-5 | 432 | 432 | 62 | 0.4026 | 0.4028 | 0.000 | -0.001 | 0.002 | 0.000 | -0.002 | 0.001 | tie |  |  |  |  |
+| `bc-pca:bo-klt` | `val_select-n100` | `magnetics-b_field_tor_probe_cc_field` | task_4-5 | 432 | 432 | 62 | 0.631 | 0.6267 | -0.007 | -0.017 | -0.001 | 0.007 | 0.001 | 0.017 | b beats a |  |  |  |  |
+| `bc-pca:b-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_omv_voltage` | task_4-5 | 432 | 432 | 62 | 0.4026 | 0.4028 | 0.000 | -0.001 | 0.002 | 0.000 | -0.002 | 0.001 | tie |  |  |  |  |
+| `bc-pca:b-klt` | `val_select-n100` | `magnetics-b_field_tor_probe_cc_field` | task_4-5 | 432 | 432 | 62 | 0.631 | 0.6267 | -0.007 | -0.017 | -0.001 | 0.007 | 0.001 | 0.017 | b beats a |  |  |  |  |
+| `bc-pca.h:b-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_omv_voltage` | task_4-5 | 216 | 432 | 62 | 0.4097 | 0.4028 | -0.017 | -0.035 | -0.005 | 0.017 | 0.005 | 0.034 | b beats a |  |  |  |  |
+| `bc-pca.h:b-klt` | `val_select-n100` | `magnetics-b_field_tor_probe_cc_field` | task_4-5 | 216 | 432 | 62 | 0.6307 | 0.6267 | -0.006 | -0.013 | -0.002 | 0.006 | 0.002 | 0.013 | b beats a |  |  |  |  |
+| `bc-pca.q:b-klt` | `val_select-n100` | `magnetics-b_field_pol_probe_omv_voltage` | task_4-5 | 108 | 432 | 62 | 0.4223 | 0.4028 | -0.048 | -0.084 | -0.020 | 0.046 | 0.020 | 0.078 | b beats a |  |  |  |  |
+| `bc-pca.q:b-klt` | `val_select-n100` | `magnetics-b_field_tor_probe_cc_field` | task_4-5 | 108 | 432 | 62 | 0.6311 | 0.6267 | -0.007 | -0.012 | -0.004 | 0.007 | 0.004 | 0.012 | b beats a |  |  |  |  |
+| `s-klt.b:v1b` | `val_select-n100` | `pf_active-coil_current` | task_2-1 | 20 | 20 | 89 | 0.009755 | 0.007586 | -0.286 | -0.329 | -0.248 | 0.222 | 0.199 | 0.248 | b clearly beats a |  |  |  |  |
+| `s-klt.b:v1b` | `val_select-n100` | `pf_active-solenoid_current` | task_2-1 | 2 | 2 | 89 | 0.005913 | 0.002212 | -1.673 | -1.733 | -1.615 | 0.626 | 0.618 | 0.634 | b clearly beats a |  |  |  |  |
+| `c-pca:s-klt` | `val_report` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 557 | 0.005597 | 0.01526 | 0.633 | 0.622 | 0.643 | -1.727 | -1.803 | -1.647 | a clearly beats b | 1.069 | 1.000 | 40 | 160 |
+| `c-pca:s-klt` | `val_report` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 557 | 0.007949 | 0.01513 | 0.474 | 0.457 | 0.489 | -0.903 | -0.958 | -0.840 | a clearly beats b | 1.009 | 1.000 | 18 | 18 |
+| `c-pca:s-klt` | `val_report` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 557 | 0.006573 | 0.0178 | 0.631 | 0.624 | 0.637 | -1.709 | -1.753 | -1.662 | a clearly beats b | 1.000 | 1.000 | 36 | 72 |
+| `c-pca:s-klt` | `val_report` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 557 | 0.002426 | 0.01145 | 0.788 | 0.785 | 0.791 | -3.718 | -3.781 | -3.655 | a clearly beats b | 3.510 | 1.000 | 12 | 30 |
+| `c-pca:o-klt` | `val_report` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 557 | 0.005597 | 0.01249 | 0.552 | 0.541 | 0.561 | -1.231 | -1.280 | -1.181 | a clearly beats b | 1.069 | 1.000 | 40 | 160 |
+| `c-pca:o-klt` | `val_report` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 557 | 0.007949 | 0.01501 | 0.470 | 0.452 | 0.485 | -0.888 | -0.943 | -0.826 | a clearly beats b | 1.009 | 1.000 | 18 | 18 |
+| `c-pca:o-klt` | `val_report` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 557 | 0.006573 | 0.01184 | 0.445 | 0.435 | 0.455 | -0.802 | -0.834 | -0.770 | a clearly beats b | 1.000 | 1.000 | 36 | 36 |
+| `c-pca:o-klt` | `val_report` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 557 | 0.002426 | 0.006565 | 0.630 | 0.625 | 0.636 | -1.706 | -1.750 | -1.664 | a clearly beats b | 3.510 | 1.000 | 12 | 30 |
+| `c-pca:v1` | `val_report` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 557 | 0.005597 | 0.01271 | 0.560 | 0.549 | 0.570 | -1.272 | -1.323 | -1.219 | a clearly beats b | 1.069 | 1.000 | 40 | 160 |
+| `c-pca:v1` | `val_report` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 557 | 0.007949 | 0.01503 | 0.471 | 0.453 | 0.486 | -0.891 | -0.947 | -0.829 | a clearly beats b | 1.009 | 1.000 | 18 | 18 |
+| `c-pca:v1` | `val_report` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 557 | 0.006573 | 0.01204 | 0.454 | 0.444 | 0.463 | -0.832 | -0.864 | -0.799 | a clearly beats b | 1.000 | 1.000 | 36 | 36 |
+| `c-pca:v1` | `val_report` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 557 | 0.002426 | 0.006687 | 0.637 | 0.632 | 0.643 | -1.757 | -1.802 | -1.714 | a clearly beats b | 3.510 | 1.000 | 12 | 30 |
+| `o-klt:s-klt` | `val_report` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 557 | 0.01249 | 0.01526 | 0.182 | 0.167 | 0.196 | -0.222 | -0.244 | -0.200 | a clearly beats b | 1.000 | 1.000 | 160 | 160 |
+| `o-klt:s-klt` | `val_report` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 557 | 0.01501 | 0.01513 | 0.008 | 0.007 | 0.009 | -0.008 | -0.009 | -0.007 | a beats b | 1.000 | 1.000 | 18 | 18 |
+| `o-klt:s-klt` | `val_report` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 557 | 0.01184 | 0.0178 | 0.335 | 0.330 | 0.339 | -0.503 | -0.513 | -0.493 | a clearly beats b | 1.000 | 1.000 | 36 | 72 |
+| `o-klt:s-klt` | `val_report` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 557 | 0.006565 | 0.01145 | 0.426 | 0.421 | 0.432 | -0.744 | -0.759 | -0.728 | a clearly beats b | 1.000 | 1.000 | 30 | 30 |
+
+An empty "Missing-channel ratio" or "Values to reach 0.0176" cell is a quantity the comparison does not compute
+for that row: `--drop-channel` and `--reach` apply to a probe array read from the cache, not to a task-side row
+(a signal whose floor is read from a task, or a one-sample signal). On a probe array an empty "Values to reach
+0.0176" cell means that no size of that arm, at 1/8, 1/4, 1/2, 1 and 2 times its values, reached 0.0176. A ratio of
+1.000 for a per-channel arm is by construction, since a missing channel does not touch the others. A gap of
+0.000 with a "tie" word is an exact re-basis (`interferometer-n_e_line`, ruling C11) or two arms whose floors
+agree to 3 decimals (the Mirnov signals, whose floor is bounded by the frame oracle, ruling C17).
 
 #### The networks
 
@@ -1078,10 +1354,66 @@ former gap is over the mean error of b and the latter over that of a). The word 
 verdict of the first pair with those spreads, and "shots differ" instead of a word
 when the pairs were measured over different numbers of shots.
 
+Measured 2026-11-23 on 100 `val_select` shots (62 to 100 scored per signal; the "Shots" column): the six
+pairs of job M7 (08:04 UTC, networks at learning rate 3e-4) and the eight pairs of job M8 (08:22 to 08:23 UTC;
+names ending in `r` are the learning rate 1e-4 retries of ruling C41). 14 pairs,
+46 rows. The networks behind the names, after ruling C39: `o-net0` is `net.mag.s0`; `c-net0` is
+`net.ccbv.s0.long`, `net.obr.s0.long`, `net.obv.s0.long` and `net.flux.s0`; `bc-net0` is `net.bandcat.cc.s0` and
+`net.bandcat.omv.s0.long`; `p-net0` is `net.profile.s0.long`; `m-net0` is `net.map.s0.long`. The `r` assignments
+are built from the lr1e4 runs of the same arms.
+
 | Pair (a:b) | Signal | Source | Values per frame (a) | Values per frame (b) | Shots | Mean error (a) | Mean error (b) | Gap | Gap, low end | Gap, high end | Gap of b against a | Low end (b against a) | High end (b against a) | Word at one seed | Missing-channel ratio (a) | Missing-channel ratio (b) | Values to reach 0.0176 (a) | Values to reach 0.0176 (b) | Gap, seed 0 | Gap, seed 1 | Gap, seed 2 | Spread of the gaps | Spread of the gaps of b against a | Word with the spreads |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `c-net0:o-net0` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.01828 | 0.03766 | 0.515 | 0.446 | 0.566 | -1.061 | -1.306 | -0.804 | a clearly beats b | 2.120 | 1.000 | 320 |  |  |  |  |  |  |  |
+| `c-net0:o-net0` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.01892 | 0.0289 | 0.345 | 0.227 | 0.450 | -0.527 | -0.817 | -0.293 | a clearly beats b | 1.798 | 1.000 | 36 |  |  |  |  |  |  |  |
+| `c-net0:o-net0` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.0187 | 0.03788 | 0.506 | 0.321 | 0.610 | -1.025 | -1.562 | -0.472 | a clearly beats b | 1.000 | 1.000 | 72 |  |  |  |  |  |  |  |
+| `c-net0:o-net0` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.01709 | 0.03583 | 0.523 | 0.493 | 0.552 | -1.097 | -1.230 | -0.973 | a clearly beats b | 11.305 | 1.000 | 30 |  |  |  |  |  |  |  |
+| `c-net0:v1` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.01828 | 0.01327 | -0.377 | -0.589 | -0.227 | 0.274 | 0.185 | 0.371 | b clearly beats a | 2.120 | 1.000 | 320 | 160 |  |  |  |  |  |  |
+| `c-net0:v1` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.01892 | 0.01588 | -0.191 | -0.357 | -0.059 | 0.161 | 0.055 | 0.263 | b clearly beats a | 1.798 | 1.000 | 36 | 18 |  |  |  |  |  |  |
+| `c-net0:v1` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.0187 | 0.01242 | -0.505 | -1.090 | -0.178 | 0.336 | 0.151 | 0.522 | b clearly beats a | 1.000 | 1.000 | 72 | 36 |  |  |  |  |  |  |
+| `c-net0:v1` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.01709 | 0.007239 | -1.360 | -1.560 | -1.178 | 0.576 | 0.541 | 0.609 | b clearly beats a | 11.305 | 1.000 | 30 | 30 |  |  |  |  |  |  |
+| `c-net0:c-pca` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.01828 | 0.005814 | -2.144 | -2.720 | -1.723 | 0.682 | 0.633 | 0.731 | b clearly beats a | 2.120 | 1.072 | 320 | 40 |  |  |  |  |  |  |
+| `c-net0:c-pca` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.01892 | 0.008377 | -1.259 | -1.584 | -0.997 | 0.557 | 0.499 | 0.613 | b clearly beats a | 1.798 | 1.011 | 36 | 18 |  |  |  |  |  |  |
+| `c-net0:c-pca` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.0187 | 0.006787 | -1.756 | -2.813 | -1.195 | 0.637 | 0.544 | 0.738 | b clearly beats a | 1.000 | 1.000 | 72 | 36 |  |  |  |  |  |  |
+| `c-net0:c-pca` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.01709 | 0.002548 | -5.706 | -6.168 | -5.285 | 0.851 | 0.841 | 0.860 | b clearly beats a | 11.305 | 3.518 | 30 | 12 |  |  |  |  |  |  |
+| `bc-net0:bc-pca` | `magnetics-b_field_pol_probe_omv_voltage` | task_4-5 | 432 | 432 | 62 | 0.4114 | 0.4026 | -0.022 | -0.031 | -0.014 | 0.021 | 0.014 | 0.030 | b beats a |  |  |  |  |  |  |  |  |  |  |
+| `bc-net0:bc-pca` | `magnetics-b_field_tor_probe_cc_field` | task_4-5 | 432 | 432 | 62 | 0.6418 | 0.631 | -0.017 | -0.028 | -0.008 | 0.017 | 0.007 | 0.027 | b beats a |  |  |  |  |  |  |  |  |  |  |
+| `p-net0:v1` | `equilibrium-lcfs_r` | task_2-2 | 32 | 32 | 92 | 0.01333 | 0.007005 | -0.903 | -1.007 | -0.812 | 0.475 | 0.448 | 0.502 | b clearly beats a |  |  |  |  |  |  |  |  |  |  |
+| `p-net0:v1` | `equilibrium-lcfs_z` | task_2-2 | 32 | 32 | 92 | 0.01211 | 0.006733 | -0.799 | -0.857 | -0.746 | 0.444 | 0.427 | 0.462 | b clearly beats a |  |  |  |  |  |  |  |  |  |  |
+| `p-net0:v1` | `thomson_scattering-n_e` | task_3-3 | 32 | 32 | 76 | 0.1477 | 0.04245 | -2.480 | -2.759 | -2.207 | 0.713 | 0.688 | 0.734 | b clearly beats a |  |  |  |  |  |  |  |  |  |  |
+| `p-net0:v1` | `thomson_scattering-t_e` | task_3-3 | 48 | 48 | 76 | 0.06265 | 0.03641 | -0.721 | -0.900 | -0.584 | 0.419 | 0.369 | 0.474 | b clearly beats a |  |  |  |  |  |  |  |  |  |  |
+| `m-net0:v1` | `equilibrium-psi` | task_2-3 | 16 | 16 | 92 | 0.04613 | 0.01294 | -2.565 | -4.901 | -1.011 | 0.720 | 0.503 | 0.831 | b clearly beats a |  |  |  |  |  |  |  |  |  |  |
+| `o-net0:o-klt` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.03766 | 0.01314 | -1.866 | -2.011 | -1.732 | 0.651 | 0.634 | 0.668 | b clearly beats a | 1.000 | 1.000 |  | 160 |  |  |  |  |  |  |
+| `o-net0:o-klt` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.0289 | 0.01585 | -0.823 | -1.157 | -0.595 | 0.451 | 0.373 | 0.536 | b clearly beats a | 1.000 | 1.000 |  | 18 |  |  |  |  |  |  |
+| `o-net0:o-klt` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.03788 | 0.01223 | -2.096 | -2.195 | -2.000 | 0.677 | 0.667 | 0.687 | b clearly beats a | 1.000 | 1.000 |  | 36 |  |  |  |  |  |  |
+| `o-net0:o-klt` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.03583 | 0.007112 | -4.037 | -4.301 | -3.804 | 0.801 | 0.792 | 0.811 | b clearly beats a | 1.000 | 1.000 |  | 30 |  |  |  |  |  |  |
+| `c-net0r:o-net0r` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.01807 | 0.03384 | 0.466 | 0.405 | 0.510 | -0.873 | -1.040 | -0.681 | a clearly beats b | 2.168 | 1.000 | 320 |  |  |  |  |  |  |  |
+| `c-net0r:o-net0r` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.01782 | 0.03393 | 0.475 | 0.327 | 0.575 | -0.904 | -1.355 | -0.485 | a clearly beats b | 1.885 | 1.000 | 36 |  |  |  |  |  |  |  |
+| `c-net0r:o-net0r` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.01948 | 0.03723 | 0.477 | 0.302 | 0.576 | -0.912 | -1.358 | -0.433 | a clearly beats b | 1.000 | 1.000 | 72 |  |  |  |  |  |  |  |
+| `c-net0r:o-net0r` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.01573 | 0.03287 | 0.522 | 0.494 | 0.549 | -1.090 | -1.215 | -0.978 | a clearly beats b | 10.690 | 1.000 | 30 | 60 |  |  |  |  |  |  |
+| `c-net0r:v1` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.01807 | 0.01327 | -0.362 | -0.519 | -0.244 | 0.266 | 0.196 | 0.342 | b clearly beats a | 2.168 | 1.000 | 320 | 160 |  |  |  |  |  |  |
+| `c-net0r:v1` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.01782 | 0.01588 | -0.122 | -0.442 | 0.075 | 0.109 | -0.081 | 0.307 | tie | 1.885 | 1.000 | 36 | 18 |  |  |  |  |  |  |
+| `c-net0r:v1` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.01948 | 0.01242 | -0.568 | -1.116 | -0.251 | 0.362 | 0.200 | 0.527 | b clearly beats a | 1.000 | 1.000 | 72 | 36 |  |  |  |  |  |  |
+| `c-net0r:v1` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.01573 | 0.007239 | -1.172 | -1.349 | -1.009 | 0.540 | 0.502 | 0.574 | b clearly beats a | 10.690 | 1.000 | 30 | 30 |  |  |  |  |  |  |
+| `c-net0r:c-pca` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.01807 | 0.005814 | -2.108 | -2.577 | -1.743 | 0.678 | 0.635 | 0.720 | b clearly beats a | 2.168 | 1.072 | 320 | 40 |  |  |  |  |  |  |
+| `c-net0r:c-pca` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.01782 | 0.008377 | -1.127 | -1.731 | -0.747 | 0.530 | 0.427 | 0.634 | b clearly beats a | 1.885 | 1.011 | 36 | 18 |  |  |  |  |  |  |
+| `c-net0r:c-pca` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.01948 | 0.006787 | -1.870 | -2.866 | -1.332 | 0.652 | 0.571 | 0.741 | b clearly beats a | 1.000 | 1.000 | 72 | 36 |  |  |  |  |  |  |
+| `c-net0r:c-pca` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.01573 | 0.002548 | -5.173 | -5.592 | -4.792 | 0.838 | 0.827 | 0.848 | b clearly beats a | 10.690 | 3.518 | 30 | 12 |  |  |  |  |  |  |
+| `bc-net0r:bc-pca` | `magnetics-b_field_pol_probe_omv_voltage` | task_4-5 | 432 | 432 | 62 | 0.4116 | 0.4026 | -0.022 | -0.031 | -0.015 | 0.022 | 0.015 | 0.030 | b beats a |  |  |  |  |  |  |  |  |  |  |
+| `bc-net0r:bc-pca` | `magnetics-b_field_tor_probe_cc_field` | task_4-5 | 432 | 432 | 62 | 0.6388 | 0.631 | -0.012 | -0.022 | -0.001 | 0.012 | 0.001 | 0.022 | b beats a |  |  |  |  |  |  |  |  |  |  |
+| `p-net0r:v1` | `equilibrium-lcfs_r` | task_2-2 | 32 | 32 | 92 | 0.01161 | 0.007005 | -0.657 | -0.712 | -0.610 | 0.397 | 0.379 | 0.416 | b clearly beats a |  |  |  |  |  |  |  |  |  |  |
+| `p-net0r:v1` | `equilibrium-lcfs_z` | task_2-2 | 32 | 32 | 92 | 0.01077 | 0.006733 | -0.599 | -0.621 | -0.578 | 0.375 | 0.366 | 0.383 | b clearly beats a |  |  |  |  |  |  |  |  |  |  |
+| `p-net0r:v1` | `thomson_scattering-n_e` | task_3-3 | 32 | 32 | 76 | 0.1404 | 0.04245 | -2.307 | -2.580 | -2.049 | 0.698 | 0.672 | 0.721 | b clearly beats a |  |  |  |  |  |  |  |  |  |  |
+| `p-net0r:v1` | `thomson_scattering-t_e` | task_3-3 | 48 | 48 | 76 | 0.05547 | 0.03641 | -0.523 | -0.646 | -0.431 | 0.344 | 0.301 | 0.392 | b clearly beats a |  |  |  |  |  |  |  |  |  |  |
+| `m-net0r:v1` | `equilibrium-psi` | task_2-3 | 16 | 16 | 92 | 0.04857 | 0.01294 | -2.754 | -4.996 | -1.186 | 0.734 | 0.543 | 0.833 | b clearly beats a |  |  |  |  |  |  |  |  |  |  |
+| `o-net0r:o-klt` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.03384 | 0.01314 | -1.575 | -1.714 | -1.446 | 0.612 | 0.591 | 0.632 | b clearly beats a | 1.000 | 1.000 |  | 160 |  |  |  |  |  |  |
+| `o-net0r:o-klt` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.03393 | 0.01585 | -1.140 | -1.465 | -0.902 | 0.533 | 0.474 | 0.594 | b clearly beats a | 1.000 | 1.000 |  | 18 |  |  |  |  |  |  |
+| `o-net0r:o-klt` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.03723 | 0.01223 | -2.043 | -2.184 | -1.910 | 0.671 | 0.656 | 0.686 | b clearly beats a | 1.000 | 1.000 |  | 36 |  |  |  |  |  |  |
+| `o-net0r:o-klt` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.03287 | 0.007112 | -3.622 | -3.863 | -3.431 | 0.784 | 0.774 | 0.794 | b clearly beats a | 1.000 | 1.000 | 60 | 30 |  |  |  |  |  |  |
 
-Not measured yet.
+The seed columns are empty: no network beat its comparison at seed 0 or at learning rate 1e-4, so rule 8 trained
+no seeds 1 and 2, and the spreads and the "word with the spreads" are not defined. The empty ratio and reach
+cells are explained under the linear table. 9 pairs of the plan were not run, because `recode` refused a collapsed source (rule 7, ruling C33, exit 2) and the assignment was not built, so they have no rows: `s-net0:v1`, `s-net0:o-net0`, `c-net0:s-net0`, `s-net0:s-klt` (`s-net0`: `net.series`, collapsed on `interferometer-n_e_line`); `b-net0:v1`, `b-net0:bo-net0`, `bc-net0:b-net0`, `b-net0:b-klt` (`b-net0`: `net.band`, collapsed on both signals); `bc-net0:bo-net0` (`bo-net0`: `net.band.cc` and `net.band.omv`, each collapsed on its own signal). (`b-net0:bo-net0` needs both `b-net0` and `bo-net0`.)
 
 #### The trainings
 
@@ -1098,7 +1430,9 @@ use on the signal's distinct validation examples; a signal without validation
 examples has no verdict, which is unchecked and not a "no", because no data is not a
 negative). An arm is collapsed when any of its signals is. "Collapsed (any token)"
 is the plan's literal reading (`collapsed_any_token`: some token's first value under
-0.3 on all rows), kept beside the verdict so the two can be compared; "active
+0.3 on all rows), kept beside the verdict so the two can be compared. The column
+is `any` over the arm's per-signal `collapsed_any_token`, because `result.json` has no
+arm-level key for it; "active
 tokens" is the count of tokens whose first value reaches 0.3, and decides nothing,
 like the active values (the count per signal of the values whose normalized entropy
 is at least 0.3).
@@ -1110,10 +1444,68 @@ choice between a linear and a network arm is also made on them. Inferred, not
 measured: the selection over about 20 checkpoints is small and favours the
 networks. Rules 4 and 5 confirm a replacement on `val_report`, which bounds it.
 
+Measured 2026-11-23, 32 rows: the 13 `.s0` runs of job M6 (07:30 to 07:41 UTC), the 10 `.s0.long`
+runs of ruling C39 (07:43 to 08:00 UTC, 40,000 steps) and the 9 `.s0.lr1e4` runs of job M8 (08:06 to 08:17 UTC), all
+on the 2,000 training shots of the fit and validated on 100 `val_select` shots. "Seconds" is wall-clock with two to
+four runs sharing a GPU. "Active tokens" and "Active values" are "n of m", and for an arm of several signals the
+smallest to the largest over its signals ("4 to 11 of 32"); for the values, "of m" is the values per token. The collapsed column was computed again from
+`first_value_entropy_by_token` (a signal is collapsed when no entry reaches 0.3, ruling C33) and agrees with the
+`collapsed` key of each of the 32 `result.json` files and with the "COLLAPSED (C33)" lines of the training logs.
+
 | Name | Steps | Best step | `val_mse` | `val_full` | Plateau | Collapsed | Collapsed (any token) | Active tokens | Active values | Seconds |
 |---|---|---|---|---|---|---|---|---|---|---|
+| `net.band.cc.s0` | 20000 | 19000 | 0.8695 | 0.7177 | no | yes | yes | 0 of 1 | 9 of 32 | 191 |
+| `net.band.omv.s0` | 20000 | 20000 | 0.161 | 0.03809 | no | yes | yes | 0 of 1 | 3 of 32 | 205 |
+| `net.band.s0` | 20000 | 18000 | 0.4243 | 0.2742 | no | yes | yes | 0 of 1 | 4 to 11 of 32 | 205 |
+| `net.bandcat.cc.s0` | 20000 | 3000 | 1.658 | 1.596 | yes | no | yes | 5 of 54 | 0 of 8 | 99 |
+| `net.bandcat.omv.s0` | 20000 | 20000 | 0.2917 | 0.1782 | no | no | yes | 2 of 54 | 0 of 8 | 201 |
+| `net.ccbv.s0` | 20000 | 20000 | 0.01994 | 0.0006649 | no | no | no | 40 of 40 | 8 of 8 | 165 |
+| `net.flux.s0` | 20000 | 16000 | 0.01387 | 0.0002369 | yes | no | no | 20 of 20 | 6 of 6 | 130 |
+| `net.mag.s0` | 20000 | 15000 | 0.003158 | 0.0005037 | yes | no | no | 1 of 1 | 16 of 16 | 239 |
+| `net.map.s0` | 20000 | 19000 | 0.7396 | 0.673 | no | no | yes | 47 of 48 | 0 of 2 | 122 |
+| `net.obr.s0` | 20000 | 17000 | 0.03282 | 0.0009109 | no | no | no | 24 of 24 | 6 of 6 | 193 |
+| `net.obv.s0` | 20000 | 18000 | 0.02604 | 0.0008569 | no | no | no | 24 of 24 | 6 of 6 | 175 |
+| `net.profile.s0` | 20000 | 19000 | 0.1052 | 0.02126 | no | no | yes | 22 of 24 | 1 to 2 of 4 | 171 |
+| `net.series.s0` | 20000 | 20000 | 0.08416 | 0.07168 | no | yes | yes | 0 to 1 of 1 | 5 to 15 of 16 | 257 |
+| `net.band.cc.s0.long` | 40000 | 40000 | 0.8168 | 0.6112 | no | yes | yes | 0 of 1 | 7 of 32 | 633 |
+| `net.band.omv.s0.long` | 40000 | 37000 | 0.1562 | 0.03495 | no | yes | yes | 0 of 1 | 3 of 32 | 637 |
+| `net.band.s0.long` | 40000 | 40000 | 0.3656 | 0.1875 | no | yes | yes | 0 of 1 | 6 to 10 of 32 | 458 |
+| `net.bandcat.omv.s0.long` | 40000 | 31000 | 0.2733 | 0.1468 | no | no | yes | 1 of 54 | 0 of 8 | 619 |
+| `net.ccbv.s0.long` | 40000 | 37000 | 0.01891 | 0.0005274 | no | no | no | 40 of 40 | 8 of 8 | 224 |
+| `net.map.s0.long` | 40000 | 23000 | 0.7344 | 0.6839 | yes | no | yes | 47 of 48 | 1 of 2 | 356 |
+| `net.obr.s0.long` | 40000 | 36000 | 0.02717 | 0.0009033 | no | no | no | 24 of 24 | 6 of 6 | 617 |
+| `net.obv.s0.long` | 40000 | 33000 | 0.02453 | 0.0008547 | no | no | no | 24 of 24 | 6 of 6 | 436 |
+| `net.profile.s0.long` | 40000 | 40000 | 0.1023 | 0.01856 | no | no | yes | 22 of 24 | 2 of 4 | 624 |
+| `net.series.s0.long` | 40000 | 37000 | 0.07989 | 0.06713 | yes | yes | yes | 0 to 1 of 1 | 6 to 14 of 16 | 712 |
+| `net.bandcat.cc.s0.lr1e4` | 20000 | 5000 | 1.596 | 1.571 | yes | no | yes | 7 of 54 | 0 of 8 | 229 |
+| `net.bandcat.omv.s0.lr1e4` | 40000 | 34000 | 0.2496 | 0.1431 | no | no | yes | 5 of 54 | 0 of 8 | 385 |
+| `net.ccbv.s0.lr1e4` | 40000 | 39000 | 0.0181 | 0.0003929 | no | no | no | 40 of 40 | 7 of 8 | 603 |
+| `net.flux.s0.lr1e4` | 20000 | 19000 | 0.0136 | 0.0001627 | no | no | no | 20 of 20 | 6 of 6 | 109 |
+| `net.mag.s0.lr1e4` | 20000 | 15000 | 0.003147 | 0.0002541 | yes | no | no | 1 of 1 | 16 of 16 | 372 |
+| `net.map.s0.lr1e4` | 40000 | 31000 | 0.72 | 0.686 | no | no | no | 48 of 48 | 2 of 2 | 556 |
+| `net.obr.s0.lr1e4` | 40000 | 40000 | 0.02684 | 0.0007336 | no | no | no | 24 of 24 | 6 of 6 | 604 |
+| `net.obv.s0.lr1e4` | 40000 | 30000 | 0.02649 | 0.0007707 | yes | no | no | 24 of 24 | 6 of 6 | 600 |
+| `net.profile.s0.lr1e4` | 40000 | 36000 | 0.09943 | 0.01864 | no | no | yes | 22 to 23 of 24 | 3 of 4 | 551 |
 
-Not measured yet.
+The 8 collapsed runs and the signal that makes each so, read from the same entropies:
+
+| Run | Signal that collapses | Active tokens | Active values | Distinct rows (of all rows) |
+|---|---|---|---|---|
+| `net.band.cc.s0` | `magnetics-b_field_tor_probe_cc_field` | 0 of 1 | 9 of 32 | 145,906 of 146,136 |
+| `net.band.omv.s0` | `magnetics-b_field_pol_probe_omv_voltage` | 0 of 1 | 3 of 32 | 224,136 of 224,136 |
+| `net.band.s0` | `magnetics-b_field_tor_probe_cc_field` | 0 of 1 | 4 of 32 | 145,906 of 146,136 |
+| `net.band.s0` | `magnetics-b_field_pol_probe_omv_voltage` | 0 of 1 | 11 of 32 | 224,136 of 224,136 |
+| `net.series.s0` | `interferometer-n_e_line` | 0 of 1 | 5 of 16 | 8,576 of 8,637 |
+| `net.band.cc.s0.long` | `magnetics-b_field_tor_probe_cc_field` | 0 of 1 | 7 of 32 | 145,906 of 146,136 |
+| `net.band.omv.s0.long` | `magnetics-b_field_pol_probe_omv_voltage` | 0 of 1 | 3 of 32 | 224,136 of 224,136 |
+| `net.band.s0.long` | `magnetics-b_field_tor_probe_cc_field` | 0 of 1 | 6 of 32 | 145,906 of 146,136 |
+| `net.band.s0.long` | `magnetics-b_field_pol_probe_omv_voltage` | 0 of 1 | 10 of 32 | 224,136 of 224,136 |
+| `net.series.s0.long` | `interferometer-n_e_line` | 0 of 1 | 6 of 16 | 8,576 of 8,637 |
+
+Where "Collapsed" is no and "Collapsed (any token)" is yes, some tokens are idle while others are in use
+(`net.bandcat.*`: 1 to 7 of 54 tokens active; `net.profile`: 22 or 23 of 24; `net.map`: 47 of 48), and ruling C33
+keeps the arm. A "Plateau" of no after 40,000 steps (for example `net.obr.s0.lr1e4`, `net.ccbv.s0.long`) means that
+the validation error still fell by more than 1% over the last quarter, and rule 8 extends a run once.
 
 #### The decisions
 
@@ -1121,10 +1513,100 @@ One row per signal that a rule decides, from M9 and the confirmation on
 `val_report`. A choice made on `val_select` stands only if `val_report` gives the
 same word. If `v2` equals `v1`, nothing was scored again and this table says so.
 
+Measured 2026-11-23 (job M9 and its confirmation, ruling C42): 47 rows, the comparison
+files of the two tables above read per signal. The rule and the split with its number of shots are in the "Rule"
+cell, and "Error of a" and "Error of b" are the mean errors on that split. The word is the comparison's word at one
+seed (rule 2, without a spread since no network won). `v2` was not built as a file: it equals `v1b`, because no
+learned arm beat `v1` or `v1b` under rules 4 and 5, so "Held by `v2`" is `v1b`'s setting in
+`assignments/v1b.json` and "Held by `v2c`" is the setting in `assignments/v2c.json`; `v2c` differs from `v1b` in the
+four magnetics arrays only.
+
 | Signal | Rule | Tokenizer a | Tokenizer b | Error of a | Error of b | Word | Held by `v2` | Held by `v2c` |
 |---|---|---|---|---|---|---|---|---|
+| `gas_injection-total_injected` | 4, `val_select`, 88 shots | `s-klt` | `v1` | 0.007792 | 0.007902 | tie | `v1b`'s `frame_dct`, K 1 | `v1b`'s `frame_dct`, K 1 |
+| `interferometer-n_e_line` | 4, `val_select`, 91 shots | `s-klt` | `v1` | 0.2267 | 0.2267 | tie | `v1b`'s `frame_dct`, K 16 | `v1b`'s `frame_dct`, K 16 |
+| `magnetics-b_field_pol_probe_ccbv_field` | 4, `val_select`, 100 shots | `s-klt` | `v1` | 0.01627 | 0.01327 | b clearly beats a | `v1b`'s `frame_dct`, K 4 | `pca.ccbv` (`recoded_concat`, 160) |
+| `magnetics-b_field_pol_probe_obr_field` | 4, `val_select`, 100 shots | `s-klt` | `v1` | 0.01596 | 0.01588 | b beats a | `v1b`'s `frame_dct`, K 1 | `pca.obr` (`recoded_concat`, 18) |
+| `magnetics-b_field_pol_probe_obv_field` | 4, `val_select`, 100 shots | `s-klt` | `v1` | 0.01861 | 0.01242 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `pca.obv` (`recoded_concat`, 36) |
+| `magnetics-b_field_tor_probe_saddle_voltage` | 4, `val_select`, 98 shots | `s-klt` | `v1` | 0.01311 | 0.01278 | b beats a | `v1b`'s `frame_dct`, K 1 | `v1b`'s `frame_dct`, K 1 |
+| `magnetics-flux_loop_flux` | 4, `val_select`, 100 shots | `s-klt` | `v1` | 0.01221 | 0.007239 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `pca.flux` (`recoded_concat`, 30) |
+| `pf_active-coil_current` | 4, `val_select`, 89 shots | `s-klt` | `v1` | 0.01718 | 0.01714 | tie | `v1b`'s `frame_dct`, K 2 | `v1b`'s `frame_dct`, K 2 |
+| `pf_active-coil_voltage` | 4, `val_select`, 99 shots | `s-klt` | `v1` | 0.0168 | 0.01597 | b beats a | `v1b`'s `frame_dct`, K 4 | `v1b`'s `frame_dct`, K 4 |
+| `pf_active-solenoid_current` | 4, `val_select`, 89 shots | `s-klt` | `v1` | 0.01362 | 0.01402 | a beats b | `v1b`'s `frame_dct`, K 2 | `v1b`'s `frame_dct`, K 2 |
+| `pulse_schedule-i_plasma` | 4, `val_select`, 98 shots | `s-klt` | `v1` | 0.01329 | 0.00989 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `v1b`'s `frame_dct`, K 2 |
+| `pulse_schedule-n_e_line` | 4, `val_select`, 99 shots | `s-klt` | `v1` | 0.01176 | 0.009983 | b clearly beats a | `v1b`'s `frame_dct`, K 1 | `v1b`'s `frame_dct`, K 1 |
+| `soft_x_rays-horizontal_cam_lower` | 4, `val_select`, 95 shots | `s-klt` | `v1` | 0.0519 | 0.05067 | b beats a | `v1b`'s `frame_dct`, K 2 | `v1b`'s `frame_dct`, K 2 |
+| `soft_x_rays-horizontal_cam_upper` | 4, `val_select`, 95 shots | `s-klt` | `v1` | 0.04907 | 0.04804 | b beats a | `v1b`'s `frame_dct`, K 4 | `v1b`'s `frame_dct`, K 4 |
+| `spectrometer_visible-filter_spectrometer_dalpha_voltage` | 4, `val_select`, 95 shots | `s-klt` | `v1` | 0.15 | 0.143 | b beats a | `v1b`'s `frame_dct`, K 2 | `v1b`'s `frame_dct`, K 2 |
+| `summary-ip` | 4, `val_select`, 89 shots | `s-klt` | `v1` | 0.01894 | 0.01468 | b clearly beats a | `v1b`'s `frame_dct`, K 4 | `v1b`'s `frame_dct`, K 4 |
+| `summary-power_nbi` | 4, `val_select`, 90 shots | `s-klt` | `v1` | 0.01705 | 0.01473 | b clearly beats a | `v1b`'s `frame_dct`, K 8 | `v1b`'s `frame_dct`, K 8 |
+| `pf_active-coil_current` | 4 (C42, at `v1b`'s K 2), `val_select`, 89 shots | `s-klt.b` | `v1b` | 0.009755 | 0.007586 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `v1b`'s `frame_dct`, K 2 |
+| `pf_active-solenoid_current` | 4 (C42, at `v1b`'s K 2), `val_select`, 89 shots | `s-klt.b` | `v1b` | 0.005913 | 0.002212 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `v1b`'s `frame_dct`, K 2 |
+| `equilibrium-lcfs_r` | 5 (lr 3e-4), `val_select`, 92 shots | `p-net0` | `v1` | 0.01333 | 0.007005 | b clearly beats a | `v1b`'s `linear`, K 32/4 | `v1b`'s `linear`, K 32/4 |
+| `equilibrium-lcfs_z` | 5 (lr 3e-4), `val_select`, 92 shots | `p-net0` | `v1` | 0.01211 | 0.006733 | b clearly beats a | `v1b`'s `linear`, K 32/4 | `v1b`'s `linear`, K 32/4 |
+| `thomson_scattering-n_e` | 5 (lr 3e-4), `val_select`, 76 shots | `p-net0` | `v1` | 0.1477 | 0.04245 | b clearly beats a | `v1b`'s `linear`, K 32/4 | `v1b`'s `linear`, K 32/4 |
+| `thomson_scattering-t_e` | 5 (lr 3e-4), `val_select`, 76 shots | `p-net0` | `v1` | 0.06265 | 0.03641 | b clearly beats a | `v1b`'s `linear`, K 48/4 | `v1b`'s `linear`, K 48/4 |
+| `equilibrium-lcfs_r` | 5 (lr 1e-4), `val_select`, 92 shots | `p-net0r` | `v1` | 0.01161 | 0.007005 | b clearly beats a | `v1b`'s `linear`, K 32/4 | `v1b`'s `linear`, K 32/4 |
+| `equilibrium-lcfs_z` | 5 (lr 1e-4), `val_select`, 92 shots | `p-net0r` | `v1` | 0.01077 | 0.006733 | b clearly beats a | `v1b`'s `linear`, K 32/4 | `v1b`'s `linear`, K 32/4 |
+| `thomson_scattering-n_e` | 5 (lr 1e-4), `val_select`, 76 shots | `p-net0r` | `v1` | 0.1404 | 0.04245 | b clearly beats a | `v1b`'s `linear`, K 32/4 | `v1b`'s `linear`, K 32/4 |
+| `thomson_scattering-t_e` | 5 (lr 1e-4), `val_select`, 76 shots | `p-net0r` | `v1` | 0.05547 | 0.03641 | b clearly beats a | `v1b`'s `linear`, K 48/4 | `v1b`'s `linear`, K 48/4 |
+| `equilibrium-psi` | 5 (lr 3e-4), `val_select`, 92 shots | `m-net0` | `v1` | 0.04613 | 0.01294 | b clearly beats a | `v1b`'s `linear`, K 16/2 | `v1b`'s `linear`, K 16/2 |
+| `equilibrium-psi` | 5 (lr 1e-4), `val_select`, 92 shots | `m-net0r` | `v1` | 0.04857 | 0.01294 | b clearly beats a | `v1b`'s `linear`, K 16/2 | `v1b`'s `linear`, K 16/2 |
+| `magnetics-b_field_tor_probe_cc_field` | 5 | `b-net0` (`net.band.s0.long`) | `v1` | no data | no data | collapsed (C33), no comparison | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_tor_probe_cc_field` | 5 | `bo-net0` (`net.band.cc.s0.long`) | `v1` | no data | no data | collapsed (C33), no comparison | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_pol_probe_omv_voltage` | 5 | `b-net0` (`net.band.s0.long`) | `v1` | no data | no data | collapsed (C33), no comparison | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_pol_probe_omv_voltage` | 5 | `bo-net0` (`net.band.omv.s0.long`) | `v1` | no data | no data | collapsed (C33), no comparison | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_pol_probe_omv_voltage` | 5 (lr 3e-4; against `bc-pca`, the pair C41 sets), `val_select`, 62 shots | `bc-net0` | `bc-pca` | 0.4114 | 0.4026 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_tor_probe_cc_field` | 5 (lr 3e-4; against `bc-pca`, the pair C41 sets), `val_select`, 62 shots | `bc-net0` | `bc-pca` | 0.6418 | 0.631 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_pol_probe_omv_voltage` | 5 (lr 1e-4; against `bc-pca`, the pair C41 sets), `val_select`, 62 shots | `bc-net0r` | `bc-pca` | 0.4116 | 0.4026 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_tor_probe_cc_field` | 5 (lr 1e-4; against `bc-pca`, the pair C41 sets), `val_select`, 62 shots | `bc-net0r` | `bc-pca` | 0.6388 | 0.631 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_pol_probe_ccbv_field` | 6, `val_select`, 100 shots | `c-pca` | `s-klt` | 0.005814 | 0.01627 | a clearly beats b | `v1b`'s `frame_dct`, K 4 | `pca.ccbv` (`recoded_concat`, 160) |
+| `magnetics-b_field_pol_probe_obr_field` | 6, `val_select`, 100 shots | `c-pca` | `s-klt` | 0.008377 | 0.01596 | a clearly beats b | `v1b`'s `frame_dct`, K 1 | `pca.obr` (`recoded_concat`, 18) |
+| `magnetics-b_field_pol_probe_obv_field` | 6, `val_select`, 100 shots | `c-pca` | `s-klt` | 0.006787 | 0.01861 | a clearly beats b | `v1b`'s `frame_dct`, K 2 | `pca.obv` (`recoded_concat`, 36) |
+| `magnetics-flux_loop_flux` | 6, `val_select`, 100 shots | `c-pca` | `s-klt` | 0.002548 | 0.01221 | a clearly beats b | `v1b`'s `frame_dct`, K 2 | `pca.flux` (`recoded_concat`, 30) |
+| `magnetics-b_field_pol_probe_ccbv_field` | 6, `val_report`, 557 shots | `c-pca` | `s-klt` | 0.005597 | 0.01526 | a clearly beats b | `v1b`'s `frame_dct`, K 4 | `pca.ccbv` (`recoded_concat`, 160) |
+| `magnetics-b_field_pol_probe_obr_field` | 6, `val_report`, 557 shots | `c-pca` | `s-klt` | 0.007949 | 0.01513 | a clearly beats b | `v1b`'s `frame_dct`, K 1 | `pca.obr` (`recoded_concat`, 18) |
+| `magnetics-b_field_pol_probe_obv_field` | 6, `val_report`, 557 shots | `c-pca` | `s-klt` | 0.006573 | 0.0178 | a clearly beats b | `v1b`'s `frame_dct`, K 2 | `pca.obv` (`recoded_concat`, 36) |
+| `magnetics-flux_loop_flux` | 6, `val_report`, 557 shots | `c-pca` | `s-klt` | 0.002426 | 0.01145 | a clearly beats b | `v1b`'s `frame_dct`, K 2 | `pca.flux` (`recoded_concat`, 30) |
+| `magnetics-b_field_pol_probe_omv_voltage` | 6, `val_select`, 62 shots | `bc-pca` | `b-klt` | 0.4026 | 0.4028 | tie | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_tor_probe_cc_field` | 6, `val_select`, 62 shots | `bc-pca` | `b-klt` | 0.631 | 0.6267 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
 
-Not measured yet.
+What each rule decides. Rule 4: the cosine transform stays on all 17 series signals, `v1b`'s K 2 on the two
+currents included (ruling C42); `v2c` swaps four of them by rule 6. Rule 5: the profiles, the map and the Mirnov band transform stay; the Mirnov
+networks collapsed (`b-net0`, `bo-net0`, with no comparison and so "no data" in the error cells) or lost to
+`bc-pca`. No Mirnov network was compared with `v1` itself, because the loss to `bc-pca` already settles it
+(ruling C41), and `bc-pca` against `b-klt` ties on `omv` and loses on `cc_field`. Rule 6: the concatenated linear
+arm clearly beats the shared one on the four magnetics arrays on both splits, so `v2c` holds `pca.ccbv`, `pca.obr`,
+`pca.obv` and `pca.flux`; on the two Mirnov signals the best concatenated arm does not clearly beat the shared one.
+The `val_report` confirmation of rules 4 and 5, and of rule 6 on the Mirnov signals, was not run, because nothing
+beat its baseline on `val_select`, so there is nothing to confirm (no data, not a pass).
+
+#### The input round-trip of `v1`, `v1b` and `v2c`
+
+Measured 2026-11-23 (job M9 and ruling C43; `score --instrument inputs`, all `val_report` shots of each task, the
+direct model of stage 0 named in the first column, `through / raw - 1` on the same shots). `ranged` is like for like
+with the K6 and C29 rows; `unquantized` was run with `v1b` and `v2c` on tasks 1-1 and 1-2. The magnetics arrays are
+inputs to 12 of 14 tasks. One trained direct model and one scoring pass give each row, so whether +0.11% against
++0.24% on task 1-2 is a difference is not tested.
+
+| Task (direct model) | Tokenizer | Mode | Shots | Raw score | Score through the tokenizer | `through / raw - 1` |
+|---|---|---|---|---|---|---|
+| `task_1-1` (`s90k`) | `v1` | `ranged` | 520 | 0.1235 | 0.1237 | +0.22% |
+| `task_1-1` (`s90k`) | `v1b` | `ranged` | 520 | 0.1235 | 0.1236 | +0.13% |
+| `task_1-1` (`s90k`) | `v1b` | `unquantized` | 520 | 0.1235 | 0.1236 | +0.13% |
+| `task_1-1` (`s90k`) | `v2c` | `ranged` | 520 | 0.1235 | 0.1236 | +0.08% |
+| `task_1-1` (`s90k`) | `v2c` | `unquantized` | 520 | 0.1235 | 0.1236 | +0.08% |
+| `task_1-2` (`lr1e4`) | `v1` | `ranged` | 525 | 0.03618 | 0.03662 | +1.21% |
+| `task_1-2` (`lr1e4`) | `v1b` | `ranged` | 525 | 0.03618 | 0.03627 | +0.24% |
+| `task_1-2` (`lr1e4`) | `v1b` | `unquantized` | 525 | 0.03618 | 0.03627 | +0.24% |
+| `task_1-2` (`lr1e4`) | `v2c` | `ranged` | 525 | 0.03618 | 0.03623 | +0.11% |
+| `task_1-2` (`lr1e4`) | `v2c` | `unquantized` | 525 | 0.03618 | 0.03623 | +0.11% |
+| `task_2-1` (`s90k`) | `v1` | `ranged` | 520 | 0.1347 | 0.1353 | +0.45% |
+| `task_2-1` (`s90k`) | `v1b` | `ranged` | 520 | 0.1347 | 0.1347 | +0.03% |
+| `task_2-1` (`s90k`) | `v2c` | `ranged` | 520 | 0.1347 | 0.1347 | +0.01% |
+| `task_4-1` (`h050b256`) | `v1` | `ranged` | 531 | 0.1727 | 0.1716 | -0.63% |
+| `task_4-1` (`h050b256`) | `v1b` | `ranged` | 531 | 0.1727 | 0.1716 | -0.63% |
+| `task_4-1` (`h050b256`) | `v2c` | `ranged` | 531 | 0.1727 | 0.1716 | -0.63% |
 
 #### The 50 kHz band
 
@@ -1139,10 +1621,21 @@ because `v1` gives them K 1 (ruling C14). `persistence` is the median, over the
 (shot, channel) pairs for which it is defined, of the correlation between the
 logarithm of one frame's band power and the next frame's.
 
+Measured 2026-11-23 (job M10, `fluct --workers 64`, 07:47 UTC, 26 s; 100 `val_select` shots, K of the trend
+from `v1`). 4 rows.
+
 | Signal | K of the trend (`k_trend`) | Channel-frames (`n_frames`) | Band to trend (`band_to_trend`) | Share below 5 kHz (`share_below_5khz`) | Persistence (`persistence`) | Share of the band in each 1 kHz group (`bin_00` to `bin_24`) |
 |---|---|---|---|---|---|---|
+| `magnetics-b_field_tor_probe_saddle_voltage` | 1 | 105,675 |  | 0.995 | 0.738 | 0.993, 0.001, 0.001, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.001, 0.001, 0.000, 0.000, 0.000, 0.000 |
+| `soft_x_rays-horizontal_cam_lower` | 2 | 155,196 | 3.202 | 0.434 | 0.742 | 0.204, 0.064, 0.070, 0.058, 0.038, 0.038, 0.036, 0.032, 0.031, 0.031, 0.029, 0.028, 0.027, 0.027, 0.027, 0.027, 0.026, 0.026, 0.026, 0.026, 0.026, 0.025, 0.025, 0.026, 0.026 |
+| `soft_x_rays-horizontal_cam_upper` | 4 | 155,196 | 0.269 | 0.527 | 0.583 | 0.256, 0.089, 0.065, 0.053, 0.064, 0.051, 0.038, 0.032, 0.027, 0.026, 0.022, 0.020, 0.018, 0.018, 0.018, 0.018, 0.021, 0.018, 0.022, 0.022, 0.026, 0.021, 0.020, 0.018, 0.017 |
+| `spectrometer_visible-filter_spectrometer_dalpha_voltage` | 2 | 28,266 | 1.172 | 0.883 | 0.815 | 0.709, 0.098, 0.037, 0.024, 0.016, 0.013, 0.010, 0.008, 0.008, 0.007, 0.006, 0.006, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004, 0.004 |
 
-Not measured yet.
+The saddle coils' `band_to_trend` is empty by definition (K 1, ruling C14), not missing data. Inside a 5 ms frame
+the lower soft X-ray camera holds 3.202 times as much power above its 2-value trend as in it, D-alpha 1.172 times,
+and the upper camera, at K 4, keeps 0.269 of the trend's power in the band; the saddle coils keep 0.995 of their
+band power below 5 kHz. These are statistics of the inputs (no tokenizer is built, and no score is involved), and
+they go to the stage-2 plan.
 
 ## Limits
 
