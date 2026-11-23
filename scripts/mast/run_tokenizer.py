@@ -169,7 +169,8 @@ def score_one(task: tasks.TaskSpec, predict_fn: harness.PredictFn, *, predictor:
 
     A new score is `harness.score` of `predict_fn` (arrays in the harness's physical units) on `split`
     restricted to `shots`; `score.json` is stored under `label`, with `provenance` and `records` added
-    (written atomically), and `signals.csv` holds the per-signal NRMSE (TokaMark units).
+    (written atomically), and `signals.csv` holds the per-signal NRMSE (TokaMark units). A stored `score.json`
+    of `out_dir` is removed first, then `signals.csv` and `score.json` are written atomically in that order.
     """
     stored, _ = kept_score(out_dir, task.name, predictor, label, provenance, force)
     if stored is not None:
@@ -178,8 +179,9 @@ def score_one(task: tasks.TaskSpec, predict_fn: harness.PredictFn, *, predictor:
     result = harness.score(task, predict_fn, out_dir, split=split, shots=shots,
                            history_s=getattr(predict_fn, "history_s", None),
                            batch_size=batch_size, num_workers=num_workers)
-    _write_csv_atomic(out_dir / "signals.csv", result.per_signal)     # before score.json: the gate trusts it once
-    path = baselines.write_score_json(result, predictor, label)       # score.json is kept
+    (out_dir / "score.json").unlink(missing_ok=True)                  # the old pair goes first: a crash below
+    _write_csv_atomic(out_dir / "signals.csv", result.per_signal)     # leaves no score.json (re-scored) or a
+    path = baselines.write_score_json(result, predictor, label)       # matching pair; the gate trusts signals.csv
     record = json.loads(path.read_text())
     record.update(provenance)
     record.update(records)
@@ -446,7 +448,8 @@ def _score_windows(task: tasks.TaskSpec, batches: list[harness.WindowBatch], pre
     per signal (TokaMark units). A stored score of that directory is replaced (a ladder does not keep scores)."""
     out_dir = _prepare(paths.stage1_dir() / "scores" / task.name / predictor / label)
     result = harness.score_batches(task.name, batches, predict_fn, out_dir)
-    _write_csv_atomic(out_dir / "signals.csv", result.per_signal)     # before score.json, as in `score_one`
+    (out_dir / "score.json").unlink(missing_ok=True)                  # the old pair goes first, as in `score_one`
+    _write_csv_atomic(out_dir / "signals.csv", result.per_signal)
     path = baselines.write_score_json(result, predictor, label)
     record = json.loads(path.read_text())
     record.update(provenance)

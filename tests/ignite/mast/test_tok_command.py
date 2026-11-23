@@ -330,10 +330,11 @@ def test_score_one_writes_signals_before_score_json_and_a_failed_write_leaves_no
     with pytest.raises(OSError, match="no space"):
         rt.score_one(toy_task, predict, out_dir=tmp_path / "new", **kw)
     assert not (tmp_path / "new" / "score.json").exists() and not (tmp_path / "new" / "signals.csv").exists()
-    old = (tmp_path / "ok" / "score.json").read_text()
+    assert (tmp_path / "ok" / "score.json").is_file() and (tmp_path / "ok" / "signals.csv").is_file()
     with pytest.raises(OSError, match="no space"):
         rt.score_one(toy_task, predict, out_dir=tmp_path / "ok", force=True, **kw)
-    assert (tmp_path / "ok" / "score.json").read_text() == old         # the stored score is not touched either
+    # the old pair is being replaced: its score.json is gone, so the old signals.csv is not kept as current
+    assert not (tmp_path / "ok" / "score.json").exists()
 
 
 def test_score_windows_writes_signals_before_score_json_and_a_failed_write_leaves_no_new_score(
@@ -356,6 +357,26 @@ def test_score_windows_writes_signals_before_score_json_and_a_failed_write_leave
     with pytest.raises(OSError, match="no space"):
         rt._score_windows(toy_task, [], lambda b: {}, **kw)
     assert not (out / "score.json").exists()
+
+
+def test_score_windows_replacing_a_stored_score_leaves_no_score_json_when_the_new_signals_fail(
+        tmp_path, monkeypatch, toy_task):
+    rt = load()
+    monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
+
+    def score_batches(name, batches, predict_fn, out_dir):
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        return _result(toy_task, out_dir)
+
+    monkeypatch.setattr(rt.harness, "score_batches", score_batches)
+    kw = dict(predictor="tok.x.unquantized", label="val_select-n100", provenance=PROV, records={})
+    out = tmp_path / "stage1" / "scores" / "task_toy" / "tok.x.unquantized" / "val_select-n100"
+    rt._score_windows(toy_task, [], lambda b: {}, **kw)
+    assert (out / "score.json").is_file() and (out / "signals.csv").is_file()   # a stored pair
+    monkeypatch.setattr(rt, "_write_csv_atomic", _disk_full)
+    with pytest.raises(OSError, match="no space"):
+        rt._score_windows(toy_task, [], lambda b: {}, **kw)
+    assert not (out / "score.json").exists()                  # not kept: scored again, never half old and half new
 
 
 # ------------------------------------------------------------------------------ gate: rule 6, stage 0
@@ -517,4 +538,3 @@ def test_score_of_the_floor_uses_no_gpu_and_records_no_direct_model(tmp_path, mo
     assert kw["predictor"] == "tok.v1.ranged" and kw["records"]["instrument"] == "floor"
     assert kw["records"]["variant"] is None and "direct_stale_reason" not in kw["records"]
     assert "checkpoint_sha256" not in kw["provenance"] and "CUDA_VISIBLE_DEVICES" not in os.environ
-
