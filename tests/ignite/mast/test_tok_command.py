@@ -161,7 +161,10 @@ class _Compress:
 def assign_setup(tmp_path, monkeypatch, rt, *, changed=None, only=None):
     """A stage-1 root with a fit and the seven ladder files, all made with `CURRENT`; `changed` maps a
     file name (without .json) to the keys of its JSON that are replaced (None removes a key). The provenance,
-    the statistics and the choice of the rules are replaced: only the checks of `assign` are under test."""
+    the statistics and the choice of the rules are replaced: only the checks of `assign` are under test.
+    `assign` reads the 39 signals from TokaMark's task configurations (`registry.all_signals`), so this needs
+    `tokamark`."""
+    pytest.importorskip("tokamark")
     monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
     stage1 = tmp_path / "stage1"
     (stage1 / "fit" / "v1").mkdir(parents=True)
@@ -220,6 +223,7 @@ def test_ladder_records_the_scoring_code_hash_from_now_on():
 
 
 def test_assign_refuses_names_options_and_files_that_do_not_fit(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("tokamark")                                     # `assign` reads the signals of the tasks
     rt = load()
     monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
     for argv, text in [(["--name", "../x"], "not a file name"),
@@ -264,6 +268,7 @@ def test_assign_refuses_missing_ladders_and_a_signal_scored_twice_and_the_rules_
 # --------------------------------------------------------------------------- `_raise_inputs`, rule 4
 
 def test_raise_inputs_raises_each_signal_no_task_predicts_by_one_rung():
+    pytest.importorskip("tokamark")                                     # `registry.all_signals` reads the tasks
     rt = load()
     specs = {s.name: s for s in rt.registry.all_signals()}
     old = rt.assign.reference_assignment(list(specs.values()))
@@ -281,6 +286,7 @@ def test_raise_inputs_raises_each_signal_no_task_predicts_by_one_rung():
 
 
 def test_raise_inputs_keeps_the_largest_rung_and_refuses_a_setting_that_is_no_rung():
+    pytest.importorskip("tokamark")                                     # `registry.all_signals` reads the tasks
     rt = load()
     specs = {s.name: s for s in rt.registry.all_signals()}
     name = sorted(n for n, by in rt.assign.predicted_by().items() if not by)[0]
