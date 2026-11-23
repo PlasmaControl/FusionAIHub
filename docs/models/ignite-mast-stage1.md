@@ -4,13 +4,13 @@ title: "IGNITE on MAST: stage 1 fixed tokenizers"
 
 # IGNITE on MAST: stage 1 fixed tokenizers
 
-**Status: measured (2026-11-23). The assignment `v1` (1,470 values per 5 ms frame) passes the gate on all 57 (task, signal) pairs; five pairs miss the fidelity target, each recorded with its cost.**
+**Status: measured (2026-11-23). The assignment `v1` (1,470 values per 5 ms frame) passes the gate on all 57 (task, signal) pairs; five pairs miss the fidelity target, each recorded with its cost, and one input signal (`interferometer-n_e_line`, through one shot) misses its reconstruction target.**
 
 ## What this is
 
 Stage 1b gives each of the 39 cached MAST signals of TokaMark a tokenizer
 without learned weights, a frozen assignment that says how many values each
-signal keeps per 5 ms frame, and, once the long jobs have run, a measured
+signal keeps per 5 ms frame, and a measured
 representation floor per task in TokaMark's own units. Three codecs do the work: a cosine transform per frame
 (`frame_dct`), a principal-component basis for profiles and the flux map
 (`linear`) and a band transform for the two Mirnov spectrograms (`band_dct`).
@@ -299,8 +299,8 @@ The controller runs these jobs from `/home/nvidia/FusionAIHub` with
 scripts/mast/run_tokenizer.py"` and `S1=/models/intermediate/mast/stage1`.
 Logs go to `$S1/logs/`. The durations are the plan author's estimates from
 stage-0 timings (floor scoring of task 4-1 over 1,110 shots: 4,131 s; cache
-build over 11,188 shots: 225 s, both measured 2026-11-22). None was measured for
-this code.
+build over 11,188 shots: 225 s, both measured 2026-11-22). The durations this
+code took are in the paragraph after the table.
 
 Sub-commands of `run_tokenizer.py`: `fit`, `score` (instruments `floor`,
 `passthrough`, `inputs` and `raw`; read modes `unquantized`, `ranged` and
@@ -369,10 +369,29 @@ What they say, in short (all measured 2026-11-23):
   through the tokenizer costs at most +0.24% on any of these signals (n_e on
   3-3) and +0.22% on D-alpha, the one signal whose K rule 3 chose, so the misses
   cost a model's predictions under 1% (K6).
+- **One large pass-through cost, on a signal that meets its target.** On task
+  2-1 (100 `val_select` shots, K2), passing the direct model's prediction
+  through the tokenizer costs 15.5% on the solenoid current and 1.0% on the coil
+  currents, both at K = 1. Both meet their target of 0.0176 (floors 0.0140 and
+  0.0171), and rule 2 takes the smallest K that meets the target without looking
+  at the cost, so K stays at 1. The cost is real for a model that predicts the
+  solenoid current better than the task's average: the 2-1 model's raw error on
+  it is 0.0248. Task 2-1 was not in K6. Whether rule 2 should also bound the
+  pass-through cost is a question for the owner, not settled by this plan.
 - **The inputs pass through cheaply.** With every input and actuator sent
   through its tokenizer, the four direct models change by -0.63% to +1.21% on
   `val_report`; the largest added error is 0.145 of the best published score
-  (2-1), under rule 4's 0.2.
+  (2-1), under rule 4's 0.2. On the 100 `val_select` shots of K4 the largest
+  added error is 0.174 (1-2, +1.87%), the closest any task came to 0.2.
+- **One input misses its target, through one shot.** `interferometer-n_e_line`
+  reconstructs at 0.2267 with 16 values per frame against a target of 0.0176
+  (rule 4, mean over 100 `val_select` shots of the per-shot RMSE; 0.32 to 0.39
+  at the smaller rungs), so it got the largest rung of its domain. One shot of
+  the 100, 16575, has spikes of about 1e22 m⁻² and carries that mean (measured
+  2026-11-23 at K2). The rule was fixed before the measurement and the shot was
+  not dropped (ruling B28), so this input spends 15 more values per frame than
+  a clean one would (about 1% of the 1,470). The input round-trips above include
+  it. Cleaning interferometer spikes is left to stage 2's token store.
 - **Rule 6 (range too narrow, reported, not fixed here).** Thomson t_e is 2.0%
   above its `unquantized` floor in `ranged` on 3-1 and 3-3. The gate also prints
   six rows of one-sample-per-frame signals (`x_point_r`, `x_point_z` and
@@ -383,7 +402,8 @@ What they say, in short (all measured 2026-11-23):
   TokaMind's floor on 1-2, 1-3, 2-1, 2-2, 2-3, 4-3 and 4-4, and above it on
   3-1, 3-2, 3-3, 4-1, 4-2 and 4-5 (1-1 is exact in both). A floor is what a
   perfect prediction of the tokens scores; K6 above is what the gap costs a real
-  model, which is under 1% on every task it was measured on. On 4-5 the floor
+  model, which is under 1% on the five tasks K6 measured (1-2, 3-2, 3-3, 4-1,
+  4-2). On 4-5 the floor
   (0.5133) is 0.79 of the best published score (0.6510), close to the three
   quarters the frame statistics led us to expect (open decision 1, under
   Limits).
