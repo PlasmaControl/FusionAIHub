@@ -7,7 +7,9 @@ assignment (default ``<stage1>/assignments/v1.json``), and writes ``<stage1>/sto
 `linear --arm NAME` fits the linear recoder of one arm (`klt.*` per stream, `pca.*` concatenated) on the
 training store and writes ``<stage1>/recoders/NAME``; it prints, per signal, the share of the validation
 examples' energy that is left after keeping the first 1, 2, 4, 8 and 16 values per stream. `arms` lists the 24
-arms and which recoders exist. Networks are trained by later sub-commands of this file.
+arms and which recoders exist. `joint --signals a,b,c,d` measures, on the stores, what one basis over all streams
+of several signals leaves out beside each signal's own concatenated basis and one per-stream basis pooled over all
+their streams, at the same number of values in all. Networks are trained by later sub-commands of this file.
 
 Units. "Front values" are what a front codec's ``encode_domain`` returns (`store.Norm` takes them to "example
 units": per-stream standardized), and "recoder values" are what a recoder returns. This file does nothing at
@@ -30,7 +32,7 @@ from tokamak_foundation_model.ignite.mast import cache, paths, registry, tasks, 
 from tokamak_foundation_model.ignite.mast.tokenizers import assign, fit, grid
 from tokamak_foundation_model.ignite.mast.tokenizers import learned
 from tokamak_foundation_model.ignite.mast.tokenizers.frames import frame_len
-from tokamak_foundation_model.ignite.mast.tokenizers.learned import identity, recode, store
+from tokamak_foundation_model.ignite.mast.tokenizers.learned import compare, identity, recode, store
 
 FIT_VERSION = "v1"                        # 1b's fit, whose shots are the training shots
 STORE_VERSION = "v1"
@@ -380,6 +382,117 @@ def run_linear(args: argparse.Namespace) -> int:
     return 0
 
 
+# ------------------------------------------------------------------------------------------ joint
+
+def _frame_keys(shots: np.ndarray) -> np.ndarray:
+    """An int64 key per frame of a store, ``shot * 2**20 + the frame's index within its shot`` (a store is written
+    shot by shot, frame after frame from the first sample), so that the frames of two stores can be matched. This
+    assumes that the signals of a shot start at one time: measured 2026-11-23 on 41 shots of cache v1 spread evenly
+    over its files, the four magnetics signals have one ``t0`` in every one of them."""
+    n = len(shots)
+    start = np.maximum.accumulate(np.where(np.r_[True, shots[1:] != shots[:-1]], np.arange(n), 0)) if n else shots
+    index = np.arange(n) - start
+    if n and index.max() >= 1 << 20:
+        raise ValueError("a shot has 2**20 frames or more")
+    return shots.astype(np.int64) * (1 << 20) + index
+
+
+def _common_frames(examples: Mapping[str, np.ndarray], stores: Mapping[str, store.Store]) -> np.ndarray:
+    """The frames of every signal side by side: ``(R, sum of S * D)`` over the frames that every signal has with some
+    finite stream (a NaN stays NaN), in example units, signals in the order of `examples` (each ``(M, S, D)``)."""
+    keys = {n: _frame_keys(stores[n].shots) for n in examples}
+    common = None
+    for n, e in examples.items():
+        k = keys[n][np.isfinite(e).any(axis=(1, 2))]
+        common = k if common is None else np.intersect1d(common, k)
+    blocks = []
+    for n, e in examples.items():
+        order = np.argsort(keys[n])
+        at = order[np.searchsorted(keys[n][order], common)]
+        blocks.append(e[at].reshape(len(common), -1))
+    return np.concatenate(blocks, axis=1)
+
+
+def run_joint(args: argparse.Namespace) -> int:
+    """For `--sizes` k, the share of the validation examples' energy (example units) left out by keeping k values per
+    stream in all, in three ways: the joint basis of all streams of all the listed signals (one example is a frame
+    of every signal, fitted on the training frames in which every listed signal has data), each signal's own
+    concatenated basis (the fit of `linear --arm pca.<signal>`, ``k * S`` values of each signal), and one per-stream
+    basis pooled over all their streams (k values of each stream). The validation examples are the frames in which
+    every listed signal has data; a stream missing in a frame is encoded as 0 and counts in neither sum
+    (`compare.left_over_sums` with ``masked``: a probe that is dead in every frame leaves no frame in which all
+    streams are finite, measured 2026-11-23 on the stage-1c trial store: 0 of 167 validation frames). The three
+    measures see the same observed streams (a pooled basis, which takes one stream at a time, the streams with all
+    their values). Prints one line per size. Exit 2 for a refusal (before any file is read for the fits)."""
+    names = []
+    for token in (t for t in args.signals.split(",") if t):
+        full = SHORT.get(token, token)
+        if full in names:
+            raise Refused(f"--signals lists {full} twice")
+        names.append(full)
+    if len(names) < 2:
+        raise Refused(f"--signals names at least two signals (short names {sorted(SHORT)} or full names), got {args.signals!r}")
+    try:
+        sizes = [int(v) for v in args.sizes.split(",") if v]
+    except ValueError as e:
+        raise Refused(f"--sizes must be integers, comma-separated, got {args.sizes!r}") from e
+    if not sizes or min(sizes) < 1:
+        raise Refused(f"--sizes must be one or more integers of at least 1, got {args.sizes!r}")
+    stage1 = paths.stage1_dir()
+    dirs = {"train": stage1 / "store" / STORE_VERSION / "train", "val": stage1 / "store" / STORE_VERSION / "val"}
+    for d in dirs.values():
+        if not (d / "store.json").is_file():
+            raise Refused(f"there is no store at {d}: run `store` first")
+    try:
+        train, _ = store.load_store(dirs["train"], names)
+        val, _ = store.load_store(dirs["val"], names)
+    except (OSError, KeyError, ValueError) as e:
+        raise Refused(f"the stores do not hold {names} ({type(e).__name__}: {e})") from e
+    depths = {n: train[n].values.shape[2] for n in names}
+    if len(set(depths.values())) != 1:
+        raise Refused(f"the signals have different numbers of values per stream, {depths}: a pooled basis needs one")
+    d = depths[names[0]]
+    if max(sizes) > d:
+        raise Refused(f"--sizes asks for {max(sizes)} values per stream, and a stream has {d}")
+    n_streams = {n: train[n].values.shape[1] for n in names}
+    total_streams = sum(n_streams.values())
+
+    norms = {n: store.fit_norm(train[n].values) for n in names}
+    e_train = {n: norms[n].apply(train[n].values) for n in names}
+    e_val = {n: norms[n].apply(val[n].values) for n in names}
+    joint_train = _common_frames(e_train, train)
+    joint_val = _common_frames(e_val, val)
+    pooled_val = joint_val.reshape(-1, d)
+    pooled_val = pooled_val[np.isfinite(pooled_val).all(axis=1)]
+    print(f"joint {', '.join(names)}: {total_streams} streams of {d} values; training frames {len(joint_train)}, "
+          f"validation frames {len(joint_val)} with {len(pooled_val)} streams observed of {len(joint_val) * total_streams}",
+          flush=True)
+    if len(joint_train) < 2:
+        raise Refused("fewer than 2 training frames have data in every listed signal")
+    if len(pooled_val) == 0:
+        print("no data: no validation frame has data in every listed signal", flush=True)
+        return 0
+
+    each_total = [k * total_streams for k in sizes]
+    joint_residual, joint_total = compare.left_over_sums(joint_train, joint_val, each_total, masked=True)
+    own_residual, own_total = np.zeros(len(sizes)), 0.0
+    at = 0
+    for n in names:
+        width = n_streams[n] * d
+        residual, total = compare.left_over_sums(_rows(e_train[n], True)[0], joint_val[:, at:at + width],
+                                                 [k * n_streams[n] for k in sizes], masked=True)
+        own_residual += residual
+        own_total += total
+        at += width
+    pooled_train = np.concatenate([_rows(e_train[n], False)[0] for n in names])
+    pooled_residual, pooled_total = compare.left_over_sums(pooled_train, pooled_val, sizes)
+    for i, k in enumerate(sizes):
+        print(f"{k} values per stream ({k * total_streams} in all): left over joint {joint_residual[i] / joint_total:.4f}, "
+              f"own concatenated {own_residual[i] / own_total:.4f}, pooled per stream {pooled_residual[i] / pooled_total:.4f}",
+              flush=True)
+    return 0
+
+
 # ----------------------------------------------------------------------------------------- arms
 
 def run_arms(args: argparse.Namespace) -> int:
@@ -418,6 +531,11 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--arm", required=True, help="a linear arm (`arms` lists them)")
     p.add_argument("--cache-dir", default=None, help="the cache whose registry.csv names the streams (default: the store's)")
     p.set_defaults(run=run_linear)
+
+    p = sub.add_parser("joint", help="the left-over of one basis over the streams of several signals, against the own ones")
+    p.add_argument("--signals", required=True, help="signals, short (ccbv,obr,obv,flux,cc,omv) or full names, comma-separated")
+    p.add_argument("--sizes", default="1,2,4,8", help="values per stream in all (default 1,2,4,8)")
+    p.set_defaults(run=run_joint)
 
     p = sub.add_parser("arms", help="list the arms and which recoders exist")
     p.set_defaults(run=run_arms)

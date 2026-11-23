@@ -41,6 +41,17 @@ floor` runs on the CPU for a network recoder too (one torch thread), so it still
 a recoded assignment through a copy of `gate.cache_side_job` that builds its codecs with `learned.build`, and
 refuses a concatenated band codec, whose kept positions it cannot tell.
 
+`compare --a NAME --b NAME` sets two assignments (`<stage1>/assignments/NAME.json`) side by side, per signal whose
+setting differs (or `--signals`), as the paired gap of plan 1c's rule 1 with its 95% interval from 2,000 paired
+resamples of the shots (`learned.compare`). A signal that a task predicts is read from the stored floors
+`tok.<NAME>.unquantized` under `--label`, per shot, of the task with the smallest best published score, and only if
+`kept_score` keeps them (otherwise the row says `not scored` and the `score` command that is missing is printed);
+a signal no task predicts is read from the cache over the label's shots. It writes
+`<stage1>/compare/<a>__<b>.<label>.csv`; `--drop-channel` and `--reach TARGET` add the cost of a missing channel and
+the values per frame needed to reach TARGET, for a series signal with several channels read from the cache.
+`seeds --pairs a0:b,a1:b,... --label L` reads the stored files of the pairs and prints, per signal, the gaps of the
+seeds, their spread and the verdict of the first pair with that spread (rule 2).
+
 Later sub-commands are added as one more sub-parser and one more function each. This file does
 nothing at import time except define: `fit`, `ladder --inputs` and `gate` start spawned workers, and they
 import it again.
@@ -72,6 +83,7 @@ from tokamak_foundation_model.ignite.mast.tokenizers import assign, code_sha256,
 from tokamak_foundation_model.ignite.mast.tokenizers import fit, floor, gate, ladder
 from tokamak_foundation_model.ignite.mast.tokenizers import learned
 from tokamak_foundation_model.ignite.mast.tokenizers.learned import build as learned_build
+from tokamak_foundation_model.ignite.mast.tokenizers.learned import compare as learned_compare
 from tokamak_foundation_model.ignite.mast.tokenizers.learned import recode as learned_recode
 
 STAGE1_SPLITS = ("val_select", "val_report")
@@ -1087,6 +1099,282 @@ def run_gate(args: argparse.Namespace) -> int:
     return 1 if n_block else 0
 
 
+# ---------------------------------------------------------------------------------------- compare
+
+COMPARE_LABEL = "val_select-n100"
+REACH_FACTORS = (0.125, 0.25, 0.5, 1.0, 2.0)          # the sizes of the reach curve, times the setting's values
+FRONT_VALUES = 16                                     # the top rung of a series: values per frame and channel
+_LABEL = re.compile(r"(val_select|val_report)(?:-n([1-9][0-9]*))?")
+COMPARE_COLUMNS = ["signal", "source", "values_a", "values_b", "n_shots", "mean_a", "mean_b", "gap", "lo", "hi",
+                   "gap_ba", "lo_ba", "hi_ba", "one_seed", "drop_a", "drop_b", "reach_a", "reach_b"]
+_COMPARE_INTS = ("values_a", "values_b", "n_shots", "reach_a", "reach_b")
+
+
+def _is_series_array(spec: tasks.SignalSpec) -> bool:
+    """A series signal of several channels (a probe array): the signals whose missing channel and reach are read."""
+    return assign.codec_kind(spec) == "frame_dct" and len(spec.values_shape) == 1 and spec.values_shape[0] > 1
+
+
+def _reach_settings(spec: tasks.SignalSpec, setting: assign.Setting,
+                    loaded: dict[str, learned_recode.Loaded]) -> dict[int, assign.Setting]:
+    """``{values per frame: setting}`` at 1/8, 1/4, 1/2, 1 and 2 times the values of `setting` (the sizes that exist).
+
+    A per-channel setting is sized by its K per channel (`learned.compare.scaled_k` with step 1 and limit 16, the
+    top rung); a concatenated one by its values per frame, in whole tokens of the recoder, up to all its values
+    (`loaded` keeps the recoders read)."""
+    step, limit = 1, FRONT_VALUES
+    if setting.codec == learned_build.RECODED_CONCAT:
+        if setting.source not in loaded:
+            loaded[setting.source] = learned_recode.load_recoder(recoders_root() / setting.source)
+        step, limit = loaded[setting.source].recoder.n_val, loaded[setting.source].recoder.n_values
+    out: dict[int, assign.Setting] = {}
+    for factor in REACH_FACTORS:
+        k = learned_compare.scaled_k(int(setting.k[0]), factor, step, limit)
+        if k is not None:
+            sized = dataclasses.replace(setting, k=(k,))
+            out[ladder.values_per_frame(spec, sized)] = sized
+    return out
+
+
+def compare_cache_side_job(job: tuple) -> dict[str, dict[str, object]]:
+    """One shot of the cache-side pass, for `transform.map_shots`: ``job = (shot, cache_root, stats_sha256, fit_dir,
+    recoders_dir, plan)`` with ``plan`` a tuple of ``(spec, variants, channel)`` and ``variants`` a tuple of
+    ``(key, setting, with_drop)``. Returns, per signal name and variant key, the round-trip RMSE of the shot in
+    TokaMark units (`learned.compare.per_shot_cache`; None for a shot without the signal or a valid sample), and
+    for a variant with `with_drop` also ``key + "!"``: `learned.compare.missing_stream_cost` of `channel`."""
+    shot, cache_root, sha, fit_dir, recoders_dir, plan = job
+    got = cache.read_shot(Path(cache_root) / "shots" / f"{shot}.h5", [spec.name for spec, _, _ in plan],
+                          stats_sha256=sha)
+    out: dict[str, dict[str, object]] = {}
+    for spec, variants, channel in plan:
+        c = got[spec.name]
+        res: dict[str, object] = {}
+        for key, setting, with_drop in variants:
+            codec = None if c is None else _gate_codec_of(str(fit_dir), str(cache_root), str(recoders_dir), spec, setting)
+            res[key] = (None if codec is None
+                        else learned_compare.per_shot_cache(codec, spec, [(shot, c.values)]).get(shot))
+            if with_drop:
+                res[f"{key}!"] = (None if codec is None
+                                  else learned_compare.missing_stream_cost(codec, spec, c.values, channel))
+        out[spec.name] = res
+    return out
+
+
+def _compare_inputs(args: argparse.Namespace) -> tuple[Path, dict[str, Path], dict[str, dict[str, assign.Setting]],
+                                                         dict[str, tasks.SignalSpec], list[str]]:
+    """The checked inputs of `compare`: ``(stage1, {side: assignment path}, {side: assignment}, specs, signals)``.
+    `Refused` for a bad option, an assignment that is not there, or a signal the assignments do not both have."""
+    for flag, value in (("--a", args.a), ("--b", args.b), ("--label", args.label)):
+        if not _NAME.fullmatch(value):
+            raise Refused(f"{flag} {value!r} is not a name (letters, digits, . _ -)")
+    if args.a == args.b:
+        raise Refused(f"--a and --b are the same assignment, {args.a}")
+    if not _LABEL.fullmatch(args.label):
+        raise Refused(f"--label {args.label!r} is not <split> or <split>-n<N>, with a split of {STAGE1_SPLITS}")
+    if args.workers < 1:
+        raise Refused("--workers is at least 1")
+    if args.reach is not None and not (math.isfinite(args.reach) and args.reach > 0):
+        raise Refused(f"--reach is a positive error in TokaMark units, got {args.reach}")
+    stage1 = paths.stage1_dir()
+    files = {"a": stage1 / "assignments" / f"{args.a}.json", "b": stage1 / "assignments" / f"{args.b}.json"}
+    for path in files.values():
+        if not path.is_file():
+            raise Refused(f"there is no assignment {path}")
+    try:
+        assignments = {side: assign.load_assignment(path) for side, path in files.items()}
+    except (OSError, KeyError, ValueError) as e:
+        raise Refused(f"an assignment cannot be read ({type(e).__name__}: {e})") from e
+    specs = {s.name: s for s in registry.all_signals()}
+    if args.signals:
+        wanted = [n for n in args.signals.split(",") if n]
+        unknown = [n for n in wanted if n not in specs]
+        if unknown or not wanted:
+            raise Refused(f"--signals names {unknown or args.signals!r}, which are not signals of the registry")
+        lacking = [n for n in wanted if n not in assignments["a"] or n not in assignments["b"]]
+        if lacking:
+            raise Refused(f"--signals names {lacking}, which an assignment has no setting for")
+        signals = list(dict.fromkeys(wanted))
+    else:
+        signals = [n for n in sorted(specs) if n in assignments["a"] and n in assignments["b"]
+                   and assignments["a"][n] != assignments["b"][n]]
+        if not signals:
+            raise Refused(f"{args.a} and {args.b} have the same setting for every signal; --signals names signals to "
+                          "compare anyway")
+    return stage1, files, assignments, specs, signals
+
+
+def run_compare(args: argparse.Namespace) -> int:
+    """Compare assignments `--a` and `--b` signal by signal; print the table and write
+    ``<stage1>/compare/<a>__<b>.<label>.csv``. Exit 2 for a refusal (before a score or the cache is read), 0
+    otherwise, also when some rows are not scored."""
+    stage1, files, assignments, specs, signals = _compare_inputs(args)
+    m = _LABEL.fullmatch(args.label)
+    split, n_asked = m.group(1), (int(m.group(2)) if m.group(2) else None)
+    fit_dir = stage1 / "fit" / FIT_VERSION
+    if not (fit_dir / "fit.npz").exists():
+        raise Refused(f"there is no fit at {fit_dir}: run `fit` first")
+    cache_root = _cache_root(args)
+    try:
+        predicted = assign.predicted_by()
+        prov = {side: provenance_of(path, fit_dir, cache_root, recoders_root=recoders_root())
+                for side, path in files.items()}
+        values = {n: tuple(ladder.values_per_frame(specs[n], assignments[side][n]) for side in ("a", "b"))
+                  for n in signals}
+    except (OSError, KeyError, ValueError, ImportError) as e:
+        raise Refused(f"the inputs cannot be read ({type(e).__name__}: {e})") from e
+    source = {n: (min(predicted[n], key=tasks.best_published) if predicted.get(n) else "cache") for n in signals}
+    from_cache = [n for n in signals if source[n] == "cache"]
+    shots: list[int] = []
+    if from_cache:
+        every = tasks.split_shots(split)
+        shots = cache.pick_evenly(every, n_asked) if n_asked is not None else sorted(int(s) for s in every)
+        gone = [s for s in shots if not (cache_root / "shots" / f"{s}.h5").exists()]
+        if gone:
+            raise Refused(f"{len(gone)} of the {len(shots)} shots have no cache file in {cache_root}; the first is {gone[0]}")
+
+    # the signals of a task: the stored floors, per shot
+    started = time.monotonic()
+    errors: dict[str, dict[str, dict[int, float] | None]] = {}
+    missing: dict[tuple[str, str], str] = {}
+    for n in signals:
+        if source[n] == "cache":
+            continue
+        errors[n] = {}
+        for side, name in (("a", args.a), ("b", args.b)):
+            predictor = predictor_name("floor", name, "unquantized")
+            out_dir = stage1 / "scores" / source[n] / predictor / args.label
+            stored, why = kept_score(out_dir, source[n], predictor, args.label, prov[side], False)
+            if stored is None:
+                errors[n][side] = None
+                missing[(source[n], name)] = why
+            else:
+                errors[n][side] = learned_compare.per_shot_harness(out_dir, source[n], n)
+
+    # the signals no task predicts: the round trip of the cache, per shot, with the variants of the extras
+    extras = [n for n in from_cache if _is_series_array(specs[n]) and (args.drop_channel or args.reach is not None)]
+    curves: dict[str, dict[str, dict[int, str]]] = {}
+    plan = []
+    loaded: dict[str, learned_recode.Loaded] = {}
+    try:
+        for n in from_cache:
+            spec = specs[n]
+            with_extras = n in extras
+            channel = int(np.prod(spec.values_shape, dtype=np.int64)) // 2
+            variants = []
+            curves[n] = {}
+            for side in ("a", "b"):
+                setting = assignments[side][n]
+                variants.append((side, setting, bool(args.drop_channel and with_extras)))
+                if with_extras and args.reach is not None:
+                    curves[n][side] = {}
+                    for vpf, sized in _reach_settings(spec, setting, loaded).items():
+                        key = side if sized == setting else f"{side}:{vpf}"
+                        curves[n][side][vpf] = key
+                        if sized != setting:
+                            variants.append((key, sized, False))
+            plan.append((spec, tuple(variants), channel))
+    except (OSError, KeyError, ValueError, ImportError) as e:
+        raise Refused(f"a recoder cannot be read ({type(e).__name__}: {e})") from e
+    per_shot: list[dict] = []
+    if plan:
+        per_shot = list(transform.map_shots(compare_cache_side_job, shots, (str(cache_root), prov["a"]["stats_sha256"],
+                                                                            str(fit_dir), str(recoders_root()),
+                                                                            tuple(plan)), args.workers))
+    for spec, variants, _ in plan:
+        n = spec.name
+        errors[n] = {side: {s: r[n][side] for s, r in zip(shots, per_shot) if r[n][side] is not None}
+                     for side in ("a", "b")}
+
+    rows = []
+    for n in signals:
+        row = dict.fromkeys(COMPARE_COLUMNS)
+        row.update(signal=n, source=source[n], values_a=values[n][0], values_b=values[n][1])
+        ea, eb = errors[n]["a"], errors[n]["b"]
+        if ea is None or eb is None:
+            row["one_seed"] = "not scored"
+        else:
+            ab, ba = learned_compare.paired_gap(ea, eb), learned_compare.paired_gap(eb, ea)
+            row.update(n_shots=ab["n_shots"], mean_a=ab["mean_a"], mean_b=ab["mean_b"], gap=ab["gap"], lo=ab["lo"],
+                       hi=ab["hi"], gap_ba=ba["gap"], lo_ba=ba["lo"], hi_ba=ba["hi"],
+                       one_seed=learned_compare.word(ab, ba))
+            if n in extras and args.drop_channel:
+                for side in ("a", "b"):
+                    pairs = [r[n][f"{side}!"] for r in per_shot if r[n].get(f"{side}!") is not None]
+                    if pairs:
+                        before, after = (float(np.mean([p[i] for p in pairs])) for i in (0, 1))
+                        row[f"drop_{side}"] = after / before if before > 0 else math.nan
+            if n in extras and args.reach is not None:
+                for side in ("a", "b"):
+                    curve = {}
+                    for vpf, key in curves[n][side].items():
+                        vals = [r[n][key] for r in per_shot if r[n][key] is not None]
+                        if vals:
+                            curve[vpf] = float(np.mean(vals))
+                    row[f"reach_{side}"] = learned_compare.values_to_reach(curve, args.reach)
+        rows.append(row)
+    frame = pd.DataFrame(rows, columns=COMPARE_COLUMNS)
+    for col in COMPARE_COLUMNS:
+        if col in _COMPARE_INTS:
+            frame[col] = frame[col].astype("Int64")                 # a number of values or shots, blank when missing
+        elif col not in ("signal", "source", "one_seed"):
+            frame[col] = frame[col].astype(float)
+    shown = frame.copy()
+    for col in _COMPARE_INTS:
+        shown[col] = [("" if pd.isna(v) else str(int(v))) for v in frame[col]]
+    for col in COMPARE_COLUMNS:
+        if col not in _COMPARE_INTS and col not in ("signal", "source", "one_seed"):
+            shown[col] = [("" if pd.isna(v) else f"{v:.4f}") for v in frame[col]]
+    print(shown.to_string(index=False))
+    if (args.drop_channel or args.reach is not None) and not extras:
+        print("note: --drop-channel and --reach apply to a series signal of several channels that is read from the "
+              "cache; none of the compared signals is one")
+    for (task, name), why in sorted(missing.items()):
+        shots_flag = f" --n-shots {n_asked}" if n_asked is not None else ""
+        print(f"not scored: {task} {predictor_name('floor', name, 'unquantized')} {args.label} ({why}); "
+              f"scripts/mast/py.sh scripts/mast/run_tokenizer.py score --task {task} --split {split}{shots_flag} "
+              f"--assignment {stage1 / 'assignments' / (name + '.json')} --mode unquantized")
+    out_dir = _prepare(stage1 / "compare")                  # after every refusal and every read above
+    out = out_dir / f"{args.a}__{args.b}.{args.label}.csv"
+    _write_csv_atomic(out, frame)
+    print(f"wrote {out}; {len(frame)} signals, {time.monotonic() - started:.0f} s", flush=True)
+    return 0
+
+
+def run_seeds(args: argparse.Namespace) -> int:
+    """From the stored comparison files of `--pairs` (``a:b`` names, comma-separated, at least two, one per seed
+    of the network, `b` the same in each) print, per signal, the gaps of the seeds, their spread and the verdict of
+    the first pair with that spread (rule 2: a gap above the spread over the seeds is above 0 in every seed).
+    Exit 2 naming a file that is missing; nothing is written."""
+    if not _NAME.fullmatch(args.label):
+        raise Refused(f"--label {args.label!r} is not a label (letters, digits, . _ -)")
+    pairs = [p for p in args.pairs.split(",") if p]
+    names = [p.split(":") for p in pairs]
+    if len(pairs) < 2 or any(len(n) != 2 or not all(_NAME.fullmatch(x) for x in n) for n in names):
+        raise Refused(f"--pairs {args.pairs!r} must be at least two pairs a:b of assignment names, comma-separated")
+    stage1 = paths.stage1_dir()
+    files = [stage1 / "compare" / f"{a}__{b}.{args.label}.csv" for a, b in names]
+    gone = [str(f) for f in files if not f.is_file()]
+    if gone:
+        raise Refused(f"no comparison file {', '.join(gone)}: `compare --a A --b B --label {args.label}` writes it")
+    try:
+        frames_ = [pd.read_csv(f).set_index("signal") for f in files]
+    except (OSError, KeyError, ValueError) as e:
+        raise Refused(f"a comparison file cannot be read ({type(e).__name__}: {e})") from e
+    for signal in frames_[0].index:
+        rows = [f.loc[signal] if signal in f.index else None for f in frames_]
+        gaps = [math.nan if r is None else float(r["gap"]) for r in rows]
+        spread = learned_compare.seed_spread(gaps)
+        if rows[0] is None or not all(math.isfinite(g) for g in gaps):
+            verdict = "no data"
+        else:
+            ab = {k: float(rows[0][k]) for k in ("gap", "lo", "hi")}
+            ba = {k: float(rows[0][f"{k}_ba"]) for k in ("gap", "lo", "hi")}
+            verdict = learned_compare.word(ab, ba, spread)
+        print(f"{signal}: gaps {', '.join('nan' if not math.isfinite(g) else f'{g:.4f}' for g in gaps)}; "
+              f"spread {spread:.4f}; {verdict}")
+    return 0
+
+
 # -------------------------------------------------------------------------------------------- main
 
 def _parser() -> argparse.ArgumentParser:
@@ -1155,6 +1443,22 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--cache-dir", default=None, help="the cache (default <root>/cache/v1)")
     p.add_argument("--stage0-dir", default=None, help="stage 0's directory, for the mean and floor scores")
     p.set_defaults(run=run_gate)
+
+    p = sub.add_parser("compare", help="two assignments side by side per signal: the paired gap of rule 1")
+    p.add_argument("--a", required=True, help="the first assignment's name, in <stage1>/assignments")
+    p.add_argument("--b", required=True, help="the second assignment's name; the gap is (mean b - mean a) / mean b")
+    p.add_argument("--label", default=COMPARE_LABEL, help="the split and subset of the scores and shots (default val_select-n100)")
+    p.add_argument("--signals", default=None, help="compare these signals (comma-separated) instead of those that differ")
+    p.add_argument("--drop-channel", action="store_true", help="the cost of a missing channel (series arrays, from the cache)")
+    p.add_argument("--reach", type=float, default=None, help="values per frame needed to reach this error (TokaMark units)")
+    p.add_argument("--workers", type=int, default=64, help="cache reader processes (default 64)")
+    p.add_argument("--cache-dir", default=None, help="the cache (default <root>/cache/v1)")
+    p.set_defaults(run=run_compare)
+
+    p = sub.add_parser("seeds", help="the gaps of the seeds of one network against one baseline, and their spread")
+    p.add_argument("--pairs", required=True, help="a0:b,a1:b,a2:b: the compared assignments, one pair per seed")
+    p.add_argument("--label", default=COMPARE_LABEL, help="the label of the comparison files (default val_select-n100)")
+    p.set_defaults(run=run_seeds)
     return ap
 
 
