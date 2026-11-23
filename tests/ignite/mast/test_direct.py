@@ -1059,6 +1059,73 @@ def test_a_lock_without_a_readable_pid_is_not_taken_over(command, capsys):
     assert "no readable pid" in capsys.readouterr().err and (_run(root) / "train.lock").exists()
 
 
+def _dead_pid():
+    import subprocess
+    done = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"], capture_output=True, text=True,
+                          check=True)
+    return int(done.stdout)
+
+
+def test_a_takeover_reads_the_lock_again_under_the_serialization(command, tmp_path):
+    """Two launches that read the dead pid of a stale lock: the second must see the first's live pid once the
+    first has finished taking it, and be refused (M1 of the final review)."""
+    import fcntl
+    import threading
+    rh, _ = command
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    lock = run_dir / "train.lock"
+    lock.write_text(f"{_dead_pid()}\n")
+    live = _alive_pid_not_ours()
+    outcome = {}
+
+    def second_launch():
+        try:
+            rh._take_lock(run_dir)
+            outcome["result"] = "took it"
+        except rh.Refused as e:
+            outcome["result"] = str(e)
+
+    with open(run_dir / "train.lock.take", "a") as guard:
+        fcntl.flock(guard, fcntl.LOCK_EX)           # the first launch is in the middle of its takeover
+        thread = threading.Thread(target=second_launch)
+        thread.start()
+        thread.join(0.5)
+        assert thread.is_alive() and not outcome    # the second launch waits: it has not read the lock yet
+        lock.write_text(f"{live}\n")                # the first launch finishes: its live pid is in the lock
+    thread.join(10)
+    assert not thread.is_alive()
+    assert f"pid {live}" in outcome["result"] and "another training" in outcome["result"]
+    assert lock.read_text() == f"{live}\n"          # not unlinked, not replaced
+
+
+def test_taking_a_lock_of_a_dead_pid_leaves_one_pid_and_a_newline_and_a_second_take_is_refused(command, tmp_path,
+                                                                                               capsys):
+    rh, _ = command
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    dead = _dead_pid()
+    (run_dir / "train.lock").write_text(f"{dead}\n")
+    assert rh._take_lock(run_dir) == run_dir / "train.lock"
+    assert (run_dir / "train.lock").read_text() == f"{os.getpid()}\n"
+    assert capsys.readouterr().out.count("taking over") == 1
+    with pytest.raises(rh.Refused, match=f"pid {os.getpid()}"):
+        rh._take_lock(run_dir)                       # the first takeover's pid is alive: refused
+    assert (run_dir / "train.lock").read_text() == f"{os.getpid()}\n"
+
+
+def test_a_fresh_run_directory_is_removed_with_its_guard_file_when_nothing_came_of_the_run(command, monkeypatch):
+    rh, root = command
+
+    def dies(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(rh, "_write_json_atomic", dies)   # fails before `trained_by.json` is written
+    with pytest.raises(RuntimeError):
+        rh.main(TRAIN_ARGV)
+    assert not _run(root).exists()                        # no empty variant behind, guard file included
+
+
 def test_the_old_validation_directories_are_left_alone(command):
     rh, root = command
     assert rh.main(TRAIN_ARGV) == 0
@@ -1138,6 +1205,22 @@ def test_the_command_scores_a_direct_model_through_the_blind_wrapper(command, mo
                                                 real(batch, *a, **k))[1])
     assert rh.main([*SCORE_ONLY, "--force"]) == 0
     assert seen and all(all(flags) for flags in seen)                      # every call during scoring saw NaN targets
+
+
+def test_a_fitted_predictors_record_says_it_was_scored_blind_and_the_key_is_not_provenance(command, capsys):
+    rh, root = command
+    assert rh.main(TRAIN_ARGV) == 0
+    path = _score_json(root)
+    record = json.loads(path.read_text())
+    assert record["scored_blind"] is True
+    # a record, not provenance: a score without the key ("not known") is still kept, not scored again
+    del record["scored_blind"]
+    path.write_text(json.dumps(record))
+    capsys.readouterr()
+    assert rh.main(SCORE_ONLY) == 0
+    out = capsys.readouterr().out
+    assert "kept " in out and "re-scoring" not in out
+    assert "scored_blind" not in json.loads(path.read_text())
 
 
 # ---- L275: what is validated and saved is the EMA

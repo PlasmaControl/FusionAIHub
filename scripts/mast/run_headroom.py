@@ -95,7 +95,10 @@ root changed: the record holds neither.
 Blind scoring. The fitted predictors (`shrunk`, `ridge`, `direct`) are called with a copy of the batch whose
 targets are NaN arrays of the same shapes and dtypes (`_blind_to_targets`; the wrapper keeps the predict
 function's attributes such as `history_s`), so that "does not read its targets" is structural. The harness still
-scores against the real targets, and the floor, which reads its targets by definition, is not wrapped.
+scores against the real targets, and the floor, which reads its targets by definition, is not wrapped. The
+score record of a wrapped predictor carries `scored_blind: true`; the floor's record has no such key, and
+neither has a record written before the wrapper existed ("not known"). The key is a record: no hash, no
+`stale_reason` and no `_kept_score` look at it.
 
 Provenance. `score.json`'s `code_sha256` covers the scoring code (harness.py, tasks.py,
 baselines.py), not the predictor. This command therefore adds `predictor_sha256`, the sha256 of
@@ -111,6 +114,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import fcntl
 import hashlib
 import json
 import math
@@ -183,6 +187,7 @@ class Refused(Exception):
 
 TRAINED_BY = "trained_by.json"      # in a run directory: the code that trained it (written before the first step)
 LOCK = "train.lock"                 # in a run directory: the pid of the training that holds it
+LOCK_TAKE = "train.lock.take"       # in a run directory: flock'ed while a launch checks and takes `LOCK`
 
 
 def _write_json_atomic(path: Path, record: dict) -> None:
@@ -237,8 +242,20 @@ def _take_lock(run_dir: Path) -> Path:
     """Create `<run dir>/train.lock` holding this pid, or raise `Refused`. A lock whose pid is not alive is
     taken over with one printed line; one with no readable pid is not (nothing says it is dead). The lock is
     a file of its own: it is not a checkpoint, and `best.pt` is what the command's checks look at. A pid can
-    be reused by another process after a crash; then the lock must be removed by hand."""
-    lock = run_dir / LOCK
+    be reused by another process after a crash; then the lock must be removed by hand.
+
+    The whole check, unlink and create runs under an exclusive `flock` on `<run dir>/train.lock.take`, held
+    only for that sequence. Without it two launches that both read the dead pid of a stale lock could
+    interleave (A unlinks it and creates its own, then B, which read the dead pid before, unlinks A's fresh
+    lock and creates its own, and both train). With it the second launch reads the lock after the first has
+    finished taking it, sees a live pid and is refused. The lock file itself still holds one pid and a
+    newline, and keeps its name."""
+    with open(run_dir / LOCK_TAKE, "a") as guard:     # "a" creates the file and never truncates it
+        fcntl.flock(guard, fcntl.LOCK_EX)             # released when the file is closed
+        return _take_lock_serialized(run_dir / LOCK)
+
+
+def _take_lock_serialized(lock: Path) -> Path:
     for _ in range(2):
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
@@ -308,6 +325,7 @@ def _train_direct(ctx: Context, score_dir: Path) -> None:
         _release_lock(lock)
         if created:
             try:
+                (run_dir / LOCK_TAKE).unlink(missing_ok=True)  # the guard of the lock is not a result either
                 run_dir.rmdir()  # nothing came of this run: leave no empty variant behind
             except OSError:
                 pass
@@ -771,6 +789,11 @@ def main(argv: list[str] | None = None) -> int:
     record = json.loads(path.read_text())
     record.update(provenance)
     record.update(run_record)  # records, not provenance: `_kept_score` does not compare them
+    if args.predictor in FITTED:
+        # A record, not provenance: in no hash, not in `stale_reason`, not in `_kept_score`. The floor reads its
+        # targets and is not wrapped, so its record has no key; a record without the key (a score made before
+        # `_blind_to_targets` existed) reads as "not known".
+        record["scored_blind"] = True
     _write_json_atomic(path, record)
     print(f"{args.task} {name} {args.split}: nrmse {result.task_nrmse:.4f}, "
           f"{result.n_windows} windows, {time.monotonic() - started:.0f} s", flush=True)
