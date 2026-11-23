@@ -24,9 +24,15 @@ no GPU, no windows). `assign` applies the rules to the seven ladder files and wr
 `<stage1>/assignments/<name>.json`; it refuses a name that exists, and ladders made with another fit.
 Every refusal comes before the first write, and no refusal leaves a directory behind.
 
-Later sub-commands (`gate`) are added as one more sub-parser and one more function each. This file does
-nothing at import time except define: `fit` and `ladder --inputs` start spawned workers, and they import it
-again.
+`gate --assignment FILE` judges every (task, output signal) pair of the 14 tasks from stored scores: the
+floors of `tok.<name>.<mode>` in the three read-outs and the own-mean floor of `tok.ref.unquantized` (the
+score of ``<stage1>/assignments/ref.json``, written by `assign --reference --name ref`), each only if it is
+kept with the current provenance, and the cache-side columns measured over `val_report` shots. It prints the
+table and writes `<stage1>/gate/<name>.csv` and `.md` after every refusal; it exits 1 if a row blocks.
+
+Later sub-commands are added as one more sub-parser and one more function each. This file does
+nothing at import time except define: `fit`, `ladder --inputs` and `gate` start spawned workers, and they
+import it again.
 """
 
 from __future__ import annotations
@@ -51,7 +57,7 @@ import pandas as pd
 from tokamak_foundation_model.ignite.mast import baselines, cache, harness, paths, registry, tasks, transform
 from tokamak_foundation_model.ignite.mast.headroom import table
 from tokamak_foundation_model.ignite.mast.tokenizers import assign, code_sha256, grid
-from tokamak_foundation_model.ignite.mast.tokenizers import fit, floor, ladder
+from tokamak_foundation_model.ignite.mast.tokenizers import fit, floor, gate, ladder
 
 STAGE1_SPLITS = ("val_select", "val_report")
 INSTRUMENTS = ("floor", "passthrough", "inputs", "raw")
@@ -743,6 +749,133 @@ def run_assign(args: argparse.Namespace) -> int:
     return 0
 
 
+# ------------------------------------------------------------------------------------------ gate
+
+GATE_SPLIT = "val_report"
+REF_NAME = "ref"
+
+
+def _stored_floors(stage1: Path, task: str, name: str, mode: str, label: str,
+                   prov: Mapping[str, str]) -> tuple[dict[str, float | None] | None, float | None, str]:
+    """(per-signal NRMSE, task NRMSE, reason it is missing) of the score of `tok.<name>.<mode>` stored under
+    `label`, all in TokaMark units. Kept only as `kept_score` keeps it (with `prov`) and with a readable
+    ``signals.csv``; a NaN is a missing number (None)."""
+    predictor = predictor_name("floor", name, mode)
+    out_dir = stage1 / "scores" / task / predictor / label
+    stored, reason = kept_score(out_dir, task, predictor, label, prov, False)
+    if stored is None:
+        return None, None, reason
+    try:
+        per = pd.read_csv(out_dir / "signals.csv")
+        got = {str(n): gate._num(v) for n, v in zip(per["feature_name"], per["NRMSE"], strict=True)}
+        return got, gate._num(stored["nrmse"]), ""
+    except (OSError, KeyError, ValueError) as e:
+        return None, None, f"signals.csv cannot be read ({type(e).__name__}: {e})"
+
+
+def run_gate(args: argparse.Namespace) -> int:
+    """Judge every (task, output signal) pair; print the table, a line per task, the scores that are not
+    kept and the count line (``<n> rows, <m> not scored, <b> block``); write `<stage1>/gate/<name>.csv` and
+    `.md`. Exit 2 for a refusal (before any write), 1 if a row blocks."""
+    if args.n_shots < 1 or args.workers < 1:
+        raise Refused("--n-shots and --workers are at least 1")
+    if not _NAME.fullmatch(args.label):
+        raise Refused(f"--label {args.label!r} is not a label (letters, digits, . _ -)")
+    assignment_path = Path(args.assignment)
+    name = assignment_path.name.removesuffix(".json")
+    if not _NAME.fullmatch(name) or not assignment_path.is_file():
+        raise Refused(f"there is no assignment {assignment_path} (a file named by letters, digits, . _ -)")
+    cache_root = _cache_root(args)
+    stage1 = paths.stage1_dir()
+    stage0 = Path(args.stage0_dir) if args.stage0_dir else paths.stage0_dir()
+    fit_dir = stage1 / "fit" / FIT_VERSION
+    if not (fit_dir / "fit.npz").exists():
+        raise Refused(f"there is no fit at {fit_dir}: run `fit` first")
+    try:
+        assignment = assign.load_assignment(assignment_path)
+        prov = provenance_of(assignment_path, fit_dir, cache_root)
+        ref_path = stage1 / "assignments" / f"{REF_NAME}.json"
+        ref_prov = provenance_of(ref_path, fit_dir, cache_root) if ref_path.is_file() else None
+        task_specs = {t: tasks.load_task(t) for t in tasks.ALL_TASKS}
+    except (OSError, KeyError, ValueError, ImportError) as e:
+        raise Refused(f"the inputs cannot be read ({type(e).__name__}: {e})") from e
+    outputs = {t: spec.outputs for t, spec in task_specs.items()}
+    unique = {s.name: s for ss in outputs.values() for s in ss}
+    unassigned = sorted(n for n in unique if n not in assignment)
+    if unassigned:
+        raise Refused(f"the assignment has no setting for {len(unassigned)} output signals; the first is {unassigned[0]}")
+    shots = cache.pick_evenly(tasks.split_shots(GATE_SPLIT), args.n_shots)
+    gone = [s for s in shots if not (cache_root / "shots" / f"{s}.h5").exists()]
+    if gone:
+        raise Refused(f"{len(gone)} of the {len(shots)} shots have no cache file in {cache_root}; the first is {gone[0]}")
+
+    if ref_prov is None:
+        print(f"note: there is no {ref_path}, so the own-mean floor is missing: "
+              f"`assign --reference --name {REF_NAME}`, then `score --assignment {ref_path} --mode unquantized`")
+    started = time.monotonic()
+    floors: dict[tuple[str, str], dict[str, float | None] | None] = {}
+    task_nrmse: dict[tuple[str, str], float | None] = {}
+    not_kept: list[str] = []
+    absent = {read: 0 for read in gate.READS}
+    for t in tasks.ALL_TASKS:
+        for read in gate.READS:
+            mode, who, p = (("unquantized", REF_NAME, ref_prov) if read == "ref" else (read, name, prov))
+            got, whole, why = (None, None, "no score.json") if p is None else _stored_floors(stage1, t, who, mode,
+                                                                                         args.label, p)
+            floors[(t, read)], task_nrmse[(t, read)] = got, whole
+            if got is None and why == "no score.json":
+                absent[read] += 1
+            elif got is None:
+                not_kept.append(f"{t} {read}: {why}")
+
+    fits, _ = fit.load_fit(fit_dir)
+    specs = tuple(unique[n] for n in sorted(unique))
+    settings = tuple(assignment[s.name] for s in specs)
+    per_shot = list(transform.map_shots(gate.cache_side_job, shots, (str(cache_root), prov["stats_sha256"],
+                                                                      str(fit_dir), specs, settings), args.workers))
+    stats = transform.load_stats(cache_root / "stats.npz")
+    side: dict[str, dict] = {}
+    for s in specs:
+        parts = [r[s.name] for r in per_shot if r[s.name] is not None]
+        if s.name in fits and fits[s.name].n_examples > 0:
+            codec = fit.build_codec(s, stats[s.name], fits[s.name], assignment[s.name])
+            side[s.name] = gate.combine_sides(codec, parts, len(per_shot) - len(parts))
+        else:
+            side[s.name] = gate.empty_side(len(per_shot))
+    table_ = gate.gate_rows(outputs, assignment, floors, {t: tasks.best_published(t) for t in tasks.ALL_TASKS}, side)
+    text = gate.to_markdown(table_)
+    print(text)
+    for t in tasks.ALL_TASKS:
+        reads = ", ".join(f"{r} " + ("not scored" if task_nrmse[(t, r)] is None else f"{task_nrmse[(t, r)]:.4f}")
+                          for r in gate.READS)
+        s0 = []
+        for pred in ("mean", "floor"):
+            rec, _ = baselines.read_kept_score(stage0 / "scores" / t / pred / GATE_SPLIT, t, pred, GATE_SPLIT)
+            s0.append(f"{pred} " + ("no score" if rec is None else f"{float(rec['nrmse']):.4f}"))
+        print(f"{t}: task NRMSE {reads}; a fifth of the best published {gate.FIDELITY * tasks.best_published(t):.4f}; "
+              f"stage 0 on {GATE_SPLIT}: {', '.join(s0)}")
+    for read, n in absent.items():
+        if n:
+            print(f"no stored score for {n} of the {len(tasks.ALL_TASKS)} tasks in read-out {read}")
+    for line in not_kept:
+        print(f"not kept, so not scored: {line}")
+    n_rows = len(table_)
+    n_unscored = int((table_["verdict"] == "not scored").sum())
+    n_block = int(table_["verdict"].str.startswith("blocks").sum())
+    out_dir = _prepare(stage1 / "gate")                      # after every refusal above
+    _write_csv_atomic(out_dir / f"{name}.csv", table_)
+    md = out_dir / f"{name}.md"
+    tmp = md.with_name(f"{md.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text + "\n")
+        os.replace(tmp, md)
+    finally:
+        tmp.unlink(missing_ok=True)
+    print(f"cache side: {len(shots)} {GATE_SPLIT} shots, {time.monotonic() - started:.0f} s in all")
+    print(f"{n_rows} rows, {n_unscored} not scored, {n_block} block", flush=True)
+    return 1 if n_block else 0
+
+
 # -------------------------------------------------------------------------------------------- main
 
 def _parser() -> argparse.ArgumentParser:
@@ -794,6 +927,15 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--reference", action="store_true", help="write the own-mean reference assignment")
     p.add_argument("--cache-dir", default=None, help="the cache (default <root>/cache/v1)")
     p.set_defaults(run=run_assign)
+
+    p = sub.add_parser("gate", help="judge every (task, signal) pair from the stored floors and the cache")
+    p.add_argument("--assignment", required=True, help="the assignment file to judge")
+    p.add_argument("--label", default=GATE_SPLIT, help="the label the scores are stored under (default val_report)")
+    p.add_argument("--n-shots", type=int, default=200, help="val_report shots for the cache side (default 200)")
+    p.add_argument("--workers", type=int, default=64, help="cache reader processes (default 64)")
+    p.add_argument("--cache-dir", default=None, help="the cache (default <root>/cache/v1)")
+    p.add_argument("--stage0-dir", default=None, help="stage 0's directory, for the mean and floor scores")
+    p.set_defaults(run=run_gate)
     return ap
 
 
