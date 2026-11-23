@@ -4,7 +4,7 @@ title: "IGNITE on MAST: stage 1 fixed tokenizers"
 
 # IGNITE on MAST: stage 1 fixed tokenizers
 
-**Status: code complete, not measured yet (2026-11-23).**
+**Status: measured (2026-11-23). The assignment `v1` (1,470 values per 5 ms frame) passes the gate on all 57 (task, signal) pairs; five pairs miss the fidelity target, each recorded with its cost.**
 
 ## What this is
 
@@ -20,11 +20,11 @@ plan 1c has this page's numbers as its baseline. The design is in
 on are in [the stage-0 page](./ignite-mast-stage0.md), and the plan is
 `docs/superpowers/plans/2026-11-22-ignite-mast-stage1b-fixed-tokenizers.md`.
 
-The code and its tests are committed. The long jobs that produce the numbers
-(K1 to K7 under [How to run](#how-to-run)) have not produced a result yet, so
-every results table below has its column heads and no rows. Nothing on this
-page is measured except the dated numbers that carry their split, their number
-of shots and the words "measured" or "rough look". A rough look is a small,
+The code and its tests are committed, and the long jobs that produce the numbers
+(K1 to K7 under [How to run](#how-to-run)) ran on 2026-11-22 and 2026-11-23;
+their numbers are under [Results](#results). Nothing on this page is measured
+except the dated numbers that carry their split, their number of shots and the
+words "measured" or "rough look". A rough look is a small,
 single read-only look with the code of the day. It sets an expectation and is
 not a result.
 
@@ -342,6 +342,12 @@ measurements (`lr1e4` on 1-2, `h050b256` on 4-4, `s90k` on 1-1). Tasks 1-3 and
 runs, their ladders run without pass-through and are run again when it is (only
 a signal that misses its target needs it).
 
+Measured durations (2026-11-22 and 2026-11-23, node13): K1 7 min (64 workers);
+K2 65 min for the six task ladders and the inputs together (02:12 to 03:17 UTC);
+K5 94 min for the 56 passes in four waves of 14 on the CPU (03:23 to 04:57); K6
+56 min for 16 passes, two per GPU on three GPUs (03:47 to 04:43; the 3-3 pair
+was added to the 14 planned because K5 showed a Thomson miss on 3-3); K7 6 s.
+
 After K7 the controller fills the four tables below from
 `$S1/assignments/<name>.json`, `$S1/gate/<name>.md` and the stored scores, sets
 the status line, and commits with the numbers, their date, split and shot counts
@@ -349,18 +355,89 @@ in the body.
 
 ## Results
 
-Four tables. Each carries its date, split and number of shots in the line above
-it once it is filled. Until then each has column heads and no rows.
+Four tables, each with its date, split and number of shots in the line above it.
+What they say, in short (all measured 2026-11-23):
+
+- **Nothing blocks stage 2.** The gate passes all 57 (task, output signal)
+  pairs of the 14 tasks with `v1`: no tokenizer with more values than its
+  own-mean reference loses to it.
+- **Five pairs miss the fidelity target** (a fifth of the task's best published
+  score, judged on `ranged`): D-alpha on 3-2 (0.1380 against 0.0504), the lower
+  soft X-ray camera on 4-1 and 4-2 (0.0479 against 0.0424 and 0.0428), and the
+  Thomson profiles on 3-3 (n_e 0.0444 and t_e 0.0436 against 0.0429; on 3-1,
+  whose target is 0.0662, both meet it). Passing each task's direct model
+  through the tokenizer costs at most +0.24% on any of these signals (n_e on
+  3-3) and +0.22% on D-alpha, the one signal whose K rule 3 chose, so the misses
+  cost a model's predictions under 1% (K6).
+- **The inputs pass through cheaply.** With every input and actuator sent
+  through its tokenizer, the four direct models change by -0.63% to +1.21% on
+  `val_report`; the largest added error is 0.145 of the best published score
+  (2-1), under rule 4's 0.2.
+- **Rule 6 (range too narrow, reported, not fixed here).** Thomson t_e is 2.0%
+  above its `unquantized` floor in `ranged` on 3-1 and 3-3. The gate also prints
+  six rows of one-sample-per-frame signals (`x_point_r`, `x_point_z` and
+  `minor_radius` on 1-1 and 2-1) whose `unquantized` floor is exactly 0, so any
+  value clipped by the range shows; the largest is `minor_radius` at 0.0004,
+  2% of its target.
+- **Against TokaMind's representation.** The task floors of `v1` are below
+  TokaMind's floor on 1-2, 1-3, 2-1, 2-2, 2-3, 4-3 and 4-4, and above it on
+  3-1, 3-2, 3-3, 4-1, 4-2 and 4-5 (1-1 is exact in both). A floor is what a
+  perfect prediction of the tokens scores; K6 above is what the gap costs a real
+  model, which is under 1% on every task it was measured on. On 4-5 the floor
+  (0.5133) is 0.79 of the best published score (0.6510), close to the three
+  quarters the frame statistics led us to expect (open decision 1, under
+  Limits).
 
 ### The assignment
 
 One row per signal, from `assignments/<name>.json`. A signal that missed its
 target carries the miss in the note.
 
+Measured 2026-11-23 (job K3, `assign --name v1`, from the ladders on 100 `val_select` shots and the input reconstruction errors on the same shots).
+
 | Signal | Codec | K | Domain | Values per frame | Note |
 |---|---|---|---|---|---|
+| `equilibrium-beta_normal` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-beta_pol` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-beta_tor` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-bphi_rmag` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-bvac_rmag` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-elongation` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-elongation_axis` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-lcfs_r` | `linear` | 32/4 | signal | 32 | meets 0.0074 with 0.0069; pass-through cost -0.4% |
+| `equilibrium-lcfs_z` | `linear` | 32/4 | signal | 32 | meets 0.0074 with 0.0068; pass-through cost -0.7% |
+| `equilibrium-magnetic_axis_r` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-magnetic_axis_z` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-minor_radius` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-psi` | `linear` | 16/2 | signal | 16 | meets 0.0166 with 0.0146; pass-through cost -0.2% |
+| `equilibrium-q95` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-triangularity_lower` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-triangularity_upper` | `frame_dct` | 1 | linear | 1 | one sample per frame: K = 1 is exact |
+| `equilibrium-x_point_r` | `frame_dct` | 1 | linear | 2 | one sample per frame: K = 1 is exact |
+| `equilibrium-x_point_z` | `frame_dct` | 1 | linear | 2 | one sample per frame: K = 1 is exact |
+| `gas_injection-total_injected` | `frame_dct` | 1 | linear | 1 | meets 0.0176 with 0.0079; no pass-through measurement |
+| `interferometer-n_e_line` | `frame_dct` | 16 | linear | 16 | misses 0.0176: floor 0.2267; no pass-through measurement |
+| `magnetics-b_field_pol_probe_ccbv_field` | `frame_dct` | 4 | linear | 160 | meets 0.0176 with 0.0133; no pass-through measurement |
+| `magnetics-b_field_pol_probe_obr_field` | `frame_dct` | 1 | linear | 18 | meets 0.0176 with 0.0159; no pass-through measurement |
+| `magnetics-b_field_pol_probe_obv_field` | `frame_dct` | 2 | linear | 36 | meets 0.0176 with 0.0124; no pass-through measurement |
+| `magnetics-b_field_pol_probe_omv_voltage` | `band_dct` | 32/16/16/16/16/16/16/16 | band | 432 | magnetics-b_field_tor_probe_cc_field: frame oracle 0.6267, step a floor 0.6267 at k0 32, step b floor 0.6267 at k 16, contrast 0.9348, contrast sets K; magnetics-b_field_pol_probe_omv_voltage: frame oracle 0.4017, step a floor 0.4017 at k0 32, step b floor 0.4030 at k 16, contrast 0.9414, contrast sets K |
+| `magnetics-b_field_tor_probe_cc_field` | `band_dct` | 32/16/16/16/16/16/16/16 | band | 432 | magnetics-b_field_tor_probe_cc_field: frame oracle 0.6267, step a floor 0.6267 at k0 32, step b floor 0.6267 at k 16, contrast 0.9348, contrast sets K; magnetics-b_field_pol_probe_omv_voltage: frame oracle 0.4017, step a floor 0.4017 at k0 32, step b floor 0.4030 at k 16, contrast 0.9414, contrast sets K |
+| `magnetics-b_field_tor_probe_saddle_voltage` | `frame_dct` | 1 | linear | 12 | meets 0.0176 with 0.0128; no pass-through measurement |
+| `magnetics-flux_loop_flux` | `frame_dct` | 2 | linear | 30 | meets 0.0176 with 0.0072; no pass-through measurement |
+| `pf_active-coil_current` | `frame_dct` | 1 | linear | 10 | meets 0.0176 with 0.0171; pass-through cost 1.0% |
+| `pf_active-coil_voltage` | `frame_dct` | 4 | linear | 16 | meets 0.0176 with 0.0160; no pass-through measurement |
+| `pf_active-solenoid_current` | `frame_dct` | 1 | linear | 1 | meets 0.0176 with 0.0140; pass-through cost 15.5% |
+| `pulse_schedule-i_plasma` | `frame_dct` | 2 | linear | 2 | meets 0.0176 with 0.0099; no pass-through measurement |
+| `pulse_schedule-n_e_line` | `frame_dct` | 1 | linear | 1 | meets 0.0176 with 0.0100; no pass-through measurement |
+| `soft_x_rays-horizontal_cam_lower` | `frame_dct` | 2 | linear | 36 | meets 0.0424 with 0.0422; pass-through cost -0.0% |
+| `soft_x_rays-horizontal_cam_upper` | `frame_dct` | 4 | linear | 72 | meets 0.0424 with 0.0416; pass-through cost -0.1% |
+| `spectrometer_visible-filter_spectrometer_dalpha_voltage` | `frame_dct` | 2 | linear | 6 | misses 0.0504: floor 0.1430; pass-through cost 0.2% |
+| `summary-ip` | `frame_dct` | 4 | linear | 4 | meets 0.0176 with 0.0147; pass-through cost 0.0% |
+| `summary-power_nbi` | `frame_dct` | 8 | linear | 8 | meets 0.0176 with 0.0147; no pass-through measurement |
+| `thomson_scattering-n_e` | `linear` | 32/4 | signal | 32 | meets 0.0429 with 0.0391; pass-through cost 0.3% |
+| `thomson_scattering-t_e` | `linear` | 48/4 | signal | 48 | meets 0.0429 with 0.0398; pass-through cost 0.1% |
 
-Not measured yet.
+Total: 1470 values per 5 ms frame.
 
 ### The gate
 
@@ -370,19 +447,90 @@ the three floors and `own_mean` are on `val_report`, and `bins_used_min`,
 `worst_channel`, `worst_channel_error` and `contrast` are measured from the
 cache on 200 `val_report` shots.
 
-| task | signal | codec | k | domain | values_per_frame | target | unquantized | ranged | nearest | own_mean | bins_used_min | worst_channel | worst_channel_error | contrast | verdict |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+Measured 2026-11-23 (job K7, `gate --assignment v1.json`, 04:59 UTC): the floors are the stored K5 scores on all `val_report` shots of each task (351 to 553 shots), the cache-side columns are from 200 `val_report` shots. Last line: `57 rows, 0 not scored, 0 block`.
 
-Not measured yet.
+| task | signal | codec | k | domain | values_per_frame | target | unquantized | ranged | nearest | own_mean | bins_used_min | worst_channel | worst_channel_error | contrast | verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| task_1-1 | equilibrium-elongation | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0271 | 0.0000 | 0.8906 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-elongation_axis | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0323 | 0.0000 | 0.7969 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-triangularity_upper | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0268 | 0.0000 | 0.8438 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-triangularity_lower | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0318 | 0.0000 | 0.7188 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-x_point_r | frame_dct | 1 | linear | 2 | 0.0188 | 0.0000 | 0.0000 | 0.0946 | 0.0000 | 0.4062 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-x_point_z | frame_dct | 1 | linear | 2 | 0.0188 | 0.0000 | 0.0000 | 0.0218 | 0.0000 | 0.1719 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-minor_radius | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0003 | 0.0244 | 0.0000 | 0.8438 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-magnetic_axis_r | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0220 | 0.0000 | 0.8750 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-magnetic_axis_z | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0289 | 0.0000 | 0.9375 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-q95 | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0287 | 0.0000 | 0.7969 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-beta_tor | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0538 | 0.0000 | 0.6719 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-beta_pol | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0467 | 0.0000 | 0.7344 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-beta_normal | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0510 | 0.0000 | 0.7188 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-bvac_rmag | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.0228 | 0.0000 | 0.9219 | 0 | 0.0000 | no data | pass |
+| task_1-1 | equilibrium-bphi_rmag | frame_dct | 1 | linear | 1 | 0.0188 | 0.0000 | 0.0000 | 0.1252 | 0.0000 | 0.3438 | 0 | 0.0000 | no data | pass |
+| task_1-2 | equilibrium-lcfs_r | linear | 32 | signal | 32 | 0.0082 | 0.0068 | 0.0068 | 0.0101 | 0.2274 | 0.7031 | 142 | 0.0104 | no data | pass |
+| task_1-2 | equilibrium-lcfs_z | linear | 32 | signal | 32 | 0.0082 | 0.0068 | 0.0068 | 0.0093 | 0.2127 | 0.6719 | 156 | 0.0104 | no data | pass |
+| task_1-3 | equilibrium-psi | linear | 16 | signal | 16 | 0.0231 | 0.0130 | 0.0130 | 0.0355 | 0.6829 | 0.6250 | 3789 | 0.0482 | no data | pass |
+| task_2-1 | pf_active-coil_current | frame_dct | 1 | linear | 10 | 0.0176 | 0.0161 | 0.0161 | 0.0259 | 0.0161 | 0.8438 | 5 | 0.1334 | no data | pass |
+| task_2-1 | pf_active-solenoid_current | frame_dct | 1 | linear | 1 | 0.0176 | 0.0133 | 0.0133 | 0.0232 | 0.0133 | 0.9219 | 0 | 0.0176 | no data | pass |
+| task_2-1 | summary-ip | frame_dct | 4 | linear | 4 | 0.0176 | 0.0139 | 0.0139 | 0.0290 | 0.0715 | 0.7344 | 0 | 0.0121 | no data | pass |
+| task_2-1 | equilibrium-elongation | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0271 | 0.0000 | 0.8906 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-elongation_axis | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0325 | 0.0000 | 0.7969 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-triangularity_upper | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0270 | 0.0000 | 0.8438 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-triangularity_lower | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0322 | 0.0000 | 0.7188 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-x_point_r | frame_dct | 1 | linear | 2 | 0.0176 | 0.0000 | 0.0000 | 0.0946 | 0.0000 | 0.4062 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-x_point_z | frame_dct | 1 | linear | 2 | 0.0176 | 0.0000 | 0.0000 | 0.0218 | 0.0000 | 0.1719 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-minor_radius | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0004 | 0.0249 | 0.0000 | 0.8438 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-magnetic_axis_r | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0224 | 0.0000 | 0.8750 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-magnetic_axis_z | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0291 | 0.0000 | 0.9375 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-q95 | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0297 | 0.0000 | 0.7969 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-beta_tor | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0539 | 0.0000 | 0.6719 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-beta_pol | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0476 | 0.0000 | 0.7344 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-beta_normal | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0514 | 0.0000 | 0.7188 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-bvac_rmag | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.0233 | 0.0000 | 0.9219 | 0 | 0.0000 | no data | pass |
+| task_2-1 | equilibrium-bphi_rmag | frame_dct | 1 | linear | 1 | 0.0176 | 0.0000 | 0.0000 | 0.1267 | 0.0000 | 0.3438 | 0 | 0.0000 | no data | pass |
+| task_2-2 | equilibrium-lcfs_r | linear | 32 | signal | 32 | 0.0074 | 0.0069 | 0.0069 | 0.0104 | 0.2447 | 0.7031 | 142 | 0.0104 | no data | pass |
+| task_2-2 | equilibrium-lcfs_z | linear | 32 | signal | 32 | 0.0074 | 0.0068 | 0.0068 | 0.0094 | 0.2196 | 0.6719 | 156 | 0.0104 | no data | pass |
+| task_2-3 | equilibrium-psi | linear | 16 | signal | 16 | 0.0166 | 0.0126 | 0.0126 | 0.0359 | 0.6990 | 0.6250 | 3789 | 0.0482 | no data | pass |
+| task_3-1 | thomson_scattering-t_e | linear | 48 | signal | 48 | 0.0662 | 0.0446 | 0.0455 | 0.0648 | 0.9144 | 0.5781 | 5 | 0.2371 | no data | pass |
+| task_3-1 | thomson_scattering-n_e | linear | 32 | signal | 32 | 0.0662 | 0.0407 | 0.0407 | 0.0631 | 0.8931 | 0.3281 | 119 | 0.1859 | no data | pass |
+| task_3-2 | spectrometer_visible-filter_spectrometer_dalpha_voltage | frame_dct | 2 | linear | 6 | 0.0504 | 0.1380 | 0.1380 | 0.1407 | 0.1903 | 0.6250 | 2 | 0.1528 | no data | pass, misses the fidelity target (0.1380 against 0.0504) |
+| task_3-2 | soft_x_rays-horizontal_cam_lower | frame_dct | 2 | linear | 36 | 0.0504 | 0.0396 | 0.0396 | 0.0543 | 0.0455 | 0.5156 | 4 | 0.1406 | no data | pass |
+| task_3-2 | soft_x_rays-horizontal_cam_upper | frame_dct | 4 | linear | 72 | 0.0504 | 0.0359 | 0.0359 | 0.0405 | 0.0544 | 0.6250 | 0 | 0.1503 | no data | pass |
+| task_3-3 | thomson_scattering-t_e | linear | 48 | signal | 48 | 0.0429 | 0.0428 | 0.0436 | 0.0608 | 0.7020 | 0.5781 | 5 | 0.2371 | no data | pass, misses the fidelity target (0.0436 against 0.0429) |
+| task_3-3 | thomson_scattering-n_e | linear | 32 | signal | 32 | 0.0429 | 0.0444 | 0.0444 | 0.0647 | 0.7981 | 0.3281 | 119 | 0.1859 | no data | pass, misses the fidelity target (0.0444 against 0.0429) |
+| task_3-3 | equilibrium-beta_tor | frame_dct | 1 | linear | 1 | 0.0429 | 0.0000 | 0.0000 | 0.0540 | 0.0000 | 0.6719 | 0 | 0.0000 | no data | pass |
+| task_3-3 | equilibrium-beta_pol | frame_dct | 1 | linear | 1 | 0.0429 | 0.0000 | 0.0000 | 0.0468 | 0.0000 | 0.7344 | 0 | 0.0000 | no data | pass |
+| task_3-3 | equilibrium-beta_normal | frame_dct | 1 | linear | 1 | 0.0429 | 0.0000 | 0.0000 | 0.0510 | 0.0000 | 0.7188 | 0 | 0.0000 | no data | pass |
+| task_4-1 | soft_x_rays-horizontal_cam_lower | frame_dct | 2 | linear | 36 | 0.0424 | 0.0479 | 0.0479 | 0.0628 | 0.0548 | 0.5156 | 4 | 0.1406 | no data | pass, misses the fidelity target (0.0479 against 0.0424) |
+| task_4-1 | soft_x_rays-horizontal_cam_upper | frame_dct | 4 | linear | 72 | 0.0424 | 0.0415 | 0.0415 | 0.0461 | 0.0583 | 0.6250 | 0 | 0.1503 | no data | pass |
+| task_4-2 | soft_x_rays-horizontal_cam_lower | frame_dct | 2 | linear | 36 | 0.0428 | 0.0479 | 0.0479 | 0.0628 | 0.0548 | 0.5156 | 4 | 0.1406 | no data | pass, misses the fidelity target (0.0479 against 0.0428) |
+| task_4-2 | soft_x_rays-horizontal_cam_upper | frame_dct | 4 | linear | 72 | 0.0428 | 0.0415 | 0.0415 | 0.0461 | 0.0583 | 0.6250 | 0 | 0.1503 | no data | pass |
+| task_4-3 | equilibrium-magnetic_axis_z | frame_dct | 1 | linear | 1 | 0.0138 | 0.0000 | 0.0000 | 0.0283 | 0.0000 | 0.9375 | 0 | 0.0000 | no data | pass |
+| task_4-4 | summary-ip | frame_dct | 4 | linear | 4 | 0.0623 | 0.0148 | 0.0148 | 0.0297 | 0.0757 | 0.7344 | 0 | 0.0121 | no data | pass |
+| task_4-5 | magnetics-b_field_tor_probe_cc_field | band_dct | 32/16/16/16/16/16/16/16 | band | 432 | no target | 0.5314 | 0.5314 | 0.5326 | 0.6749 | 0.4375 | 256 | 12.0899 | 0.9338 | pass (no fidelity target) |
+| task_4-5 | magnetics-b_field_pol_probe_omv_voltage | band_dct | 32/16/16/16/16/16/16/16 | band | 432 | no target | 0.4952 | 0.4953 | 0.4964 | 0.6598 | 0.3750 | 256 | 5.2086 | 0.9417 | pass (no fidelity target) |
 
 ### The floors per task
 
 The 14 tasks, scored on all `val_report` shots with the chosen assignment.
 
-| Task | unquantized | ranged | nearest | A fifth of the best published score | Mean baseline | TokaMind's floor |
-|---|---|---|---|---|---|---|
+Measured 2026-11-23 (job K5, 56 passes, all `val_report` shots of each task; the shot count is in the last column). The own-mean reference is the `ref` assignment's `unquantized` floor. The mean baseline and TokaMind's floor are stage 0's scores on the same split.
 
-Not measured yet.
+| Task | unquantized | ranged | nearest | own-mean reference | A fifth of the best published score | Mean baseline | TokaMind's floor | Shots |
+|---|---|---|---|---|---|---|---|---|
+| task_1-1 | 0.0000 | 0.0000 | 0.0425 | 0.0000 | 0.0188 | 0.7599 | 0.0000 | 520 |
+| task_1-2 | 0.0068 | 0.0068 | 0.0097 | 0.2200 | 0.0082 | 1.0005 | 0.0239 | 525 |
+| task_1-3 | 0.0130 | 0.0130 | 0.0355 | 0.6829 | 0.0231 | 0.9312 | 0.0294 | 527 |
+| task_2-1 | 0.0024 | 0.0024 | 0.0401 | 0.0056 | 0.0176 | 0.8168 | 0.0037 | 520 |
+| task_2-2 | 0.0068 | 0.0068 | 0.0099 | 0.2321 | 0.0074 | 0.9935 | 0.0217 | 525 |
+| task_2-3 | 0.0126 | 0.0126 | 0.0359 | 0.6990 | 0.0166 | 0.9249 | 0.0282 | 527 |
+| task_3-1 | 0.0426 | 0.0431 | 0.0640 | 0.9037 | 0.0662 | 0.9940 | 0.0284 | 450 |
+| task_3-2 | 0.0712 | 0.0712 | 0.0785 | 0.0967 | 0.0504 | 0.6197 | 0.0288 | 532 |
+| task_3-3 | 0.0174 | 0.0176 | 0.0554 | 0.3000 | 0.0429 | 0.8412 | 0.0091 | 445 |
+| task_4-1 | 0.0447 | 0.0447 | 0.0545 | 0.0566 | 0.0424 | 0.4961 | 0.0353 | 531 |
+| task_4-2 | 0.0447 | 0.0447 | 0.0545 | 0.0566 | 0.0428 | 0.4961 | 0.0353 | 531 |
+| task_4-3 | 0.0000 | 0.0000 | 0.0283 | 0.0000 | 0.0138 | 0.7591 | 0.0162 | 510 |
+| task_4-4 | 0.0148 | 0.0148 | 0.0297 | 0.0757 | 0.0623 | 1.0364 | 0.0351 | 553 |
+| task_4-5 | 0.5133 | 0.5133 | 0.5145 | 0.6673 | — | 0.6852 | 0.3605 | 351 |
 
 ### The pass-through and input round-trip costs
 
@@ -392,10 +540,32 @@ model's inputs and actuators sent through the tokenizer, per task. The added
 error is `sqrt(max(inputs**2 - raw**2, 0))` over the best published score of
 the task, and it is filled for the input round-trip only.
 
+Measured 2026-11-23 (job K4 on 100 `val_select` shots, `unquantized`; job K6 on all `val_report` shots of each task, `ranged`). The direct model of each task is the variant the headroom table shows for it.
+
 | Measure | Task | Signal | Split | Shots | Raw score | Score through the tokenizer | `through / raw - 1` | Added error over the best published score |
 |---|---|---|---|---|---|---|---|---|
-
-Not measured yet.
+| input round-trip (K4, `unquantized`) | task_1-1 (`s90k`) | all | val_select | 88 | 0.1250 | 0.1253 | +0.24% | 0.092 |
+| input round-trip (K4, `unquantized`) | task_1-2 (`lr1e4`) | all | val_select | 92 | 0.0369 | 0.0375 | +1.87% | 0.174 |
+| input round-trip (K4, `unquantized`) | task_2-1 (`s90k`) | all | val_select | 89 | 0.1336 | 0.1340 | +0.32% | 0.121 |
+| input round-trip (K4, `unquantized`) | task_4-1 (`h050b256`) | all | val_select | 95 | 0.1621 | 0.1625 | +0.27% | 0.056 |
+| input round-trip (K6, `ranged`) | task_1-1 (`s90k`) | all | val_report | 520 | 0.1235 | 0.1237 | +0.22% | 0.086 |
+| input round-trip (K6, `ranged`) | task_1-2 (`lr1e4`) | all | val_report | 525 | 0.0362 | 0.0366 | +1.21% | 0.137 |
+| input round-trip (K6, `ranged`) | task_2-1 (`s90k`) | all | val_report | 520 | 0.1347 | 0.1353 | +0.45% | 0.145 |
+| input round-trip (K6, `ranged`) | task_4-1 (`h050b256`) | all | val_report | 531 | 0.1727 | 0.1716 | -0.63% | 0.000 |
+| pass-through (K6, `ranged`) | task_3-2 (`base`) | `soft_x_rays-horizontal_cam_lower` | val_report | 532 | 0.2122 | 0.2121 | -0.04% | — |
+| pass-through (K6, `ranged`) | task_3-2 (`base`) | `soft_x_rays-horizontal_cam_upper` | val_report | 532 | 0.1542 | 0.1540 | -0.09% | — |
+| pass-through (K6, `ranged`) | task_3-2 (`base`) | `spectrometer_visible-filter_spectrometer_dalpha_voltage` | val_report | 532 | 0.3263 | 0.3270 | +0.22% | — |
+| pass-through (K6, `ranged`) | task_3-3 (`base`) | `equilibrium-beta_normal` | val_report | 445 | 0.1893 | 0.1893 | +0.00% | — |
+| pass-through (K6, `ranged`) | task_3-3 (`base`) | `equilibrium-beta_pol` | val_report | 445 | 0.1813 | 0.1813 | +0.00% | — |
+| pass-through (K6, `ranged`) | task_3-3 (`base`) | `equilibrium-beta_tor` | val_report | 445 | 0.1909 | 0.1909 | +0.00% | — |
+| pass-through (K6, `ranged`) | task_3-3 (`base`) | `thomson_scattering-n_e` | val_report | 445 | 0.2688 | 0.2695 | +0.24% | — |
+| pass-through (K6, `ranged`) | task_3-3 (`base`) | `thomson_scattering-t_e` | val_report | 445 | 0.2665 | 0.2666 | +0.04% | — |
+| pass-through (K6, `ranged`) | task_4-1 (`h050b256`) | `soft_x_rays-horizontal_cam_lower` | val_report | 531 | 0.1652 | 0.1650 | -0.09% | — |
+| pass-through (K6, `ranged`) | task_4-1 (`h050b256`) | `soft_x_rays-horizontal_cam_upper` | val_report | 531 | 0.1802 | 0.1801 | -0.05% | — |
+| pass-through (K6, `ranged`) | task_4-2 (`h050b256`) | `soft_x_rays-horizontal_cam_lower` | val_report | 531 | 0.1656 | 0.1654 | -0.09% | — |
+| pass-through (K6, `ranged`) | task_4-2 (`h050b256`) | `soft_x_rays-horizontal_cam_upper` | val_report | 531 | 0.1813 | 0.1812 | -0.06% | — |
+| pass-through (K6, `ranged`) | task_1-2 (`lr1e4`) | `equilibrium-lcfs_r` | val_report | 525 | 0.0427 | 0.0425 | -0.37% | — |
+| pass-through (K6, `ranged`) | task_1-2 (`lr1e4`) | `equilibrium-lcfs_z` | val_report | 525 | 0.0297 | 0.0295 | -0.71% | — |
 
 ## Limits
 
