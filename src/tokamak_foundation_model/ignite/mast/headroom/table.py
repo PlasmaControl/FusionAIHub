@@ -1,4 +1,4 @@
-"""The headroom table: one row per stage-0 task, built from the scores that are already stored.
+"""The headroom table: one row per task of the task list it is given (the seven stage-0 tasks, or all 14), built from stored scores.
 
 This module trains and scores nothing. It reads `<stage0>/scores/<task>/<predictor>/<split>/score.json`
 (and the evaluator's `shots_metrics.csv` beside it, for the direct model's interval) that
