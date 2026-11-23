@@ -462,14 +462,15 @@ Total: 1470 values per 5 ms frame.
 **The assignment `v1b` (ruling C29).** The solenoid current and the coil currents of task 2-1 are at K 1 in `v1`,
 where passing the direct model's prediction through the tokenizer costs 15.5% on the solenoid current
 (see [Results](#results) above, which left to the owner whether rule 2 should also bound the pass-through cost).
-Ruling C29 (2026-11-23, 06:38 UTC) applied the stated default of that owner item, since the owner had not said no
+Ruling C29 (2026-11-23; `assignments/v1b.json` written 06:29:53 UTC and confirmed 06:30 to 06:31, ledger entry
+06:38) applied the stated default of that owner item, since the owner had not said no
 and the numbers it needs were already measured: K 2 for both currents, the "2 to 4 values per frame" of the item.
 That is 11 more values per frame (1 for the solenoid current, 10 for the coil currents), so 1,481 values per frame
 instead of 1,470, in `assignments/v1b.json`; `v1` is untouched and only these two settings differ. Measured
 2026-11-23 on all 520 `val_report` shots of task 2-1 (the `s90k` model, `ranged`, `pass / raw - 1` on the same
 shots): the solenoid current costs +16.15% with `v1` and -0.34% with `v1b`, the coil currents +0.71% and -0.27%,
 the task's mean +0.17% and -0.01%. The input round-trip on `val_report`, `ranged`, is in
-[The decisions](#the-input-round-trip-of-v1-v1b-and-v2c): task 1-2, the task the plan reads it on, goes from
+[The input round-trip of `v1`, `v1b` and `v2c`](#the-input-round-trip-of-v1-v1b-and-v2c): task 1-2, the task the plan reads it on, goes from
 +1.21% with `v1` to +0.24% with `v1b`, and no task is above
 +0.24%. The gate on `v1b` (2026-11-23, 07:40 UTC, all
 three read-outs on `val_report`) says `57 rows, 0 not scored, 0 block`, as for `v1`, and the two tables differ in
@@ -608,17 +609,22 @@ Measured 2026-11-23 (job K4 on 100 `val_select` shots, `unquantized`; job K6 on 
 ## Learned tokenizers (stage 1c)
 
 Stage 1c's learned tokenizers are built and measured. Jobs M1 to M10 of
-[How to run stage 1c](#how-to-run-stage-1c) ran on 2026-11-23. The bases and networks were fitted on the 2,000
+[How to run stage 1c](#how-to-run-stage-1c) ran on 2026-11-23, and ruling C45 added one training and one comparison (08:54 to 08:57 UTC). The bases and
+networks were fitted on the 2,000
 training shots of the fit and compared on 100 `val_select` shots (62 to 100 scored per signal), and where a rule
-asks for it the comparison was confirmed on all 557 `val_report` shots. The five tables under
+asks for it the comparison was confirmed on all 557 `val_report` shots. The six tables under
 [Results of the comparison](#results-of-the-comparison) hold every number. Each error is a tokenizer floor in
 TokaMark units, the score of a perfect prediction of the tokens, and not an IGNITE score. What the tables say:
 
 - **No network tokenizer beats its linear counterpart.** Of the 13 networks, four collapsed under rule 7
   (ruling C33), also after their 40,000-step runs: `net.series` on `interferometer-n_e_line` and the three Mirnov
-  per-stream arms. The other nine lost on all 30 signal rows of their ten comparisons (`val_select`, 62 to 100
-  shots; 26 rows clearly, the four rows of the Mirnov concatenated network by "b beats a"), and the nine retries at
-  learning rate 1e-4 lost too (rule 8), so no seeds 1 and 2 were trained. The checkpoints and the comparison use
+  per-stream arms. The other nine lost the comparison for the slot each competes for (ruling C41) on all 15
+  signal rows of their five comparisons (`val_select`, 62 to 100 shots; 13 rows clearly, the two rows of the Mirnov
+  concatenated network by "b beats a"). Their nine retries at learning rate 1e-4 lost the same 15 rows with the
+  same words (rule 8), so no seeds 1 and 2 were trained. One retry, `net.flux.s0.lr1e4`, ended at 20,000 steps
+  with a plateau of "no" and was extended once under ruling C45: `net.flux.s0.lr1e4_long` has a best `val_mse` of
+  0.01282 against 0.01360, and `c-net0rl` still loses to `c-pca` on the flux (0.01531 against 0.002548; gap of b
+  against a 0.834, 0.823 to 0.844), so every verdict is unchanged. The checkpoints and the comparison use
   the same 100 `val_select` shots, which favours the networks (inferred, see [The trainings](#the-trainings)), and
   they still lose.
 - **The linear concatenated arm wins on the four magnetics arrays (rule 6).** `c-pca` clearly beats the best shared
@@ -643,7 +649,7 @@ TokaMark units, the score of a perfect prediction of the tokens, and not an IGNI
   +0.08% on task 1-1 (520 shots), +0.11% on 1-2 (525),
   +0.01% on 2-1 (520) and -0.63% on 4-1 (531), against +0.13%,
   +0.24%, +0.03% and -0.63% for `v1b`
-  (the table under [The decisions](#the-input-round-trip-of-v1-v1b-and-v2c)).
+  (the table under [The input round-trip of `v1`, `v1b` and `v2c`](#the-input-round-trip-of-v1-v1b-and-v2c)).
 - **The token count is reported and not adopted (open decision 2).** On `val_report` (557 shots) `c-pca` reaches
   0.0176 with 40 values per frame on `ccbv` and 12 on `flux`, where `s-klt` needs 160 and 30; on `obr` (18) and
   `obv` (36) it needs what `o-klt` needs, and `s-klt` needs 72 on `obv`. `v2c` keeps `v1b`'s values per frame.
@@ -819,7 +825,7 @@ Written 2026-11-23, after the rules above and without changing them: stage 2 sta
 C29, see [The assignment](#the-assignment)), and job M9 built `v2c` from `v1b`. Nothing learned replaced anything,
 so `v2` equals `v1b`.
 
-**Readings the controller added before any measurement.** Four readings, written
+**Readings the controller added before any network was trained.** Four readings, written
 on 2026-11-23. Three of them (rulings C11, C15 and C17) came before any production
 store, recoder or comparison existed. The fourth, C33, was written at 07:15 UTC,
 after the production store (written by 07:10:34) and the linear recoders (07:10:38
@@ -849,8 +855,9 @@ to 07:10:58) were built and before any network was trained. None changes a rule 
   [The assignment](#the-assignment)), and the floor on `cc` is flat in k
   (1b's step a and step b both give 0.6267). So a tie between Mirnov tokenizers
   under rules 5 and 6 is expected whatever the tokenizer is (inferred, not
-  measured). If the owner answers open decision 1 of stage 1b with per-column low
-  bins before M4 runs, the Mirnov arms are planned again before M4 to M7. The
+  measured). Had the owner answered open decision 1 of stage 1b with per-column low
+  bins before M4, the Mirnov arms would have been planned again; the ledger records no
+  answer, and M4 to M7 ran them as planned (07:44 to 08:04 UTC). The
   Mirnov networks stay fourth in the cut order.
 - **Rule 7 is judged on distinct examples, and "any token" means no token is in use
   (ruling C33).** Written 2026-11-23 at 07:15 UTC, before any network was trained.
@@ -870,11 +877,12 @@ to 07:10:58) were built and before any network was trained. None changes a rule 
   the share of the most common row are recorded per signal in `result.json`, so the
   literal reading can be applied afterwards without training again.
 
-**Readings added during the measurement.** Six more readings were written on 2026-11-23
-and, unlike the four above, each was written with some result in view. C37 (07:31 UTC) came
-one minute after M6 started and before any network result. C39 to C43 (07:43 to 08:10 UTC)
-came after M6's results were seen. None changes a rule above. Each says what was
-decided, why, and what it costs if wrong.
+**Readings added during the measurement.** Eight more readings were written on 2026-11-23.
+C37 (07:31 UTC) came as M6 started (07:30:56) and before any network result, so it had the same
+results in view as C33. C39 to C43 (07:43 to 08:10 UTC) came after M6's results were seen. C44 and
+C45 (08:53 UTC) were written after the scoped review of this page and with the results of jobs
+M1 to M10 in view; C45's own result came at 08:57 UTC. None changes a rule above. Each says what
+was decided, why, and what it costs if wrong.
 
 - **A signal that cannot vary has no verdict (ruling C37).** When a training exits 3
   (collapsed), a signal with fewer than 2 distinct finite validation rows
@@ -886,20 +894,23 @@ decided, why, and what it costs if wrong.
   least 8,576 distinct validation rows (`n_distinct_examples` in `result.json`,
   2026-11-23). If wrong, an arm whose only failing signal never varies is kept, and it
   can win only on fidelity.
-- **Rule 8's extension covers the collapsed arms (ruling C39).** Every run whose
-  plateau is "no" was extended once (`--steps 40000 --variant long`), the four collapsed
-  ones included, because rule 8 triggers on the validation curve and not on a verdict.
+- **Rule 8's extension covers the collapsed arms (ruling C39).** Every M6 run whose
+  plateau is "no" was extended once (ruling C39), by `--steps 40000 --variant long`, the four
+  collapsed ones included, because rule 8 triggers on the validation curve and not on a verdict.
   Ten arms were extended and three were not (`net.mag`, `net.flux`, `net.bandcat.cc`).
   From then on the long run is the arm's seed-0 run, for the collapse verdict and for
   M7, whether or not its `val_mse` is lower: choosing between the two on `val_select`
-  would select twice on the same 100 shots. No arm is extended again and none gets a
+  would select twice on the same 100 shots. No arm's run is extended again (ruling C45,
+  below, extends one retry whose lineage had not used its extension) and none gets a
   further try for a collapse; the s0 runs stay on disk and are in
   [the trainings table](#the-trainings). A retry at 1e-4 or seeds 1 and 2 use the
   steps of the run they repeat. The four collapsed arms were collapsed again after
   40,000 steps. Measured 2026-11-23 from `train_log.csv`: a long run repeats its s0
   run's first 20 validation rows exactly for 5 of the 10 arms and differs for
-  the other 5 by up to 0.066 in `val_mse`, so it is a second training with
-  the same seed and not a continuation. If wrong, a collapsed arm got one training more
+  the other 5 by up to 0.066 in `val_mse`, each first differing at step 1,000 (the first
+  logged step). So GPU training of those five is not repeatable at a fixed seed (cause not
+  established), and a long run is a second training with the same seed and not a continuation;
+  a network's seed spread (rule 2) cannot be assumed small. If wrong, a collapsed arm got one training more
   than the plan gives it; had its long run not collapsed, it would enter the comparisons,
   where it can win only on fidelity, and the page would still show its s0 collapse.
 - **Which pairs M7 runs (ruling C40).** M7 runs the plan's pairs (M5's with the network in
@@ -931,8 +942,10 @@ decided, why, and what it costs if wrong.
   compared again at `v1b`'s K (`s-klt.b`, recoded from `v1b` with `klt.series`, against
   `v1b`, floors of task 2-1 on `val_select`), and a signal enters `v2` only if it beats
   `v1b` there and again on `val_report`. Every other series signal keeps `v1`'s verdict,
-  since `v1b` equals `v1` on it. If wrong, the currents would be judged at a K that stage 2
-  does not use; the cost was two floor passes on the CPU.
+  since `v1b` equals `v1` on it. If wrong, the cost is two floor passes on the CPU, and a
+  verdict on the two currents judged at the K that stage 2 uses (`v1b`'s K 2) instead of the plan's
+  (`v1`'s K 1, rule 3), at which `s-klt` beat `v1` on the solenoid current and was not confirmed on
+  `val_report`.
 - **The input round-trip of `v2c` is scored on four tasks (ruling C43).** `v2` equals `v1b`
   unless a retry won (rule 4 none by C42, rule 5 all lost at seed 0), and `v1b`'s round-trip
   was already measured (ruling C29). `v2c` is scored with `--instrument inputs` on all
@@ -943,6 +956,34 @@ decided, why, and what it costs if wrong.
   No task predicts a magnetics signal, so `v2c` changes no task's output and needs no floor
   (M9 asks for floors "for every task with a changed output signal"). The gate on `v2` is
   `v1b`'s (07:40 UTC, 57 rows, 0 block). If wrong, 8 GPU passes (52 s to 22 minutes each, 2026-11-23, `m9_inputs.meta`).
+- **A network floor pass over 3 times its linear arm's pass is recorded and stops nothing (ruling C44).**
+  Written 2026-11-23 at 08:53 UTC, after the review of this page and with the results of M1 to M10 in
+  view. Ruling C7 (see [the departures](#where-stage-1c-departs-from-the-design)) says that a network
+  floor pass taking more than 3 times the pass of the matching linear arm stops the controller and makes
+  it report. In M7 (`logs/m7.meta`: seven CPU floor passes started together at 08:01:38) `p-net0` took 40 s
+  on task 2-2 against 13 s for `v1`, which is 3.1 times, and the controller did not stop and did not
+  report. The ruling: no stop now. The condition guards M7's running time; these passes took seconds,
+  were timed under shared load, and the retries' passes took 16 to 134 s (`logs/m8r.meta`). The page states
+  the crossing in the departure of ruling C7. If wrong, nothing in a verdict: the guard is about time only.
+- **Rule 8's one extension also covers a retry (ruling C45).** Written 2026-11-23 at 08:53 UTC, after the
+  review of this page and with the results of M1 to M10 in view. Rule 8 extends a run with a plateau of
+  "no" once. `net.flux.s0.lr1e4` ended at 20,000 steps with a "no" (best `val_mse` 0.01360 at step 19,000),
+  and its lineage had not used the extension, because `net.flux.s0` plateaued at 20,000 steps and ruling
+  C39 left it alone. The five other retries that end with a "no" (`net.bandcat.omv`, `net.ccbv`, `net.map`,
+  `net.obr` and `net.profile`, all at 40,000 steps) repeat C39's long runs, so their lineage has used its
+  one extension and they get none. The job: `net.flux --lr 1e-4 --steps 40000 --variant lr1e4_long` on GPU 1;
+  `recode` `c-net0rl`, which is `c-net0r` with that flux run; `c-net0rl:c-pca` (the slot of ruling C41) on
+  `val_select-n100`, with CPU floors for what is missing; read by rules 2 and 7 like every other network.
+  Result (2026-11-23, 08:54:00 to 08:57:23 UTC, `logs/c45.meta`, every step exit 0): `net.flux.s0.lr1e4_long`
+  has a best `val_mse` of 0.01282 at step 25,000 of 40,000, a plateau of "yes", is not collapsed (20 of 20
+  tokens and 6 of 6 values active) and took 180 s, against 0.01360 at step 19,000 of 20,000 for
+  `net.flux.s0.lr1e4`. No floor pass was missing. In `c-net0rl:c-pca` (`val_select`, 100 shots) the flux has
+  0.01531 against `c-pca`'s 0.002548, gap of b against a 0.834 (0.823 to 0.844), "b clearly beats a"; the
+  other three arrays are unchanged from `c-net0r:c-pca`, since the same recoders are used. The flux loss
+  stands (0.01573 before the extension) and every verdict of stage 1c is unchanged. If wrong: about 4 min of
+  GPU 1 and one CPU floor wave, estimated when the ruling was written (measured: 180 s and no floor pass),
+  for a comparison that could not change the verdict unless the extension closed a sixfold gap (flux 0.01573
+  against `c-pca`'s 0.002548 in `c-net0r:c-pca`); it did not.
 
 ### Where stage 1c departs from the design
 
@@ -1045,7 +1086,13 @@ number behind it. A number from a trial is a rough look on the trial store of
   alternative makes a refusal depend on reading the assignment file, and the
   networks are small (tokens of 8, at most 432 values). If a network floor pass
   takes more than 3 times the pass of the matching linear arm, the controller stops
-  and reports; no network floor has been timed yet.
+  and reports. Measured 2026-11-23 (`$S1/logs/m7.meta`: seven CPU floor passes started together at
+  08:01:38, timed start to end under that shared load): `p-net0` took 40 s on task 2-2 against 13 s for
+  `v1` (3.1 times), and 17 s against 13 s on 3-3; `m-net0` took 38 s against 19 s on 2-3; `bc-net0` took
+  136 s on 4-5, with no linear pass beside it (M4's `bc-pca` took 322 s among 24 passes, not like for like).
+  The 2-2 pass crossed the 3 times and the controller did not stop. Ruling C44 (2026-11-23, written after
+  the review) records the crossing and takes no stop: the guard is about M7's running time, and these
+  passes took seconds under shared load. The retries' passes took 16 to 134 s (`$S1/logs/m8r.meta`).
 - **Concatenated linear recoders are fitted on zero-filled rows (ruling C21).** A
   missing stream is 0 in example units when a concatenated recoder encodes, and
   `fit_linear` now fits on rows filled the same way, not on a pairwise covariance.
@@ -1139,8 +1186,11 @@ measured 2026-11-23: one CPU test of the training loop took 86 to 111 s at
 torch's default thread count on this 352-core node under load, and 1.6 s with 8
 threads.
 
-Every duration in the table is the plan author's estimate, not a measurement;
-none was measured for this code. Unlike the stage-0 trainings, whose speed was set
+Every duration in the table is the plan author's estimate, written before any job ran. The jobs'
+measured times are in `$S1/logs/*.meta` (2026-11-23, UTC): M1 to M3 07:10:19 to 07:10:58, M4's 24 floor
+passes 07:46:02 to 07:51:39, M5 to 07:52:41, M6 07:30:56 to 07:40:54 (the long runs of ruling C39 07:43:48
+to 08:00:14), M7 08:00:35 to 08:04:47, M8 08:06:01 to 08:23:31, M9's input round-trip 08:10:19 to 08:33:38,
+M10 07:47:12 to 07:47:38, and ruling C45's extension 08:54:00 to 08:57:23. Unlike the stage-0 trainings, whose speed was set
 by the loaders, these hold their examples in memory (about 2,000 shots times 100
 frames times 163 channels of 16 values: 2 GB for the series family, an estimate),
 so several can share one GPU.
@@ -1170,18 +1220,20 @@ firm the verdicts are" in
 [the stage-0 page](./ignite-mast-stage0.md#the-other-seven-tasks-stage-1a)), so by
 that guide the verdict of task 1-2 is not firm.
 
-After M9 the controller fills the five tables below, sets the status line of this
-page and commits with the numbers, their date, split and shot counts in the body.
+After M9 the controller filled the tables below (2026-11-23), set the status line of this
+page and committed with the numbers, their date, split and shot counts in the body.
 Stage 2 does not wait for any of this: it starts on `v1` (on `v1b` since ruling C29, see
 [Rules of the comparison](#rules-of-the-comparison)).
 
 ### Results of the comparison
 
-Five tables and one small one (the input round-trip of `v2c`, ruling C43), filled
+Six tables (the linear arms, the networks, the trainings with a sub-table of its collapsed runs, the
+decisions, the input round-trip of `v1`, `v1b` and `v2c`, and the 50 kHz band), filled
 on 2026-11-23 by a script that reads the files stored under `$S1` and types no number
 by hand. Each has its date, split and number of shots in the line above it, as the
 tables of [Results](#results) are. A cell that is empty is a quantity nobody stored
-for that row (the text under each table says which); it is not 0 and not a good
+for that row, except an empty "Values to reach 0.0176" cell on a series array, which means that no
+size reached 0.0176 (the text under each table says which); it is not 0 and not a good
 result, and "no data" is written where a quantity should exist and does not. Every error
 is a tokenizer floor, not an IGNITE score.
 
@@ -1335,9 +1387,11 @@ whole tokens (rule 3).
 | `o-klt:s-klt` | `val_report` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 557 | 0.006565 | 0.01145 | 0.426 | 0.421 | 0.432 | -0.744 | -0.759 | -0.728 | a clearly beats b | 1.000 | 1.000 | 30 | 30 |
 
 An empty "Missing-channel ratio" or "Values to reach 0.0176" cell is a quantity the comparison does not compute
-for that row: `--drop-channel` and `--reach` apply to a probe array read from the cache, not to a task-side row
-(a signal whose floor is read from a task, or a one-sample signal). On a probe array an empty "Values to reach
-0.0176" cell means that no size of that arm, at 1/8, 1/4, 1/2, 1 and 2 times its values, reached 0.0176. A ratio of
+for that row: `--drop-channel` and `--reach` are computed only for a series signal of several channels read
+from the cache (`_is_series_array` in `scripts/mast/run_tokenizer.py`: the four magnetics arrays, the saddle coils
+and the coil voltages). They are not computed for a signal whose floor is read from a task, nor for a one-channel
+signal (gas, line density, the two requested waveforms, beam power). On such a series signal an empty "Values to
+reach 0.0176" cell means that no size of that arm, at 1/8, 1/4, 1/2, 1 and 2 times its values, reached 0.0176. A ratio of
 1.000 for a per-channel arm is by construction, since a missing channel does not touch the others. A gap of
 0.000 with a "tie" word is an exact re-basis (`interferometer-n_e_line`, ruling C11) or two arms whose floors
 agree to 3 decimals (the Mirnov signals, whose floor is bounded by the frame oracle, ruling C17).
@@ -1356,11 +1410,14 @@ when the pairs were measured over different numbers of shots.
 
 Measured 2026-11-23 on 100 `val_select` shots (62 to 100 scored per signal; the "Shots" column): the six
 pairs of job M7 (08:04 UTC, networks at learning rate 3e-4) and the eight pairs of job M8 (08:22 to 08:23 UTC;
-names ending in `r` are the learning rate 1e-4 retries of ruling C41). 14 pairs,
-46 rows. The networks behind the names, after ruling C39: `o-net0` is `net.mag.s0`; `c-net0` is
+names ending in `r` are the learning rate 1e-4 retries of ruling C41), and the pair `c-net0rl:c-pca` of ruling
+C45 (08:57 UTC, its own comparison, run after the review of the page). 15 pairs,
+50 rows. The networks behind the names, after ruling C39: `o-net0` is `net.mag.s0`; `c-net0` is
 `net.ccbv.s0.long`, `net.obr.s0.long`, `net.obv.s0.long` and `net.flux.s0`; `bc-net0` is `net.bandcat.cc.s0` and
 `net.bandcat.omv.s0.long`; `p-net0` is `net.profile.s0.long`; `m-net0` is `net.map.s0.long`. The `r` assignments
-are built from the lr1e4 runs of the same arms.
+are built from the lr1e4 runs of the same arms. `c-net0rl` (ruling C45, `$S1/assignments/c-net0rl.json`) is
+`c-net0r` with the flux recoder replaced by `net.flux.s0.lr1e4_long`; its other three arrays use the same recoders as
+`c-net0r`, which is why their rows in `c-net0rl:c-pca` equal those of `c-net0r:c-pca`.
 
 | Pair (a:b) | Signal | Source | Values per frame (a) | Values per frame (b) | Shots | Mean error (a) | Mean error (b) | Gap | Gap, low end | Gap, high end | Gap of b against a | Low end (b against a) | High end (b against a) | Word at one seed | Missing-channel ratio (a) | Missing-channel ratio (b) | Values to reach 0.0176 (a) | Values to reach 0.0176 (b) | Gap, seed 0 | Gap, seed 1 | Gap, seed 2 | Spread of the gaps | Spread of the gaps of b against a | Word with the spreads |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -1410,8 +1467,13 @@ are built from the lr1e4 runs of the same arms.
 | `o-net0r:o-klt` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.03393 | 0.01585 | -1.140 | -1.465 | -0.902 | 0.533 | 0.474 | 0.594 | b clearly beats a | 1.000 | 1.000 |  | 18 |  |  |  |  |  |  |
 | `o-net0r:o-klt` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.03723 | 0.01223 | -2.043 | -2.184 | -1.910 | 0.671 | 0.656 | 0.686 | b clearly beats a | 1.000 | 1.000 |  | 36 |  |  |  |  |  |  |
 | `o-net0r:o-klt` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.03287 | 0.007112 | -3.622 | -3.863 | -3.431 | 0.784 | 0.774 | 0.794 | b clearly beats a | 1.000 | 1.000 | 60 | 30 |  |  |  |  |  |  |
+| `c-net0rl:c-pca` | `magnetics-b_field_pol_probe_ccbv_field` | cache | 160 | 160 | 100 | 0.01807 | 0.005814 | -2.108 | -2.577 | -1.743 | 0.678 | 0.635 | 0.720 | b clearly beats a | 2.168 | 1.072 | 320 | 40 |  |  |  |  |  |  |
+| `c-net0rl:c-pca` | `magnetics-b_field_pol_probe_obr_field` | cache | 18 | 18 | 100 | 0.01782 | 0.008377 | -1.127 | -1.731 | -0.747 | 0.530 | 0.427 | 0.634 | b clearly beats a | 1.885 | 1.011 | 36 | 18 |  |  |  |  |  |  |
+| `c-net0rl:c-pca` | `magnetics-b_field_pol_probe_obv_field` | cache | 36 | 36 | 100 | 0.01948 | 0.006787 | -1.870 | -2.866 | -1.332 | 0.652 | 0.571 | 0.741 | b clearly beats a | 1.000 | 1.000 | 72 | 36 |  |  |  |  |  |  |
+| `c-net0rl:c-pca` | `magnetics-flux_loop_flux` | cache | 30 | 30 | 100 | 0.01531 | 0.002548 | -5.010 | -5.406 | -4.645 | 0.834 | 0.823 | 0.844 | b clearly beats a | 10.849 | 3.518 | 30 | 12 |  |  |  |  |  |  |
 
-The seed columns are empty: no network beat its comparison at seed 0 or at learning rate 1e-4, so rule 8 trained
+The seed columns are empty: no network beat its comparison at seed 0, at learning rate 1e-4 or with the flux
+extension of ruling C45, so rule 8 trained
 no seeds 1 and 2, and the spreads and the "word with the spreads" are not defined. The empty ratio and reach
 cells are explained under the linear table. 9 pairs of the plan were not run, because `recode` refused a collapsed source (rule 7, ruling C33, exit 2) and the assignment was not built, so they have no rows: `s-net0:v1`, `s-net0:o-net0`, `c-net0:s-net0`, `s-net0:s-klt` (`s-net0`: `net.series`, collapsed on `interferometer-n_e_line`); `b-net0:v1`, `b-net0:bo-net0`, `bc-net0:b-net0`, `b-net0:b-klt` (`b-net0`: `net.band`, collapsed on both signals); `bc-net0:bo-net0` (`bo-net0`: `net.band.cc` and `net.band.omv`, each collapsed on its own signal). (`b-net0:bo-net0` needs both `b-net0` and `bo-net0`.)
 
@@ -1444,13 +1506,14 @@ choice between a linear and a network arm is also made on them. Inferred, not
 measured: the selection over about 20 checkpoints is small and favours the
 networks. Rules 4 and 5 confirm a replacement on `val_report`, which bounds it.
 
-Measured 2026-11-23, 32 rows: the 13 `.s0` runs of job M6 (07:30 to 07:41 UTC), the 10 `.s0.long`
-runs of ruling C39 (07:43 to 08:00 UTC, 40,000 steps) and the 9 `.s0.lr1e4` runs of job M8 (08:06 to 08:17 UTC), all
+Measured 2026-11-23, 33 rows: the 13 `.s0` runs of job M6 (07:30 to 07:41 UTC), the 10 `.s0.long`
+runs of ruling C39 (07:43 to 08:00 UTC, 40,000 steps), the 9 `.s0.lr1e4` runs of job M8 (08:06 to 08:17 UTC) and the
+one `.s0.lr1e4_long` run of ruling C45 (08:54 to 08:57 UTC, 40,000 steps), all
 on the 2,000 training shots of the fit and validated on 100 `val_select` shots. "Seconds" is wall-clock with two to
-four runs sharing a GPU. "Active tokens" and "Active values" are "n of m", and for an arm of several signals the
+four runs sharing a GPU, except for the run of ruling C45, whose log does not say what else ran on its GPU 1. "Active tokens" and "Active values" are "n of m", and for an arm of several signals the
 smallest to the largest over its signals ("4 to 11 of 32"); for the values, "of m" is the values per token. The collapsed column was computed again from
 `first_value_entropy_by_token` (a signal is collapsed when no entry reaches 0.3, ruling C33) and agrees with the
-`collapsed` key of each of the 32 `result.json` files and with the "COLLAPSED (C33)" lines of the training logs.
+`collapsed` key of each of the 33 `result.json` files and with the "COLLAPSED (C33)" lines of the training logs.
 
 | Name | Steps | Best step | `val_mse` | `val_full` | Plateau | Collapsed | Collapsed (any token) | Active tokens | Active values | Seconds |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -1486,6 +1549,7 @@ smallest to the largest over its signals ("4 to 11 of 32"); for the values, "of 
 | `net.obr.s0.lr1e4` | 40000 | 40000 | 0.02684 | 0.0007336 | no | no | no | 24 of 24 | 6 of 6 | 604 |
 | `net.obv.s0.lr1e4` | 40000 | 30000 | 0.02649 | 0.0007707 | yes | no | no | 24 of 24 | 6 of 6 | 600 |
 | `net.profile.s0.lr1e4` | 40000 | 36000 | 0.09943 | 0.01864 | no | no | yes | 22 to 23 of 24 | 3 of 4 | 551 |
+| `net.flux.s0.lr1e4_long` | 40000 | 25000 | 0.01282 | 0.0001253 | yes | no | no | 20 of 20 | 6 of 6 | 180 |
 
 The 8 collapsed runs and the signal that makes each so, read from the same entropies:
 
@@ -1504,20 +1568,31 @@ The 8 collapsed runs and the signal that makes each so, read from the same entro
 
 Where "Collapsed" is no and "Collapsed (any token)" is yes, some tokens are idle while others are in use
 (`net.bandcat.*`: 1 to 7 of 54 tokens active; `net.profile`: 22 or 23 of 24; `net.map`: 47 of 48), and ruling C33
-keeps the arm. A "Plateau" of no after 40,000 steps (for example `net.obr.s0.lr1e4`, `net.ccbv.s0.long`) means that
-the validation error still fell by more than 1% over the last quarter, and rule 8 extends a run once.
+keeps the arm. A "Plateau" of no means that the validation error still fell by more than 1% over the last
+quarter. Rule 8 extended each M6 run with a no once (ruling C39). The five retries at 1e-4 that end at 40,000 steps
+with a no (`net.bandcat.omv.s0.lr1e4`, `net.ccbv.s0.lr1e4`, `net.map.s0.lr1e4`, `net.obr.s0.lr1e4` and
+`net.profile.s0.lr1e4`) repeat C39's long runs, so their lineage has used its one extension. `net.flux.s0.lr1e4`
+ended at 20,000 steps with a no, and its lineage had not been extended (`net.flux.s0` ended with a yes at 20,000
+steps, so ruling C39 left it alone); ruling C45 extended it once, giving `net.flux.s0.lr1e4_long`: best `val_mse`
+0.01282 at step 25,000 of 40,000 against 0.01360 at step 19,000 of 20,000, plateau yes, not collapsed, 180 s. Its
+comparison `c-net0rl:c-pca`, in the networks table, shows the flux loss standing (0.01531 against 0.002548, and
+0.01573 before the extension).
 
 #### The decisions
 
 One row per signal that a rule decides, from M9 and the confirmation on
 `val_report`. A choice made on `val_select` stands only if `val_report` gives the
-same word. If `v2` equals `v1`, nothing was scored again and this table says so.
+same word. `v2` equals `v1b` (see below), so no `v2` file was built or scored; the confirmation on `val_report`
+was run for rule 6 on the four magnetics arrays only.
 
-Measured 2026-11-23 (job M9 and its confirmation, ruling C42): 47 rows, the comparison
-files of the two tables above read per signal. The rule and the split with its number of shots are in the "Rule"
+Measured 2026-11-23 (job M9 and its confirmation, ruling C42; the `c-net0rl` rows are ruling C45's): 61 rows,
+the comparison files of the two tables above read per signal. A signal has several rows when a rule reads several
+comparisons on it. The rows of `c-net0`, `c-net0r`, `c-net0rl`, `bc-net0` and `bc-net0r` are the concatenated networks
+in the slot that ruling C41 gives them (rule 6's best concatenated arm). The rule and the split with its number of shots are in the "Rule"
 cell, and "Error of a" and "Error of b" are the mean errors on that split. The word is the comparison's word at one
-seed (rule 2, without a spread since no network won). `v2` was not built as a file: it equals `v1b`, because no
-learned arm beat `v1` or `v1b` under rules 4 and 5, so "Held by `v2`" is `v1b`'s setting in
+seed (rule 2, without a spread since no network won). `v2` was not built as a file: it equals `v1b`, because no learned arm
+beat `v1b` under rules 4 and 5 (the one win over `v1`, `s-klt` on the solenoid current at `v1`'s K 1, was judged
+again at `v1b`'s K 2 by ruling C42, where `v1b` clearly beats `s-klt.b`), so "Held by `v2`" is `v1b`'s setting in
 `assignments/v1b.json` and "Held by `v2c`" is the setting in `assignments/v2c.json`; `v2c` differs from `v1b` in the
 four magnetics arrays only.
 
@@ -1556,10 +1631,24 @@ four magnetics arrays only.
 | `magnetics-b_field_tor_probe_cc_field` | 5 | `bo-net0` (`net.band.cc.s0.long`) | `v1` | no data | no data | collapsed (C33), no comparison | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
 | `magnetics-b_field_pol_probe_omv_voltage` | 5 | `b-net0` (`net.band.s0.long`) | `v1` | no data | no data | collapsed (C33), no comparison | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
 | `magnetics-b_field_pol_probe_omv_voltage` | 5 | `bo-net0` (`net.band.omv.s0.long`) | `v1` | no data | no data | collapsed (C33), no comparison | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
-| `magnetics-b_field_pol_probe_omv_voltage` | 5 (lr 3e-4; against `bc-pca`, the pair C41 sets), `val_select`, 62 shots | `bc-net0` | `bc-pca` | 0.4114 | 0.4026 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
-| `magnetics-b_field_tor_probe_cc_field` | 5 (lr 3e-4; against `bc-pca`, the pair C41 sets), `val_select`, 62 shots | `bc-net0` | `bc-pca` | 0.6418 | 0.631 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
-| `magnetics-b_field_pol_probe_omv_voltage` | 5 (lr 1e-4; against `bc-pca`, the pair C41 sets), `val_select`, 62 shots | `bc-net0r` | `bc-pca` | 0.4116 | 0.4026 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
-| `magnetics-b_field_tor_probe_cc_field` | 5 (lr 1e-4; against `bc-pca`, the pair C41 sets), `val_select`, 62 shots | `bc-net0r` | `bc-pca` | 0.6388 | 0.631 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_pol_probe_omv_voltage` | 5, `val_select`, 62 shots | `b-klt` | `v1` | 0.4028 | 0.403 | tie | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_tor_probe_cc_field` | 5, `val_select`, 62 shots | `b-klt` | `v1` | 0.6267 | 0.6267 | tie | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_pol_probe_omv_voltage` | 6 (lr 3e-4; the concatenated slot ruling C41 sets), `val_select`, 62 shots | `bc-net0` | `bc-pca` | 0.4114 | 0.4026 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_tor_probe_cc_field` | 6 (lr 3e-4; the concatenated slot ruling C41 sets), `val_select`, 62 shots | `bc-net0` | `bc-pca` | 0.6418 | 0.631 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_pol_probe_omv_voltage` | 6 (lr 1e-4; the concatenated slot ruling C41 sets), `val_select`, 62 shots | `bc-net0r` | `bc-pca` | 0.4116 | 0.4026 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_tor_probe_cc_field` | 6 (lr 1e-4; the concatenated slot ruling C41 sets), `val_select`, 62 shots | `bc-net0r` | `bc-pca` | 0.6388 | 0.631 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
+| `magnetics-b_field_pol_probe_ccbv_field` | 6 (lr 3e-4; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0` | `c-pca` | 0.01828 | 0.005814 | b clearly beats a | `v1b`'s `frame_dct`, K 4 | `pca.ccbv` (`recoded_concat`, 160) |
+| `magnetics-b_field_pol_probe_obr_field` | 6 (lr 3e-4; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0` | `c-pca` | 0.01892 | 0.008377 | b clearly beats a | `v1b`'s `frame_dct`, K 1 | `pca.obr` (`recoded_concat`, 18) |
+| `magnetics-b_field_pol_probe_obv_field` | 6 (lr 3e-4; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0` | `c-pca` | 0.0187 | 0.006787 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `pca.obv` (`recoded_concat`, 36) |
+| `magnetics-flux_loop_flux` | 6 (lr 3e-4; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0` | `c-pca` | 0.01709 | 0.002548 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `pca.flux` (`recoded_concat`, 30) |
+| `magnetics-b_field_pol_probe_ccbv_field` | 6 (lr 1e-4; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0r` | `c-pca` | 0.01807 | 0.005814 | b clearly beats a | `v1b`'s `frame_dct`, K 4 | `pca.ccbv` (`recoded_concat`, 160) |
+| `magnetics-b_field_pol_probe_obr_field` | 6 (lr 1e-4; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0r` | `c-pca` | 0.01782 | 0.008377 | b clearly beats a | `v1b`'s `frame_dct`, K 1 | `pca.obr` (`recoded_concat`, 18) |
+| `magnetics-b_field_pol_probe_obv_field` | 6 (lr 1e-4; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0r` | `c-pca` | 0.01948 | 0.006787 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `pca.obv` (`recoded_concat`, 36) |
+| `magnetics-flux_loop_flux` | 6 (lr 1e-4; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0r` | `c-pca` | 0.01573 | 0.002548 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `pca.flux` (`recoded_concat`, 30) |
+| `magnetics-b_field_pol_probe_ccbv_field` | 6 (lr 1e-4, flux extended once, ruling C45; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0rl` | `c-pca` | 0.01807 | 0.005814 | b clearly beats a | `v1b`'s `frame_dct`, K 4 | `pca.ccbv` (`recoded_concat`, 160) |
+| `magnetics-b_field_pol_probe_obr_field` | 6 (lr 1e-4, flux extended once, ruling C45; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0rl` | `c-pca` | 0.01782 | 0.008377 | b clearly beats a | `v1b`'s `frame_dct`, K 1 | `pca.obr` (`recoded_concat`, 18) |
+| `magnetics-b_field_pol_probe_obv_field` | 6 (lr 1e-4, flux extended once, ruling C45; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0rl` | `c-pca` | 0.01948 | 0.006787 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `pca.obv` (`recoded_concat`, 36) |
+| `magnetics-flux_loop_flux` | 6 (lr 1e-4, flux extended once, ruling C45; the concatenated slot ruling C41 sets), `val_select`, 100 shots | `c-net0rl` | `c-pca` | 0.01531 | 0.002548 | b clearly beats a | `v1b`'s `frame_dct`, K 2 | `pca.flux` (`recoded_concat`, 30) |
 | `magnetics-b_field_pol_probe_ccbv_field` | 6, `val_select`, 100 shots | `c-pca` | `s-klt` | 0.005814 | 0.01627 | a clearly beats b | `v1b`'s `frame_dct`, K 4 | `pca.ccbv` (`recoded_concat`, 160) |
 | `magnetics-b_field_pol_probe_obr_field` | 6, `val_select`, 100 shots | `c-pca` | `s-klt` | 0.008377 | 0.01596 | a clearly beats b | `v1b`'s `frame_dct`, K 1 | `pca.obr` (`recoded_concat`, 18) |
 | `magnetics-b_field_pol_probe_obv_field` | 6, `val_select`, 100 shots | `c-pca` | `s-klt` | 0.006787 | 0.01861 | a clearly beats b | `v1b`'s `frame_dct`, K 2 | `pca.obv` (`recoded_concat`, 36) |
@@ -1572,22 +1661,34 @@ four magnetics arrays only.
 | `magnetics-b_field_tor_probe_cc_field` | 6, `val_select`, 62 shots | `bc-pca` | `b-klt` | 0.631 | 0.6267 | b beats a | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 | `v1b`'s `band_dct`, K 32/16/16/16/16/16/16/16 |
 
 What each rule decides. Rule 4: the cosine transform stays on all 17 series signals, `v1b`'s K 2 on the two
-currents included (ruling C42); `v2c` swaps four of them by rule 6. Rule 5: the profiles, the map and the Mirnov band transform stay; the Mirnov
-networks collapsed (`b-net0`, `bo-net0`, with no comparison and so "no data" in the error cells) or lost to
-`bc-pca`. No Mirnov network was compared with `v1` itself, because the loss to `bc-pca` already settles it
-(ruling C41), and `bc-pca` against `b-klt` ties on `omv` and loses on `cc_field`. Rule 6: the concatenated linear
+currents included (ruling C42); `v2c` swaps four of them by rule 6. Rule 5: the profiles, the map and the Mirnov band
+transform stay. The linear Mirnov arm `b-klt` ties with `v1` on both signals (62 shots); the per-stream Mirnov networks
+collapsed (`b-net0`, `bo-net0`, with no comparison and so "no data" in the error cells); the concatenated one, `bc-net0`,
+was compared only in the rule-6 slot that ruling C41 gives it and lost to `bc-pca` at both learning rates. No Mirnov
+network was compared with `v1` itself. That `bc-net0` would lose to it too is inferred, not measured: its errors (0.4114
+on `omv`, 0.6418 on `cc_field`) are above `v1`'s in `b-klt:v1` (0.403 and 0.6267) on 62 `val_select` shots, but no paired
+comparison was run. `bc-pca` against `b-klt` ties on `omv` and loses on `cc_field`. Rule 6: the concatenated linear
 arm clearly beats the shared one on the four magnetics arrays on both splits, so `v2c` holds `pca.ccbv`, `pca.obr`,
-`pca.obv` and `pca.flux`; on the two Mirnov signals the best concatenated arm does not clearly beat the shared one.
-The `val_report` confirmation of rules 4 and 5, and of rule 6 on the Mirnov signals, was not run, because nothing
-beat its baseline on `val_select`, so there is nothing to confirm (no data, not a pass).
+`pca.obv` and `pca.flux`; on the two Mirnov signals the best concatenated arm does not clearly beat the shared one. The
+concatenated networks lost to the linear concatenated arm in the slot of ruling C41 on every row (`c-net0`, `c-net0r`
+and `c-net0rl` against `c-pca`; `bc-net0` and `bc-net0r` against `bc-pca`), so no network is the best concatenated arm.
+The `val_report` confirmation of rules 4 and 5, and of rule 6 on the Mirnov signals, was not run, because nothing beat its
+baseline on `val_select` at the K the baseline holds in `v1b` (the one win at `v1`'s K 1, `s-klt` on the solenoid
+current, lost at K 2, ruling C42), so there is nothing to confirm (no data, not a pass).
 
 #### The input round-trip of `v1`, `v1b` and `v2c`
 
-Measured 2026-11-23 (job M9 and ruling C43; `score --instrument inputs`, all `val_report` shots of each task, the
-direct model of stage 0 named in the first column, `through / raw - 1` on the same shots). `ranged` is like for like
+Measured 2026-11-23 with `score --instrument inputs` on all `val_report` shots of each task (the direct model of
+stage 0 named in the first column, `through / raw - 1` on the same shots): the `v1` rows by stage 1b's job K6 (03:47 to
+04:43 UTC, `logs/k6.meta`), the `v1b` `ranged` rows by ruling C29 (06:33 to 07:00 UTC, `logs/v1b_gate.meta`), and the
+`v2c` rows and the `v1b` `unquantized` rows by job M9 under ruling C43 (08:10 to 08:34 UTC, `logs/m9_inputs.meta`). `ranged` is like for like
 with the K6 and C29 rows; `unquantized` was run with `v1b` and `v2c` on tasks 1-1 and 1-2. The magnetics arrays are
 inputs to 12 of 14 tasks. One trained direct model and one scoring pass give each row, so whether +0.11% against
 +0.24% on task 1-2 is a difference is not tested.
+
+Rule 6 asks for the round-trip "with each arm's tokens". Only the assignments stage 2 can start on were scored (`v1`,
+`v1b`, `v2c`). No assignment holding `s-klt` or `o-klt` on the magnetics was scored, so the round-trip of the shared and
+own arms is not measured (no data, not a tie).
 
 | Task (direct model) | Tokenizer | Mode | Shots | Raw score | Score through the tokenizer | `through / raw - 1` |
 |---|---|---|---|---|---|---|
@@ -1705,8 +1806,9 @@ they go to the stage-2 plan.
   mixes these tokens in one frame.
 - **The fluctuation band of the 50 kHz channels is not covered.** The soft X-ray
   cameras, D-alpha and the saddle coils have a fast fluctuation that no fixed
-  transform here keeps at K of at most 16. No benchmark task scores the band, and
-  plan 1c holds it as its last item.
+  transform here keeps at K of at most 16. No benchmark task scores the band. Plan 1c's job M10 measured how much of each channel's
+  power the band holds (see [The 50 kHz band](#the-50-khz-band)); no tokenizer for it is built, and the
+  numbers go to the stage-2 plan.
 - **No data is not a negative.** In the gate table a "no data" cell, in the
   columns measured from the cache, is a signal that none of the 200 `val_report`
   shots read for them has (a signal that the fit has no training shot for gets
@@ -1725,8 +1827,9 @@ they go to the stage-2 plan.
   cache v1 does not hold.
 - **No magnetics signal is a benchmark target.** The magnetics arrays and the
   Mirnov signals are inputs only, so a tokenizer for them is judged by
-  reconstruction and by the input round-trip of two tasks only (1-1 and 1-2, the
-  direct models of rule 6), and no benchmark score says what the dynamics model
+  reconstruction and by the input round-trip of four tasks (1-1 and 1-2, the
+  direct models of rule 6, and 2-1 and 4-1, added by ruling C43; `val_report`, one direct model and one pass
+  each), and no benchmark score says what the dynamics model
   gains or loses from one choice or the other (open decision 1 of the plan).
 - **A learned tokenizer sees only what the front end keeps.** A recoder sits behind
   the top rung of a fixed codec (16 cosine values, 32 per band, 96 principal
