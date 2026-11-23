@@ -315,7 +315,7 @@ The ridge score there is "ridge at the smallest penalty offered", not ridge at
 its best penalty; between the first fit's smallest candidate (1e-4) and 1e-8
 the score moved by 0.0021 to 0.0061.
 
-**Measured 2026-11-22**, in the headroom table below. Two findings, the first with an inferred reading marked as such.
+**Measured 2026-11-22**, in the headroom table below. Two findings, each with an inferred reading marked as such.
 
 - *A per-channel training mean scores about 0.22 on task 1-2, against 1.0005
   for TokaMark's scalar mean.* A per-channel training mean alone, which is what `shrunk`
