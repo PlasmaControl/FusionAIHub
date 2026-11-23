@@ -759,7 +759,7 @@ the seven rules of [Rules](#rules) above and do not replace them.
 
     *Fixed before the measurement, 2026-11-22.*
 
-**Readings the controller added before any measurement.** Three readings, written
+**Readings the controller added before any measurement.** Four readings, written
 on 2026-11-23 before any production store, recoder or comparison existed. None
 changes a rule above.
 
@@ -790,6 +790,23 @@ changes a rule above.
   measured). If the owner answers open decision 1 of stage 1b with per-column low
   bins before M4 runs, the Mirnov arms are planned again before M4 to M7. The
   Mirnov networks stay fourth in the cut order.
+- **Rule 7 is judged on distinct examples, and "any token" means no token is in use
+  (ruling C33).** Written 2026-11-23 at 07:15 UTC, before any network was trained.
+  A signal is collapsed when no token's first value reaches 0.3 normalised entropy,
+  read on the signal's distinct validation examples (an exact duplicate row, with
+  its stream identity, counted once). The plan's literal reading (some token's first
+  value under 0.3, on all rows) is recorded beside it as `collapsed_any_token`, and
+  the last line of a training names any signal where the two differ. Reasons:
+  `ignite.gate.utilization`, which rule 7 cites, pools the token positions and does
+  not judge each token; the plan's own sentence that unused later values do not
+  block says that an idle token is not a collapse; and an input that barely varies
+  (a dead channel, NBI off in most frames) is not a collapse of the network (about
+  88% identical rows give a normalised entropy of about 0.29 on a healthy network: the
+  ruling's calculation, not measured on a network). A one-token arm is the plan's rule unchanged. The
+  arm's verdict stays "any signal collapsed" (exit 3). Both readings, the entropy
+  of each token's first value, the active tokens, the distinct and all examples and
+  the share of the most common row are recorded per signal in `result.json`, so the
+  literal reading can be applied afterwards without training again.
 
 ### Where stage 1c departs from the design
 
@@ -965,6 +982,17 @@ scripts): `run_tokenizer.py` (`$RT`) holds `fit`, `score`, `ladder`, `assign`,
 `recode`, `gate`, `compare` and `seeds`, and `train_tokenizer.py` (`$TT`) holds
 `store`, `linear`, `joint`, `arms`, `train` and `fluct`.
 
+`recode` refuses, with exit 2 before it writes anything, a network recoder whose
+`result.json` is missing (its training did not finish) or does not say
+`collapsed` false (rule 7), and a recoder whose recorded `fit_sha256` or
+`stats_sha256` differs from the fit and statistics in use (after a `fit --force`
+its basis is the wrong one); `score`, `gate` and `compare` refuse that second case
+for an assignment that names such a recoder. `seeds` refuses pairs that do not all
+have the same `b`, or that repeat an `a`, prints each pair's `n_shots`, and gives no
+verdict for a signal whose pairs were measured over different shots. It reads "b
+beats a" against the spread of the `gap_ba` and "a beats b" against that of the
+`gap`.
+
 Every command starts with the `OMP_NUM_THREADS` it is launched with, and each job
 gets its own count so that workers times threads stay under the node's 352 cores:
 16 for a job that runs alone in one process, 2 per worker for the jobs of 64
@@ -988,8 +1016,8 @@ so several can share one GPU.
 | M3 joint basis | M1, Task 4 | `OMP_NUM_THREADS=16 $TT joint --signals ccbv,obr,obv,flux` | none | minutes | Per size three shares: the joint basis of the 91 channels, each array's own basis, the per-channel basis. This is the upper limit of what coding channels together can give in linear form. |
 | M4 recoded assignments and their floors | M2, Task 4 | `OMP_NUM_THREADS=16 $RT recode --name s-klt --from v1 --arm klt.series`; `o-klt` (`klt.mag`); `c-pca` (`pca.ccbv,pca.obr,pca.obv,pca.flux`), `c-pca.h` and `c-pca.q` (the same with `--scale 0.5`, `0.25`); `b-klt` (`klt.band`); `bo-klt` (`klt.band.cc,klt.band.omv`); `bc-pca` (`pca.band.cc,pca.band.omv`), `bc-pca.h`, `bc-pca.q`. Then M5's `compare` once: it prints every `score` command whose floor is missing (`OMP_NUM_THREADS=4 $RT score --task T --split val_select --n-shots 100 --assignment A --mode unquantized`); run those in waves | none | about 20 passes of 3 to 15 min; about 1 h | `recode` prints equal values per frame before and after (a concatenated network arm may be a few values short: tokens of 8). The last line of each pass. |
 | M5 linear comparison | M4 | `OMP_NUM_THREADS=16 $RT compare --a A --b B --drop-channel --reach 0.0176` for the pairs: `s-klt:v1` (rule 4); `s-klt:o-klt`, `c-pca:o-klt`, `c-pca:s-klt`, `c-pca.h:s-klt`, `c-pca.q:s-klt`, `c-pca:v1` (rule 6, magnetics); `b-klt:v1` (rule 5); `b-klt:bo-klt`, `bc-pca:bo-klt`, `bc-pca:b-klt`, `bc-pca.h:b-klt`, `bc-pca.q:b-klt` (rule 6, Mirnov) | none | minutes each | The 13 tables. They go to the owner the day they exist, with M3's line: this is the linear answer to shared against specialized, and the networks cannot change what the data holds, only how much of it a tokenizer of that size gets. |
-| M6 networks, seed 0 | Task 6, M1 | `OMP_NUM_THREADS=8 $TT train --arm A --seed 0 --gpu N --share-gpu` for the 13 network arms, two or three per GPU | 4, shared | 5 to 20 min each; under 1 h | The last line of each run. `collapsed yes` (exit 3): that arm takes part in no comparison. `plateau no`: run it once more with `--steps 40000 --variant long` (rule 8). |
-| M7 network comparison | M6 | `OMP_NUM_THREADS=16 $RT recode` to `s-net0` (`net.series.s0`), `o-net0` (`net.mag.s0`), `c-net0` (the four `net.<array>.s0`), `b-net0` (`net.band.s0`), `bo-net0` (`net.band.cc.s0,net.band.omv.s0`), `bc-net0` (`net.bandcat.cc.s0,net.bandcat.omv.s0`), `p-net0` (`net.profile.s0`), `m-net0` (`net.map.s0`); the missing floors as in M4 (`OMP_NUM_THREADS=4` per pass, on the CPU: see the departures above); then `OMP_NUM_THREADS=16 $RT compare` for the pairs of M5 with the network in place of the linear arm, and `s-net0:s-klt`, `b-net0:b-klt`, `p-net0:v1`, `m-net0:v1` (rule 5) | none | about 12 passes of 5 to 20 min; about 1 h | The tables, as in M5. |
+| M6 networks, seed 0 | Task 6, M1 | `OMP_NUM_THREADS=8 $TT train --arm A --seed 0 --gpu N --share-gpu` for the 13 network arms, two or three per GPU | 4, shared | 5 to 20 min each; under 1 h | The last line of each run. `collapsed yes` (exit 3): that arm takes part in no comparison, and `recode` refuses it. A last line that ends `(rule 7 readings differ on: ...; C33 decides)` names a signal that the plan's literal reading would call collapsed and C33's does not (or the reverse): read `usage` in its `result.json`. `plateau no`: run it once more with `--steps 40000 --variant long` (rule 8). |
+| M7 network comparison | M6 | `OMP_NUM_THREADS=16 $RT recode` to `s-net0` (`net.series.s0`), `o-net0` (`net.mag.s0`), `c-net0` (the four `net.<array>.s0`), `b-net0` (`net.band.s0`), `bo-net0` (`net.band.cc.s0,net.band.omv.s0`), `bc-net0` (`net.bandcat.cc.s0,net.bandcat.omv.s0`), `p-net0` (`net.profile.s0`), `m-net0` (`net.map.s0`); the missing floors as in M4 (`OMP_NUM_THREADS=4` per pass, on the CPU: see the departures above); then `OMP_NUM_THREADS=16 $RT compare` for the pairs of M5 with the network in place of the linear arm, and `s-net0:s-klt`, `b-net0:b-klt`, `p-net0:v1`, `m-net0:v1` (rule 5) | none | about 12 passes of 5 to 20 min; about 1 h | The tables, as in M5. A network's best step and plateau were chosen on the same 100 `val_select` shots as these tables read, so its win is read with that in mind (see [The trainings](#the-trainings)). |
 | M8 rule 8 | M7 | For a network that lost: `OMP_NUM_THREADS=8 $TT train --arm A --seed 0 --lr 1e-4 --variant lr1e4 --gpu N --share-gpu`, then its comparison again. For a network that won: seeds 1 and 2, their assignments and floors, then `OMP_NUM_THREADS=16 $RT seeds --pairs a0:b,a1:b,a2:b --label val_select-n100` | 4, shared | up to 26 runs and their floors; 1 to 2 h | The gaps of the three seeds, their spread and the word with that spread. |
 | M9 `v2`, `v2c` and their confirmation | M8 | `OMP_NUM_THREADS=16 $RT recode --name v2 --from v1 --arm <the winners by rules 4 and 5> --signals <their signals>`; `v2c` from `v2` with the concatenated winners of rule 6. For every task with a changed output signal: 1b's K5 passes on `val_report` in the three read-outs (floors, `OMP_NUM_THREADS=4` per pass); `OMP_NUM_THREADS=16 $RT compare --label val_report` for the decided pairs; for tasks 1-1 and 1-2 `OMP_NUM_THREADS=8 $RT score --task T --split val_report --instrument inputs --assignment A --mode unquantized --variant V --gpu N` with `v2` and `v2c`; `OMP_NUM_THREADS=16 $RT gate --assignment $S1/assignments/v2.json` | 4 passes with a GPU | 1 to 2 h without a GPU, 4 passes of 15 to 45 min with one, the gate 5 to 15 min | A choice made on `val_select` stands only if `val_report` gives the same word. The gate's last line. If `v2` equals `v1`, nothing is scored again and the page says so. |
 | M10 the 50 kHz band | Task 7, K3 | `OMP_NUM_THREADS=2 $TT fluct --workers 64` | none | 5 to 15 min | Four lines; they go to the stage-2 plan. |
@@ -1042,12 +1070,16 @@ Not measured yet.
 
 The same rows and columns as the linear arms, from the comparison files of M7 and
 M8, with the gap of each seed and its spread added from `seeds`, which prints
-`gaps ...; spread ...; word` per signal and writes nothing, so those columns are
-copied from its print. The spread is the largest gap over the seeds minus the
-smallest (rule 2), and the word is the verdict of the first pair with that spread.
+`n_shots ...; gaps ...; spread ...; gaps b over a ...; spread ...; word` per signal and
+writes nothing, so those columns are copied from its print. The spread is the
+largest gap over the seeds minus the smallest (rule 2): that of the gaps for "a beats
+b" and that of the gaps of b against a for "b beats a" (the two differ, since the
+former gap is over the mean error of b and the latter over that of a). The word is the
+verdict of the first pair with those spreads, and "shots differ" instead of a word
+when the pairs were measured over different numbers of shots.
 
-| Pair (a:b) | Signal | Source | Values per frame (a) | Values per frame (b) | Shots | Mean error (a) | Mean error (b) | Gap | Gap, low end | Gap, high end | Gap of b against a | Low end (b against a) | High end (b against a) | Word at one seed | Missing-channel ratio (a) | Missing-channel ratio (b) | Values to reach 0.0176 (a) | Values to reach 0.0176 (b) | Gap, seed 0 | Gap, seed 1 | Gap, seed 2 | Spread of the gaps | Word with the spread |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Pair (a:b) | Signal | Source | Values per frame (a) | Values per frame (b) | Shots | Mean error (a) | Mean error (b) | Gap | Gap, low end | Gap, high end | Gap of b against a | Low end (b against a) | High end (b against a) | Word at one seed | Missing-channel ratio (a) | Missing-channel ratio (b) | Values to reach 0.0176 (a) | Values to reach 0.0176 (b) | Gap, seed 0 | Gap, seed 1 | Gap, seed 2 | Spread of the gaps | Spread of the gaps of b against a | Word with the spreads |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 
 Not measured yet.
 
@@ -1061,13 +1093,25 @@ units at the best step, averaged over the prefix lengths of the values, and
 last quarter of the log rows is not more than 1% under the best before it, and no
 if it still fell by more than that, in which case the run is repeated with twice
 the steps (rule 8). `collapsed` is
-yes, no or unchecked (rule 7): a signal without validation examples has no
-verdict, which is unchecked and not a "no", because no data is not a negative.
-The active values are the count per signal of the values whose normalized entropy
-is at least 0.3, and decide nothing.
+yes, no or unchecked (rule 7, as ruling C33 reads it: no token's first value is in
+use on the signal's distinct validation examples; a signal without validation
+examples has no verdict, which is unchecked and not a "no", because no data is not a
+negative). An arm is collapsed when any of its signals is. "Collapsed (any token)"
+is the plan's literal reading (`collapsed_any_token`: some token's first value under
+0.3 on all rows), kept beside the verdict so the two can be compared; "active
+tokens" is the count of tokens whose first value reaches 0.3, and decides nothing,
+like the active values (the count per signal of the values whose normalized entropy
+is at least 0.3).
 
-| Name | Steps | Best step | `val_mse` | `val_full` | Plateau | Collapsed | Active values | Seconds |
-|---|---|---|---|---|---|---|---|---|
+A network's best step, and its plateau, are chosen on its validation store, which is
+the same 100 `val_select` shots (`cache.pick_evenly`) that the `val_select-n100`
+comparison reads (the floors and the compare cache side pick the same 100). Rule 4's
+choice between a linear and a network arm is also made on them. Inferred, not
+measured: the selection over about 20 checkpoints is small and favours the
+networks. Rules 4 and 5 confirm a replacement on `val_report`, which bounds it.
+
+| Name | Steps | Best step | `val_mse` | `val_full` | Plateau | Collapsed | Collapsed (any token) | Active tokens | Active values | Seconds |
+|---|---|---|---|---|---|---|---|---|---|---|
 
 Not measured yet.
 
