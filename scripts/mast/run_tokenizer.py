@@ -21,7 +21,8 @@ one list of `val_select` windows kept in memory, with the mean baseline on the s
 `<stage1>/ladders/<task>.csv` and `.json`, and every pass as a score under `scores/<task>/tok.ladder-*`.
 `ladder --inputs` reads the reconstruction error of the signals no task predicts from the cache (rule 4;
 no GPU, no windows). `assign` applies the rules to the seven ladder files and writes
-`<stage1>/assignments/<name>.json`; it refuses a name that exists, and ladders made with another fit.
+`<stage1>/assignments/<name>.json`; it refuses a name that exists, and ladders made with another fit,
+other tokenizer code or other statistics (and with other scoring code, if the ladder file records it).
 Every refusal comes before the first write, and no refusal leaves a directory behind.
 
 `gate --assignment FILE` judges every (task, output signal) pair of the 14 tasks from stored scores: the
@@ -177,12 +178,12 @@ def score_one(task: tasks.TaskSpec, predict_fn: harness.PredictFn, *, predictor:
     result = harness.score(task, predict_fn, out_dir, split=split, shots=shots,
                            history_s=getattr(predict_fn, "history_s", None),
                            batch_size=batch_size, num_workers=num_workers)
-    path = baselines.write_score_json(result, predictor, label)
+    _write_csv_atomic(out_dir / "signals.csv", result.per_signal)     # before score.json: the gate trusts it once
+    path = baselines.write_score_json(result, predictor, label)       # score.json is kept
     record = json.loads(path.read_text())
     record.update(provenance)
     record.update(records)
     _write_json_atomic(path, record)
-    result.per_signal.to_csv(out_dir / "signals.csv", index=False)
     return record
 
 
@@ -433,7 +434,8 @@ def _ladder_files(stage1: Path, name: str) -> tuple[Path, Path]:
 def _ladder_record(shots: list[int], args: argparse.Namespace, prov: Mapping[str, str], **more) -> dict:
     return {"shots": [int(s) for s in shots], "n_shots_asked": args.n_shots, "split": LADDER_SPLIT,
             "fit_sha256": prov["fit_sha256"], "tokenizer_code_sha256": prov["tokenizer_code_sha256"],
-            "stats_sha256": prov["stats_sha256"], "date": datetime.now(timezone.utc).isoformat(), **more}
+            "stats_sha256": prov["stats_sha256"], "scoring_code_sha256": baselines.scoring_code_sha256(),
+            "date": datetime.now(timezone.utc).isoformat(), **more}
 
 
 def _score_windows(task: tasks.TaskSpec, batches: list[harness.WindowBatch], predict_fn: harness.PredictFn, *,
@@ -444,12 +446,12 @@ def _score_windows(task: tasks.TaskSpec, batches: list[harness.WindowBatch], pre
     per signal (TokaMark units). A stored score of that directory is replaced (a ladder does not keep scores)."""
     out_dir = _prepare(paths.stage1_dir() / "scores" / task.name / predictor / label)
     result = harness.score_batches(task.name, batches, predict_fn, out_dir)
+    _write_csv_atomic(out_dir / "signals.csv", result.per_signal)     # before score.json, as in `score_one`
     path = baselines.write_score_json(result, predictor, label)
     record = json.loads(path.read_text())
     record.update(provenance)
     record.update(records)
     _write_json_atomic(path, record)
-    result.per_signal.to_csv(out_dir / "signals.csv", index=False)
     return {str(n): float(v) for n, v in zip(result.per_signal["feature_name"], result.per_signal["NRMSE"])}
 
 
@@ -683,6 +685,19 @@ def _raise_inputs(old: Mapping[str, assign.Setting], old_notes: Mapping[str, str
     return a, notes
 
 
+def _stale_ladder_keys(file_name: str, made: Mapping[str, object], prov: Mapping[str, str]) -> list[str]:
+    """One message per key by which the ladder record `made` is not from the code and statistics in use now.
+
+    `tokenizer_code_sha256` and `stats_sha256` (of `prov`) must equal the stored value. `scoring_code_sha256`
+    is checked against `baselines.scoring_code_sha256()` only if the record has it: the seven ladders of the
+    first run predate the key (`ladder` records it from now on)."""
+    current = {"tokenizer_code_sha256": prov["tokenizer_code_sha256"], "stats_sha256": prov["stats_sha256"]}
+    if "scoring_code_sha256" in made:
+        current["scoring_code_sha256"] = baselines.scoring_code_sha256()
+    return [f"{file_name} was made with other {key} ({str(made.get(key))[:12]}, now {value[:12]})"
+            for key, value in current.items() if made.get(key) != value]
+
+
 def run_assign(args: argparse.Namespace) -> int:
     """Write ``<stage1>/assignments/<name>.json`` from the ladders, from `--from` with the inputs raised, or the
     reference; print one line per signal and the total of values per frame. Exit 2 for a refusal."""
@@ -723,10 +738,13 @@ def run_assign(args: argparse.Namespace) -> int:
             if gone:
                 problems.append(f"{', '.join(gone)} missing")
                 continue
-            made = json.loads(js.read_text()).get("fit_sha256")
-            if made != prov["fit_sha256"]:
-                problems.append(f"{js.name} was made with another fit ({str(made)[:12]}, this fit is "
-                                f"{prov['fit_sha256'][:12]})")
+            made = json.loads(js.read_text())
+            if made.get("fit_sha256") != prov["fit_sha256"]:
+                problems.append(f"{js.name} was made with another fit ({str(made.get('fit_sha256'))[:12]}, this "
+                                f"fit is {prov['fit_sha256'][:12]})")
+                continue
+            if stale := _stale_ladder_keys(js.name, made, prov):
+                problems.extend(stale)
                 continue
             frames_.append(pd.read_csv(csv))
         if problems:
@@ -752,6 +770,7 @@ def run_assign(args: argparse.Namespace) -> int:
 # ------------------------------------------------------------------------------------------ gate
 
 GATE_SPLIT = "val_report"
+NARROW_RANGE = 1.01                  # rule 6: `ranged` above this times `unquantized` means a range too narrow
 REF_NAME = "ref"
 
 
@@ -771,6 +790,30 @@ def _stored_floors(stage1: Path, task: str, name: str, mode: str, label: str,
         return got, gate._num(stored["nrmse"]), ""
     except (OSError, KeyError, ValueError) as e:
         return None, None, f"signals.csv cannot be read ({type(e).__name__}: {e})"
+
+
+def _nrmse_text(record: Mapping[str, object] | None) -> str:
+    """The ``nrmse`` of a stored score record with four decimals; ``no score`` for no record, or a value that
+    is missing, not a number or not finite."""
+    try:
+        value = float(record["nrmse"])
+    except (TypeError, ValueError, KeyError):
+        return "no score"
+    return f"{value:.4f}" if math.isfinite(value) else "no score"
+
+
+def _narrow_range_lines(table_: pd.DataFrame) -> list[str]:
+    """Plan 1b's rule 6: one line per (task, signal) whose `ranged` floor is more than 1% above its
+    `unquantized` floor, which means that the range of the fit is too narrow. Reported, not fixed here: it
+    changes no verdict. A row with either floor missing (NaN) has nothing to compare."""
+    lines = []
+    for row in table_.itertuples():
+        floor_, ranged = row.unquantized, row.ranged
+        if math.isfinite(floor_) and math.isfinite(ranged) and ranged > NARROW_RANGE * floor_:
+            above = f"{100 * (ranged / floor_ - 1):.1f}% above" if floor_ > 0 else "above"
+            lines.append(f"range too narrow (rule 6; reported, not fixed here): {row.task} {row.signal}: "
+                         f"ranged {ranged:.4f} is {above} unquantized {floor_:.4f}")
+    return lines
 
 
 def run_gate(args: argparse.Namespace) -> int:
@@ -851,12 +894,14 @@ def run_gate(args: argparse.Namespace) -> int:
         s0 = []
         for pred in ("mean", "floor"):
             rec, _ = baselines.read_kept_score(stage0 / "scores" / t / pred / GATE_SPLIT, t, pred, GATE_SPLIT)
-            s0.append(f"{pred} " + ("no score" if rec is None else f"{float(rec['nrmse']):.4f}"))
+            s0.append(f"{pred} {_nrmse_text(rec)}")
         print(f"{t}: task NRMSE {reads}; a fifth of the best published {gate.FIDELITY * tasks.best_published(t):.4f}; "
               f"stage 0 on {GATE_SPLIT}: {', '.join(s0)}")
     for read, n in absent.items():
         if n:
             print(f"no stored score for {n} of the {len(tasks.ALL_TASKS)} tasks in read-out {read}")
+    for line in _narrow_range_lines(table_):
+        print(line)
     for line in not_kept:
         print(f"not kept, so not scored: {line}")
     n_rows = len(table_)
