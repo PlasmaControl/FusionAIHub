@@ -1182,25 +1182,29 @@ rows are not tuned results. In NRMSE terms (lower is better), each score is an
 upper bound on the NRMSE that this model reaches on its task at the stated
 budget: a longer, larger or differently trained model may reach a lower one.
 
-**Measured 2026-11-23.** The table was printed at 05:24 UTC by
+**Measured 2026-11-23.** The table was printed at 05:24 UTC and again at
+10:36 UTC, after the run of task 2-2 (`lr1e4s90k`, below) had ended, by
 
 ```bash
 scripts/mast/py.sh scripts/mast/run_headroom.py --table-all > /models/intermediate/mast/stage0/headroom_table_all.md
 ```
 
 from the scores stored under `/models/intermediate/mast/stage0/scores`. The
-command also wrote `headroom_table_all.csv` beside the Markdown. The section
+command also wrote `headroom_table_all.csv` beside the Markdown. The print of
+05:24 is kept beside them as `headroom_table_all.2026-11-23T0524.md`; the two
+differ in the row of task 2-2, the variant table of task 2-2 and the projected
+mean, and in nothing else (checked with `diff` on 2026-11-23). The section
 was written on top of revision `8af4ca49` (`git rev-parse --short HEAD`, the
 page's revision before the section existed) and first committed as `22e16535`.
 These are revisions of the page, not of the scores: each score carries the
 hashes of the code that made it (the scoring code and the predictor, as
 described under "What was run").
 
-What follows is the Markdown of the print for the seven new rows of both
-tables (the other seven rows are those of the 23:54 print above, and the
+What follows is the Markdown of the print of 10:36 for the seven new rows of
+both tables (the other seven rows are those of the 23:54 print above, and the
 14-task print repeats them), unchanged except for three things. Two lines of
 the output are left out: the first, which only names the root the command
-writes under, and the second, "Headroom table of 2026-11-23 05:24 UTC, from the
+writes under, and the second, "Headroom table of 2026-11-23 10:36 UTC, from the
 scores under ...". The print's heading "Direct variants (the table takes the
 one with the lowest best val_nrmse among those with a stored score):" is
 replaced by this page's own headings.
@@ -1222,7 +1226,7 @@ Fitted predictors and the direct model on `val_report` (with the 95% interval of
 | task | shrunk val | ridge val | direct val [95% interval] | direct variant | TokaMind replication test | best published test | by | direct / best | verdict | split rule |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1-3 | 0.6807 | 0.2228 | 0.1138 [0.1035, 0.1256] | lr1e4 | 0.1198 | 0.1156 | gentoka | 0.98 | tie |  |
-| 2-2 | 0.2323 | 0.0904 | 0.0400 [0.0387, 0.0414] | lr1e4 | 0.0439 | 0.0370 | gentoka | 1.08 | behind | undetermined |
+| 2-2 | 0.2323 | 0.0904 | 0.0371 [0.0359, 0.0385] | lr1e4s90k | 0.0439 | 0.0370 | gentoka | 1.00 | tie |  |
 | 2-3 | 0.6914 | 0.2067 | 0.0813 [0.0741, 0.0901] | lr1e4 | 0.0917 | 0.0828 | gentoka | 0.98 | tie |  |
 | 3-2 | 0.3842 | 0.3402 | 0.2309 [0.2218, 0.2414] | base | 0.2671 | 0.2522 | gentoka | 0.92 | ahead | stands |
 | 3-3 | 0.7736 | 0.3399 | 0.2194 [0.2000, 0.2430] | base | 0.2197 | 0.2147 | gentoka | 1.02 | tie |  |
@@ -1232,7 +1236,8 @@ Fitted predictors and the direct model on `val_report` (with the 95% interval of
 missing: no score is stored. undefined: the benchmark defines no persistence for the task. † stale: the stored score is not the score of what is loaded now. The scoring code (harness, tasks, baselines), the predictor's code, its fit or checkpoint, or TokaMind's coefficient files differ from those it was made with; or the record or its provenance is unreadable or cannot be computed now; or the per-shot file does not match the score; for a direct score also 'trained by other code than the code now loaded' (the checkpoint was trained by other code than the predictor and scoring code now loaded) and 'training code not recorded' (no `trained_by.json`). A score is not marked when TokaMark's code (windows, statistics, splits, the metric) or the Zarr data root changed: the record holds neither. ‡ unfinished: the direct model's training stopped before `max_steps`. not competitive: the direct model's `val_report` score is worse than our TokaMind replication's test score on the task. split rule: for an ahead or behind verdict, 'stands' if its margin (the distance from the nearer end of the interval to the published score) is larger than the mean baseline's difference between the splits on the task, else 'undetermined'; empty for any other verdict.
 
 No cell of the seven rows carries a † or a ‡ and no cell is missing; every
-chosen run trained all of its `max_steps` (30,000). The one mark of the verdict
+chosen run trained all of its `max_steps` (30,000; 90,000 for `lr1e4s90k` of
+task 2-2). The one mark of the verdict
 column is "not competitive" on task 4-3: the direct score (0.0836, on
 `val_report`) is above our TokaMind replication's test score (0.0810). The mean
 baseline of that task is 0.0278 higher on `val_report` than on test (0.7591
@@ -1259,7 +1264,8 @@ configurations were fixed before any direct score of these tasks existed
 (mean-baseline scores existed from stage 0's harness check), each carried over
 from a stage-0 task where it was measured (see the next paragraph). Only tasks
 1-3 and 2-3 chose between two learning rates (3e-4 and 1e-4); task 2-2 ran
-`lr1e4` only, tasks 3-2 and 3-3 ran the base configuration only, and the two
+`lr1e4` and then `lr1e4s90k` (`lr1e4` with 90,000 steps, "Runs beyond the
+plan's list" below), tasks 3-2 and 3-3 ran the base configuration only, and the two
 variants of tasks 4-2 and 4-3 differ in history and batch, not in learning
 rate. The batch sizes, read from each run's `config.json` on 2026-11-23, are:
 256 on tasks 1-3 (both variants), 2-2, 2-3 (both variants) and 3-2; 64 on task
@@ -1272,17 +1278,18 @@ The rule is the plan's: on `val_select`, from each run's `train_log.csv`, the
 run's lowest `val_nrmse` comes at the last or the second-last of its 12
 validations (applied by the controller on 2026-11-23 at 05:28 UTC). A run can
 meet it with a curve that is flat at the end. Read from the `train_log.csv` of
-the chosen runs on 2026-11-23: task 2-2 has 0.0435, 0.0434 and 0.0435 at steps
-25,000, 27,500 and 30,000; task 2-3 has 0.0883 at 27,500 and 0.0884 at 30,000
+the chosen runs on 2026-11-23: task 2-2's `lr1e4` run (the chosen one at 05:24)
+has 0.0435, 0.0434 and 0.0435 at steps 25,000, 27,500 and 30,000; task 2-3 has 0.0883 at 27,500 and 0.0884 at 30,000
 (0.08834 and 0.08845); task 4-2 has 0.1645 at both 27,500 and 30,000 (0.16454
 and 0.16448). On tasks 3-2 and 3-3 the last value is still lower than the
 earlier ones (3-2: 0.2268 at 27,500 and 0.2250 at 30,000; 3-3: 0.2120 and
 0.2086).
 
-| Task | Variant chosen | Learning rate | Best `val_nrmse` (`val_select`) | Still falling by the plan's rule? | Direct on `val_report` |
+| Task | Variant (chosen, except where marked) | Learning rate | Best `val_nrmse` (`val_select`) | Still falling by the plan's rule? | Direct on `val_report` |
 |---|---|---|---|---|---|
 | 1-3 | `lr1e4` | 1e-4 | 0.1333 at step 25,000 | no | 0.1138 |
-| 2-2 | `lr1e4` | 1e-4 | 0.0434 at step 27,500 (0.0435 at the last validation) | yes | 0.0400 |
+| 2-2 | `lr1e4`, not chosen since the print of 10:36 | 1e-4 | 0.0434 at step 27,500 (0.0435 at the last validation) | yes | 0.0400 |
+| 2-2 | `lr1e4s90k` | 1e-4 | 0.0401 at step 90,000 (the last of its 36 validations, which is also the value at the last validation) | yes | 0.0371 |
 | 2-3 | `lr1e4` | 1e-4 | 0.0883 at step 27,500 | yes | 0.0813 |
 | 3-2 | base | 3e-4 | 0.2250 at step 30,000 | yes | 0.2309 |
 | 3-3 | base | 3e-4 | 0.2086 at step 30,000 | yes | 0.2194 |
@@ -1290,36 +1297,46 @@ earlier ones (3-2: 0.2268 at 27,500 and 0.2250 at 30,000; 3-3: 0.2120 and
 | 4-3 | `h050b256` | 3e-4 | 0.0930 at step 22,500 | no | 0.0836 |
 
 Five of the seven chosen runs meet the rule (tasks 2-2, 2-3, 3-2, 3-3 and 4-2).
+The plan states the rule for 12 validations (30,000 steps, one every 2,500);
+the run `lr1e4s90k` has 36 (90,000 steps, one every 2,500), and its lowest
+`val_nrmse` is at the last of them, which meets the rule's wording and is the
+curve's end: from `train_log.csv` of the run on 2026-11-23 (`val_select`), the
+last three validations are 0.0404 (step 85,000), 0.0401 (87,500) and 0.0401
+(90,000; 0.04013 and 0.04008 to five decimals). The marks on the other six
+chosen runs are those of the 05:24 print, and none of those six runs changed.
 Inferred, not measured: on those five tasks the direct model's score is an
 upper bound on the NRMSE that the configuration reaches at a longer budget,
 not its best. The ground for the inference is that every extension of a run
-that met this rule lowered the NRMSE: the `s90k` runs of tasks 1-1 and 2-1
+that met this rule lowered the NRMSE: the `lr1e4s90k` run of task 2-2 (0.0434
+to 0.0401 on `val_select`, 0.0400 to 0.0371 on `val_report`, below) and the
+`s90k` runs of tasks 1-1 and 2-1
 (`val_select` 0.1430 to 0.1315 and 0.1525 to 0.1377; the base runs of both are
 described under "What the validation curves show" above, 1-1 lowest at the last
 validation and 2-1 at the second-last), of task 4-5 (0.6903 to 0.6812, same
 passage, the base run lowest at the last validation) and of task 4-3 (0.1142 to
-0.1000, below; the base run is lowest at the 11th of 12). Four runs are not a
-measure of how often it holds: on task 2-2 the last three validations span
-0.0001 at four decimals and on tasks 2-3 and 4-2 the last two differ by 0.0001
-or less (above). The base run of task 2-1 was flat in the same way (0.1525 at
-steps 27,500 and 30,000 to four decimals) and its extension lowered the
-NRMSE; the extension of the flat 2-2 run (`lr1e4s90k`) is under way and has no
-number yet.
+0.1000, below; the base run is lowest at the 11th of 12). Five runs are not a
+measure of how often it holds: on task 2-2 the last three validations of the
+`lr1e4` run span 0.0001 at four decimals and on tasks 2-3 and 4-2 the last two
+differ by 0.0001 or less (above). The base run of task 2-1 was flat in the same
+way (0.1525 at steps 27,500 and 30,000 to four decimals) and its extension
+lowered the NRMSE; so did the extension of the flat 2-2 run (`lr1e4s90k`,
+measured 2026-11-23: 0.0434 to 0.0401 on `val_select`).
 
 The plan ran, per task: `lr1e4` alone on 2-2 (the same output signals as task
 1-2, where 3e-4 was unstable and 1e-4 was measured to be better); base and
 `lr1e4` on 1-3 and 2-3 (no stage-0 task predicts the flux map, and the lower
 rate had helped one stage-0 task and hurt two); base alone on 3-2 and 3-3; and
 base and `h050b256` on 4-2 and 4-3 (batch 256 at 50 ms of history was the
-largest gain on task 4-4). None was tuned. The variant tables below are as printed. A "-" under
+largest gain on task 4-4). None was tuned. The variant tables below are as printed (the print of 10:36). A "-" under
 "differs from base" means different things in different rows. On the base row it says there is nothing to differ from. On a variant that has a
 base run to compare with, it would say the `config.json` is the same as the
 base run's (the case of the `b256` run of task 1-1, discussed under "Runs
 beyond the plan's list"). On task 2-2, which has no base run, it says only
 that there is no base run to compare with, and `lr1e4` does differ from the
-base configuration (its learning rate is 1e-4). After the re-print that adds
-`lr1e4s90k` to task 2-2's table, that row will also show "-", for this last
-reason and not because it equals anything.
+base configuration (its learning rate is 1e-4). The print of 10:36 adds
+`lr1e4s90k` to task 2-2's table, and that row also shows "-", for this last
+reason and not because it equals anything (it differs from the base
+configuration in its learning rate, 1e-4, and in `max_steps`, 90,000).
 
 Task 1-3:
 
@@ -1332,7 +1349,8 @@ Task 2-2:
 
 | variant | differs from base | best val_nrmse (val_select) | val_report | in the table |
 |---|---|---|---|---|
-| lr1e4 | - | 0.0434 | 0.0400 | yes |
+| lr1e4 | - | 0.0434 | 0.0400 | no |
+| lr1e4s90k | - | 0.0401 | 0.0371 | yes |
 
 Task 2-3:
 
@@ -1377,24 +1395,27 @@ measures for other tasks. On task 1-3 the two variants are 0.0015 apart on
 
 ### Verdicts per task
 
-Measured, in the table printed at 05:24, direct model on `val_report` against
+Measured, in the table printed at 10:36, direct model on `val_report` against
 the best published score on the test split (the table's interval rule, and
-the split rule beside it):
+the split rule beside it). The print of 05:24 had task 2-2 behind (0.0400
+against 0.0370, undetermined by the split rule); after the extension
+`lr1e4s90k` it is a tie, and nothing else changed:
 
 - *Ahead:* task 3-2, 0.2309 against GenToka's 0.2522 (stands), and task 4-2,
   0.1735 against the TokaMind paper's 0.2140 (stands).
-- *Tie:* tasks 1-3 (0.1138 against 0.1156), 2-3 (0.0813 against 0.0828) and 3-3
-  (0.2194 against 0.2147), all against GenToka.
-- *Behind:* task 2-2, 0.0400 against GenToka's 0.0370 (the split rule gives
-  undetermined), and task 4-3, 0.0836 against GenToka's 0.0691 (undetermined,
-  and "not competitive").
+- *Tie:* tasks 1-3 (0.1138 against 0.1156), 2-2 (0.0371 against 0.0370, the
+  new tie), 2-3 (0.0813 against 0.0828) and 3-3 (0.2194 against 0.2147), all
+  against GenToka.
+- *Behind:* task 4-3, 0.0836 against GenToka's 0.0691 (undetermined, and "not
+  competitive").
 
 Across the 14 rows of the full table (the seven above and the seven stage-0
-rows of the 23:54 print, which the 05:24 print repeats) the verdicts, of the
+rows of the 23:54 print, which the 10:36 print repeats) the verdicts, of the
 direct model on `val_report` against the best published score on test, are:
 ahead 5 (tasks 1-2, 3-2, 4-1, 4-2 and 4-4; 4-4 is undetermined by the split
-rule), tie 5 (tasks 1-3, 2-3, 3-1, 3-3 and 4-5) and behind 4 (tasks 1-1, 2-1,
-2-2 and 4-3). One row of the 14 is "not competitive" (4-3) and none is stale
+rule), tie 6 (tasks 1-3, 2-2, 2-3, 3-1, 3-3 and 4-5) and behind 3 (tasks 1-1,
+2-1 and 4-3); in the print of 05:24 it was 5, 5 and 4, with task 2-2 behind.
+The split rule's cell is empty on all six ties. One row of the 14 is "not competitive" (4-3) and none is stale
 or unfinished.
 
 **How firm the verdicts are.** Measured 2026-11-23. The intervals of the table
@@ -1404,15 +1425,21 @@ trainings of one configuration. The one measurement of that difference is the
 repeat of task 1-1 below: two runs of the same configuration and seed differ
 by +0.0041 (95% interval +0.0024 to +0.0058, over shots). It is one pair of
 runs on one task, a sample and not a variance, and whether it scales with the
-score was not measured; the scores of tasks 1-2 and 2-2 (0.0362 and 0.0400)
-are 0.27 and 0.29 of the 1-1 base run's 0.1361, so on them 0.0041 is a guide to
+score was not measured; the scores of tasks 1-2 and 2-2 (0.0362 and 0.0371)
+are 0.27 and 0.27 of the 1-1 base run's 0.1361, so on them 0.0041 is a guide to
 what to read with, not a measured value. With that figure in hand, the
 14 rows read as follows (every margin is the distance from the nearer end of
-the row's interval to the published score, in the print of 05:24):
+the row's interval to the published score, in the print of 10:36):
 
-- Two verdicts have a margin under 0.0041. Task 2-2, behind: 0.0387 - 0.0370
-  = 0.0017. Task 1-2, ahead: 0.0412 - 0.0375 = 0.0037 (the row's interval is
-  0.0350 to 0.0375, the published score GenToka's 0.0412).
+- One ahead or behind verdict has a margin under 0.0041: task 1-2, ahead:
+  0.0412 - 0.0375 = 0.0037 (the row's interval is 0.0350 to 0.0375, the
+  published score GenToka's 0.0412). Task 2-2, which was the second in the
+  print of 05:24 (behind, margin 0.0387 - 0.0370 = 0.0017), is now a tie and
+  has no margin: its published score, 0.0370, is inside the interval 0.0359 to
+  0.0385, 0.0011 from the lower end and 0.0015 from the upper. An interval
+  moved by 0.0041 either way would not contain 0.0370. That is arithmetic on
+  the interval, not a measured shift of task 2-2, where the repeat was not
+  run.
 - Two "stands" verdicts clear the split rule by less than 0.0041. Task 3-2: the
   margin is 0.0108 (0.2522 - 0.2414) against the mean baseline's difference
   between the splits of 0.0100 (0.6297 - 0.6197), a clearance of 0.0008. Task
@@ -1425,6 +1452,13 @@ the row's interval to the published score, in the print of 05:24):
   there the other variant has the lower `val_report` score (0.0796 against the
   table's 0.0813), so the printed score of 2-3 depends on a choice that is
   smaller than the repeat difference.
+- The tie of task 2-2 rests on one extension. The `lr1e4s90k` run is lower than
+  `lr1e4` by 0.0033 on `val_select` (0.0401 against 0.0434) and by 0.0029 on
+  `val_report` (0.0371 against 0.0400), and the direct score is 0.0001 above
+  the published one (0.0371 against 0.0370). Both differences are smaller
+  than the repeat difference of task 1-1 (+0.0041), which was measured on a
+  task with a score about 3.7 times as large (0.1361 against 0.0371), so how
+  it carries over to task 2-2 was not measured.
 
 The split direction behind the two new "ahead (stands)" verdicts is a second
 reading, and it works for the model. On both tasks `val_report` is the easier
@@ -1497,40 +1531,61 @@ not tracked in git.
   separated. It does not change the table: the row of task 1-1 stays `s90k`
   (0.1235), the variant with the lowest `val_select` error (0.1315).
 - **Task 2-2, `lr1e4` extended to 90,000 steps (`lr1e4s90k`).** The chosen run of
-  task 2-2 meets the still-falling rule and is behind (undetermined by the split rule), so the
-  plan's extension rule applies to it, with the run's own learning rate of
-  1e-4 (the plan's `s90k` would have run the base configuration, which task 2-2
-  never trained). It started on 2026-11-23 at 05:28 UTC on one GPU and
-  is expected to take about 5 hours. **It is running, and no number of it is
-  given here.** The table is printed again when it ends, and the row of task
-  2-2 is taken from it only if its `val_select` error is the lowest.
+  task 2-2 met the still-falling rule and was behind (undetermined by the split
+  rule) in the print of 05:24, so the plan's extension rule applied to it, with
+  the run's own learning rate of 1e-4 (the plan's `s90k` would have run the base
+  configuration, which task 2-2 never trained). It ran on 2026-11-23 from 05:28:26
+  to 10:36:18 UTC on GPU 0, shared with other jobs, and ended with exit code 0:
+  90,000 steps in 18,390 s of training (batch 256, learning rate 1e-4, seed 0, a
+  validation every 2,500 steps; the logs are `direct_streams.log` and
+  `direct_task_2-2_lr1e4s90k.log` under `/models/intermediate/mast/stage0`). Its
+  `val_select` error is 0.0401, lowest at the last validation (step 90,000, the
+  36th), against 0.0434 for `lr1e4`; its `val_report` score is 0.0371 over
+  183,983 windows (scored in 80 s), 95% interval 0.0359 to 0.0385, against 0.0400
+  for `lr1e4`. Its `val_select` error is the lowest of the two runs of the
+  task, so the table takes it (the print of 10:36 lists it with "yes" and
+  `lr1e4` with "no"). Against GenToka's published 0.0370 on the test split the
+  verdict moves from behind to tie, and the split rule's cell is empty (see
+  below). These are scores of the direct supervised model on one task and one
+  seed, not IGNITE, and the extension was not paired with a bootstrap of the two
+  runs here.
+
+  What the empty split-rule cell of task 2-2 means now: the rule "stands" or
+  "undetermined" is printed for an ahead or behind verdict only, and the verdict
+  of task 2-2 is a tie, so the rule has nothing to judge, and the cell is empty
+  as on the other five ties, with no statement about the split difference on the
+  task (the mean baseline differs by 0.0021 between the splits, 0.9935 against
+  0.9914).
 
 ### The projected 14-task mean
 
-Printed 2026-11-23 05:24 UTC, as printed:
+Printed 2026-11-23 10:36 UTC, as printed (the print of 05:24 read 0.1899):
 
 ```text
-projected mean over the 14 tasks (direct model on all 14 tasks): 0.1899; the bar is 0.183, matching the best published score everywhere would give 0.194; 1 row(s) have a direct score that is stale, unfinished or not competitive (see the marks above)
+projected mean over the 14 tasks (direct model on all 14 tasks): 0.1897; the bar is 0.183, matching the best published score everywhere would give 0.194; 1 row(s) have a direct score that is stale, unfinished or not competitive (see the marks above)
 ```
 
-The projected mean is **0.1899**, on `val_report` shots, direct model with no
+The projected mean is **0.1897**, on `val_report` shots, direct model with no
 pretraining; the published scores it is compared with are on test shots. It is
 the mean of the direct model's `val_report` score over all 14 tasks, each with
 the variant the table chose. The one row the line counts is task 4-3 (not
 competitive). In the print of 23:54 above the mean was 0.1929, with the direct
 model on the seven stage-0 tasks and the best published score on the other
-seven. No stage-0 row changed between the two prints; the variant table of
-task 1-1 has one more run (`b256`, above), which is not the table's choice. The
-answer to the bar's question is unchanged: the projected mean, 0.1899, is above
-the bar of 0.183. By the rule of the design the bar goes to the owner with the
+seven. No stage-0 row changed between the print of 05:24 and that of 10:36; the
+variant table of task 1-1 has one more run (`b256`, above), which is not the
+table's choice. Between the prints of 05:24 and 10:36 only task 2-2 changed
+(0.0400 to 0.0371), which lowers the mean by 0.0029 / 14 = 0.0002 (0.1899 to
+0.1897). The answer to the bar's question is unchanged: the projected mean,
+0.1897, is above the bar of 0.183. By the rule of the design the bar goes to the owner with the
 table; it is not changed on this page.
 
 ### What it does not say
 
 The direct model is one architecture (about 14 to 18 million parameters, one
 squared loss), trained on one task at a time, one seed per run. Its budget is
-30,000 steps for 12 of the 14 chosen rows; the rows of tasks 1-1 and 2-1 are
-90,000-step `s90k` runs, which the 14-task mean includes. Of the seven new
+30,000 steps for 11 of the 14 chosen rows; the rows of tasks 1-1, 2-1 and 2-2
+are 90,000-step runs (`s90k`, `s90k` and `lr1e4s90k`), which the 14-task mean
+includes. Of the seven new
 tasks, the learning rate was chosen from two values on 1-3 and 2-3 only. The
 batch size of the chosen run, read from each `config.json` on 2026-11-23, is 256
 on 13 of the 14 rows and 64 on task 3-3 (see "The variant of each task and its
@@ -1543,13 +1598,15 @@ are", above). Each score is an upper bound on the NRMSE that this model reaches
 on its task: a longer, larger or differently trained model may reach a lower
 one. Five of the seven chosen runs (tasks 2-2, 2-3, 3-2, 3-3 and 4-2) meet the
 plan's rule for "still falling" (lowest validation at the last or second-last
-of 12), though on 2-2, 2-3 and 4-2 the last validations are flat. Inferred, not
-measured: on those five tasks the score is not the best this configuration
-reaches, because every extension of a run that met this rule lowered the NRMSE
-(tasks 1-1, 2-1, 4-5 and 4-3), which is four runs, so the reading is a
-guess about trend and not a measured value for these five. The scores are on
-`val_report` shots and the published scores are on test shots; the verdict is read with the split rule beside it, and two
-of the seven new verdicts (tasks 2-2 and 4-3) are undetermined by it. A cell
+of 12), though on 2-3 and 4-2 the last validations are flat (as they were on
+2-2 for `lr1e4`, whose extension then lowered the score). Inferred, not
+measured: on tasks 2-3, 3-2, 3-3 and 4-2 the score is not the best this
+configuration reaches, because every extension of a run that met this rule
+lowered the NRMSE (tasks 1-1, 2-1, 4-5, 4-3 and 2-2), which is five runs, so the
+reading is a guess about trend and not a measured value for these four. The scores are on
+`val_report` shots and the published scores are on test shots; the verdict is read with the split rule beside it, and one
+of the seven new verdicts (task 4-3) is undetermined by it; task 2-2 is a tie,
+to which the rule does not apply. A cell
 that is missing is "not scored", never 0. The scores of this section say
 nothing about IGNITE: stages 1b and 1c cite them as the direct model's score
 per task, and a prediction or round-trip instrument of the direct model is
