@@ -1050,3 +1050,43 @@ def test_real_val_shot_camera_codes_in_range_and_missing_exact():
     dec_counts = camera.decode_camera(codec, cam_fit, codes[ov_idx], stats_codes[ov_idx])
     assert dec_counts.shape == (len(ov_idx), 120, 160)
     assert np.isfinite(dec_counts).all()
+
+
+# ----------------------------------------------------------------------- codec training overrides
+
+def test_train_script_config_overrides():
+    """--overrides-from applies dev-peter's entry; --pixel-anchor-weight sets one weight."""
+    script = _load_script_module("port_train_camera_codec.py")
+
+    cfg = camera.default_video_codec_config()
+    base_adv, base_warm, base_pix = (
+        cfg.adversarial_weight, cfg.adv_warmup_steps, cfg.pixel_anchor_weight
+    )
+    script.apply_config_overrides(cfg)
+    assert (cfg.adversarial_weight, cfg.adv_warmup_steps, cfg.pixel_anchor_weight) == (
+        base_adv, base_warm, base_pix
+    )
+
+    entry = tc._activity_overrides["tangtv_lower"]
+    cfg = script.apply_config_overrides(
+        camera.default_video_codec_config(),
+        overrides_from="tangtv_lower",
+        pixel_anchor_weight=0.5,
+    )
+    assert cfg.adv_warmup_steps == entry["adv_warmup_steps"]
+    assert cfg.adversarial_weight == entry["adversarial_weight"]
+    assert cfg.pixel_anchor_weight == 0.5
+
+    with pytest.raises(ValueError, match="no anti-collapse override entry"):
+        script.apply_config_overrides(camera.default_video_codec_config(), overrides_from="nope")
+    with pytest.raises(ValueError, match="pixel_anchor_weight"):
+        script.apply_config_overrides(
+            camera.default_video_codec_config(), pixel_anchor_weight=float("nan")
+        )
+
+    args = script.build_arg_parser().parse_args(
+        ["--out", "x", "--overrides-from", "tangtv_lower", "--pixel-anchor-weight", "0.25"]
+    )
+    assert args.overrides_from == "tangtv_lower" and args.pixel_anchor_weight == 0.25
+    args = script.build_arg_parser().parse_args(["--out", "x"])
+    assert args.overrides_from is None and args.pixel_anchor_weight is None

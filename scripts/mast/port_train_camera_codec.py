@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +59,35 @@ class _ExplicitDeviceDDP:
         return None
 
 
+def apply_config_overrides(
+    cfg,
+    *,
+    overrides_from: str | None = None,
+    pixel_anchor_weight: float | None = None,
+    log_fn=None,
+):
+    """Apply dev-peter's per-modality anti-collapse entry, then explicit weights.
+
+    ``overrides_from`` names an entry of ``train_codec._activity_overrides`` and is
+    applied with his ``apply_activity_overrides``, as his ``train_codec.main`` does for
+    its own modality (``train_video_codec`` itself applies none). ``pixel_anchor_weight``
+    sets ``cfg.pixel_anchor_weight`` (his CLI exposes the same override as
+    ``--pixel_anchor_weight``). Returns ``cfg``.
+    """
+    if overrides_from:
+        if overrides_from not in tc._activity_overrides:
+            raise ValueError(f"no anti-collapse override entry {overrides_from!r}")
+        tc.apply_activity_overrides(cfg, overrides_from, log_fn=log_fn)
+    if pixel_anchor_weight is not None:
+        w = float(pixel_anchor_weight)
+        if not w >= 0.0:
+            raise ValueError(f"pixel_anchor_weight must be >= 0, got {pixel_anchor_weight!r}")
+        cfg.pixel_anchor_weight = w
+        if log_fn is not None:
+            log_fn(f"[port_train_camera_codec] pixel_anchor_weight={w}")
+    return cfg
+
+
 def _make_ddp(device_spec: str):
     ws = int(os.environ.get("WORLD_SIZE", "1"))
     if ws > 1:
@@ -93,8 +123,14 @@ def train_camera_codec(
     enc_depth: int = 6,
     dec_depth: int = 6,
     heads: int = 8,
+    overrides_from: str | None = None,
+    pixel_anchor_weight: float | None = None,
 ) -> dict[str, Any]:
-    """Run ``train_codec.train_video_codec`` on MAST ``rgb`` frames."""
+    """Run ``train_codec.train_video_codec`` on MAST ``rgb`` frames.
+
+    ``overrides_from`` and ``pixel_anchor_weight`` change the config through
+    :func:`apply_config_overrides`; both default to dev-peter's ``VideoCodecConfig``.
+    """
     frames_path = Path(frames_dir)
     fit_path = Path(fit_dir)
     cdir = Path(cache_dir)
@@ -134,6 +170,12 @@ def train_camera_codec(
             enc_depth=enc_depth,
             dec_depth=dec_depth,
             heads=heads,
+        )
+        apply_config_overrides(
+            cfg,
+            overrides_from=overrides_from,
+            pixel_anchor_weight=pixel_anchor_weight,
+            log_fn=(print if ddp.is_main else None),
         )
 
         if ddp.is_main:
@@ -201,11 +243,27 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--enc-depth", type=int, default=6)
     p.add_argument("--dec-depth", type=int, default=6)
     p.add_argument("--heads", type=int, default=8)
+    p.add_argument(
+        "--overrides-from",
+        default=None,
+        help="Apply this train_codec._activity_overrides entry (e.g. tangtv_lower: "
+        "adversarial warmup 1500 steps, adversarial weight 0.5)",
+    )
+    p.add_argument(
+        "--pixel-anchor-weight",
+        type=float,
+        default=None,
+        help="Override VideoCodecConfig.pixel_anchor_weight (default 0.05), the L1 "
+        "pixel term next to feature matching (weight 1.0)",
+    )
     return p
 
 
 def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
+    # py.sh runs python -I, which ignores PYTHONUNBUFFERED; the trainer's progress
+    # lines would otherwise sit in a block buffer for many minutes.
+    sys.stdout.reconfigure(line_buffering=True)
     train_camera_codec(
         frames_dir=Path(args.frames_dir),
         fit_dir=Path(args.fit),
@@ -230,6 +288,8 @@ def main(argv=None) -> int:
         enc_depth=args.enc_depth,
         dec_depth=args.dec_depth,
         heads=args.heads,
+        overrides_from=args.overrides_from,
+        pixel_anchor_weight=args.pixel_anchor_weight,
     )
     return 0
 
