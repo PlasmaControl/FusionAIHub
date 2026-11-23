@@ -175,7 +175,23 @@ def build_mast_codecs(
     if logspec_fit is not None:
         from . import logspec
 
-        log_codecs = logspec.build_logspec_codecs(Path(logspec_fit), stats)
+        fit_path = Path(logspec_fit)
+        meta = json.loads((fit_path / "logspec_fit.json").read_text())
+        fit_stats_sha = meta.get("stats_sha256")
+        cache_stats_sha = transform.stats_sha256(Path(cache_root) / "stats.npz")
+        if not fit_stats_sha or str(fit_stats_sha) != cache_stats_sha:
+            raise ValueError(
+                f"logspec_fit stats_sha256 ({fit_stats_sha!r}) disagrees with "
+                f"{Path(cache_root) / 'stats.npz'} ({cache_stats_sha!r})"
+            )
+        log_codecs = logspec.build_logspec_codecs(fit_path, stats)
+        missing_specs = [
+            n for n in tasks.SPECTROGRAM_SIGNALS if n in codecs and n not in log_codecs
+        ]
+        if missing_specs:
+            raise ValueError(
+                f"logspec_fit at {fit_path} is missing spectrogram signals: {missing_specs}"
+            )
         for name, codec in log_codecs.items():
             if name in codecs:
                 codecs[name] = codec
@@ -836,6 +852,14 @@ def build_manifest(
     signal_physical_std: Mapping[str, float] | None = None,
     logspec_fit_path: Path | None = None,
     logspec_fit_sha256: str | None = None,
+    camera_codec_path: Path | None = None,
+    camera_codec_sha256: str | None = None,
+    camera_fit_path: Path | None = None,
+    camera_fit_sha256: str | None = None,
+    camera_frames_dir: Path | None = None,
+    camera_frames_index_sha256: str | None = None,
+    camera_n_tok: int | None = None,
+    camera_codebook_size: int | None = None,
     plasma_ip_threshold_a: float = PLASMA_IP_THRESHOLD_A,
     dt_frame: float = DT_FRAME,
     t0_start: float = 0.0,
@@ -871,12 +895,32 @@ def build_manifest(
             "codec_n_tok": int(codec.n_tok),
             "codec_n_val": int(codec.n_val),
         }
+    has_camera = camera_codec_path is not None
+    if has_camera:
+        cam_n_tok = 48 if camera_n_tok is None else int(camera_n_tok)
+        cam_n_codes = 1000 if camera_codebook_size is None else int(camera_codebook_size)
+        modalities["camera-rgb"] = {
+            "family": "video",
+            "n_tok": cam_n_tok,
+            "codebook_size": cam_n_codes + 1,
+            "n_codes": cam_n_codes,
+            "missing_code": cam_n_codes,
+        }
+        modalities["camera-rgb-stats"] = {
+            "family": "slowts",
+            "n_tok": 2,
+            "codebook_size": 65,
+            "n_bins": 64,
+            "missing_code": 64,
+        }
     phys_std_doc: dict[str, float | None] = {}
     if signal_physical_std is not None:
         for name in modalities:
+            if name in ("camera-rgb", "camera-rgb-stats"):
+                continue
             val = signal_physical_std.get(name, float("nan"))
             phys_std_doc[name] = float(val) if math.isfinite(float(val)) else None
-    return {
+    manifest = {
         "t0_start": float(t0_start),
         "dt_frame": float(dt_frame),
         "plasma_ip_threshold_A": float(plasma_ip_threshold_a),
@@ -940,6 +984,14 @@ def build_manifest(
             ),
         },
     }
+    if has_camera:
+        manifest["camera_codec_path"] = str(Path(camera_codec_path).resolve())
+        manifest["camera_codec_sha256"] = str(camera_codec_sha256)
+        manifest["camera_fit_path"] = str(Path(camera_fit_path).resolve())
+        manifest["camera_fit_sha256"] = str(camera_fit_sha256)
+        manifest["camera_frames_dir"] = str(Path(camera_frames_dir).resolve())
+        manifest["camera_frames_index_sha256"] = str(camera_frames_index_sha256)
+    return manifest
 
 
 def save_pt_atomic(obj: dict, path: Path) -> None:

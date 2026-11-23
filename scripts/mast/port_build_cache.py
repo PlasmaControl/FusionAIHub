@@ -26,7 +26,8 @@ import numpy as np
 import torch
 
 from tokamak_foundation_model.ignite.mast import paths, registry, transform
-from tokamak_foundation_model.ignite.mast.port import framecache, logspec
+from tokamak_foundation_model.ignite.mast.port import camera, framecache, logspec
+from tokamak_foundation_model.ignite.mast.port.layout import td
 from tokamak_foundation_model.ignite.mast.tokenizers import assign, fit
 
 DEFAULT_ASSIGNMENT = "/models/intermediate/mast/stage1/assignments/v1b.json"
@@ -36,6 +37,7 @@ DEFAULT_CACHE_ROOT = "/models/intermediate/mast/cache/v1"
 # Per-worker state initialized once per spawned worker process.
 _STATS_STATE: tuple | None = None
 _ENCODE_STATE: tuple | None = None
+_CAMERA_ENCODE_STATE: tuple | None = None
 
 
 def _limit_worker_threads() -> None:
@@ -65,7 +67,7 @@ def _stats_job(shot_path_str: str):
 
 
 def _init_encode_worker(state: tuple) -> None:
-    global _ENCODE_STATE
+    global _ENCODE_STATE, _CAMERA_ENCODE_STATE
     _limit_worker_threads()
     (
         signals,
@@ -79,6 +81,7 @@ def _init_encode_worker(state: tuple) -> None:
         stats_sha,
         out_dir,
         force,
+        camera_spec,
     ) = state
     codecs, stats, _assignment = framecache.build_mast_codecs(
         signals,
@@ -99,6 +102,14 @@ def _init_encode_worker(state: tuple) -> None:
         Path(out_dir),
         bool(force),
     )
+    if camera_spec is not None:
+        cam_codec_path, cam_fit_path, cam_frames_dir = camera_spec
+        vcodec, _vcfg = td._load_codec("video", Path(cam_codec_path))
+        cam_fit = camera.load_camera_fit(Path(cam_fit_path))
+        frames_index = json.loads((Path(cam_frames_dir) / "index.json").read_text())["shots"]
+        _CAMERA_ENCODE_STATE = (vcodec, cam_fit, Path(cam_frames_dir), frames_index)
+    else:
+        _CAMERA_ENCODE_STATE = None
 
 
 def _encode_job(item: tuple[str, str, str]):
@@ -123,6 +134,23 @@ def _encode_job(item: tuple[str, str, str]):
         )
         if entry is None:
             return shot, split, reason, 0, None, None
+        if _CAMERA_ENCODE_STATE is not None:
+            vcodec, cam_fit, cam_frames_dir, frames_index = _CAMERA_ENCODE_STATE
+            is_ok = (frames_index.get(shot) or {}).get("status") == "ok"
+            npz_path = (cam_frames_dir / f"{shot}.npz") if is_ok else None
+            cam_codes, stats_codes, cam_present = camera.encode_camera_codes(
+                vcodec,
+                cam_fit,
+                npz_path,
+                t0=float(entry["t0"]),
+                n_frames=int(entry["n_frames"]),
+            )
+            entry["codes"][camera.CAMERA_MODALITY] = cam_codes.to(torch.int32)
+            entry["codes"][camera.CAMERA_STATS_MODALITY] = stats_codes.to(torch.int32)
+            entry["vocabs"][camera.CAMERA_MODALITY] = int(vcodec.codebook_size) + 1
+            entry["vocabs"][camera.CAMERA_STATS_MODALITY] = camera.CAMERA_STATS_N_BINS + 1
+            entry["present"][camera.CAMERA_MODALITY] = bool(cam_present)
+            entry["present"][camera.CAMERA_STATS_MODALITY] = bool(cam_present)
         framecache.save_pt_atomic(entry, out_file)
         return shot, split, "written", int(entry["n_frames"]), entry["present"], None
     except Exception as e:
@@ -206,6 +234,9 @@ def _check_existing_manifest(
     stats_sha256: str,
     plasma_ip_threshold_a: float,
     logspec_fit_sha256: str | None = None,
+    camera_codec_sha256: str | None = None,
+    camera_fit_sha256: str | None = None,
+    camera_frames_index_sha256: str | None = None,
     n_train_shots: int | None = None,
 ) -> None:
     """Refuse to resume into an existing cache dir if any provenance or stats key disagrees."""
@@ -223,6 +254,13 @@ def _check_existing_manifest(
         diffs.append(
             f"logspec_fit_sha256 ({existing.get('logspec_fit_sha256')!r} != {logspec_fit_sha256!r})"
         )
+    for key, val in (
+        ("camera_codec_sha256", camera_codec_sha256),
+        ("camera_fit_sha256", camera_fit_sha256),
+        ("camera_frames_index_sha256", camera_frames_index_sha256),
+    ):
+        if existing.get(key) != val:
+            diffs.append(f"{key} ({existing.get(key)!r} != {val!r})")
     existing_thresh = existing.get("plasma_ip_threshold_A")
     if existing_thresh is None or not math.isclose(
         float(existing_thresh), float(plasma_ip_threshold_a), rel_tol=0.0, abs_tol=1e-9
@@ -250,11 +288,19 @@ def build_cache(
     cache_root: Path,
     out_dir: Path,
     logspec_fit: Path | None = None,
+    camera_codec: Path | None = None,
+    camera_fit: Path | None = None,
+    camera_frames: Path | None = None,
     workers: int = 8,
     max_shots: int = 0,
     force: bool = False,
 ) -> dict:
     """Build (or resume) the MAST Phase-B frame-code cache under ``out_dir``."""
+    cam_args = (camera_codec, camera_fit, camera_frames)
+    if any(x is not None for x in cam_args) and not all(x is not None for x in cam_args):
+        raise ValueError(
+            "--camera-codec, --camera-fit, and --camera-frames must be given together or not at all"
+        )
     t_start = time.monotonic()
     out_dir = paths.prepare_write_root(Path(out_dir))
     cache_root = Path(cache_root)
@@ -264,6 +310,22 @@ def build_cache(
     logspec_sha = (
         logspec.logspec_fit_sha256(logspec_fit_path) if logspec_fit_path is not None else None
     )
+
+    cam_codec_path = Path(camera_codec) if camera_codec is not None else None
+    cam_fit_path = Path(camera_fit) if camera_fit is not None else None
+    cam_frames_dir = Path(camera_frames) if camera_frames is not None else None
+    cam_codec_sha = camera.file_sha256(cam_codec_path) if cam_codec_path is not None else None
+    cam_fit_sha = camera.camera_fit_sha256(cam_fit_path) if cam_fit_path is not None else None
+    cam_frames_sha = (
+        camera.file_sha256(cam_frames_dir / "index.json") if cam_frames_dir is not None else None
+    )
+    cam_n_tok = cam_codebook = None
+    if cam_codec_path is not None:
+        vcodec_chk, vcfg_chk = td._load_codec("video", cam_codec_path)
+        cam_n_tok = int(vcfg_chk.n_tok)
+        cam_codebook = int(vcodec_chk.codebook_size)
+        _ = camera.load_camera_fit(cam_fit_path)
+        del vcodec_chk
 
     manifest_v1 = json.loads((cache_root / "manifest.json").read_text())
     stats_sha = str(manifest_v1["stats_sha256"])
@@ -289,6 +351,9 @@ def build_cache(
             stats_sha256=stats_sha,
             plasma_ip_threshold_a=framecache.PLASMA_IP_THRESHOLD_A,
             logspec_fit_sha256=logspec_sha,
+            camera_codec_sha256=cam_codec_sha,
+            camera_fit_sha256=cam_fit_sha,
+            camera_frames_index_sha256=cam_frames_sha,
         )
 
     shot_items = _discover_shots(cache_root, workers=workers, max_shots=max_shots)
@@ -319,6 +384,9 @@ def build_cache(
             stats_sha256=stats_sha,
             plasma_ip_threshold_a=framecache.PLASMA_IP_THRESHOLD_A,
             logspec_fit_sha256=logspec_sha,
+            camera_codec_sha256=cam_codec_sha,
+            camera_fit_sha256=cam_fit_sha,
+            camera_frames_index_sha256=cam_frames_sha,
             n_train_shots=act_stats.n_train_shots,
         )
 
@@ -336,6 +404,14 @@ def build_cache(
         signal_physical_std=sig_stds,
         logspec_fit_path=logspec_fit_path,
         logspec_fit_sha256=logspec_sha,
+        camera_codec_path=cam_codec_path,
+        camera_codec_sha256=cam_codec_sha,
+        camera_fit_path=cam_fit_path,
+        camera_fit_sha256=cam_fit_sha,
+        camera_frames_dir=cam_frames_dir,
+        camera_frames_index_sha256=cam_frames_sha,
+        camera_n_tok=cam_n_tok,
+        camera_codebook_size=cam_codebook,
     )
     framecache.save_json_atomic(manifest, manifest_path)
 
@@ -345,6 +421,11 @@ def build_cache(
     frame_lengths: list[int] = []
     errors: list[tuple[str, str]] = []
 
+    camera_spec = (
+        (str(cam_codec_path), str(cam_fit_path), str(cam_frames_dir))
+        if cam_codec_path is not None
+        else None
+    )
     enc_state = (
         tuple(signals),
         str(cache_root),
@@ -357,6 +438,7 @@ def build_cache(
         stats_sha,
         str(out_dir),
         force,
+        camera_spec,
     )
 
     if workers <= 1 or len(shot_items) <= 1:
@@ -437,6 +519,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional LogBandDCT fit directory replacing the two Mirnov BandDCT codecs",
     )
+    p.add_argument(
+        "--camera-codec",
+        default=None,
+        help="Optional trained VideoCodec checkpoint (codec_best.pt) for camera-rgb",
+    )
+    p.add_argument(
+        "--camera-fit",
+        default=None,
+        help="Optional camera fit directory (camera_fit_v1) for camera-rgb",
+    )
+    p.add_argument(
+        "--camera-frames",
+        default=None,
+        help="Optional preprocessed camera frames directory (frames_rgb_v1)",
+    )
     p.add_argument("--out", required=True, help="Output frame-code cache directory")
     p.add_argument("--workers", type=int, default=8, help="Spawn worker count")
     p.add_argument("--max-shots", type=int, default=0, help="Cap total shots (0 = all)")
@@ -452,6 +549,9 @@ def main(argv=None) -> int:
         cache_root=Path(args.cache_root),
         out_dir=Path(args.out),
         logspec_fit=Path(args.logspec_fit) if args.logspec_fit else None,
+        camera_codec=Path(args.camera_codec) if args.camera_codec else None,
+        camera_fit=Path(args.camera_fit) if args.camera_fit else None,
+        camera_frames=Path(args.camera_frames) if args.camera_frames else None,
         workers=args.workers,
         max_shots=args.max_shots,
         force=args.force,

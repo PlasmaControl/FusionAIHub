@@ -78,7 +78,7 @@ def summarize_rollout_metrics(
 
     summary: dict[str, dict[str, float | int]] = {}
     for name, rows in sorted(grouped.items()):
-        summary[name] = {
+        rec: dict[str, float | int] = {
             "median_rollout_nrmse": _median_finite([r["rollout_nrmse"] for r in rows]),
             "median_ceiling_nrmse": _median_finite([r["ceiling_nrmse"] for r in rows]),
             "median_pred_coverage": float(np.median([r["pred_coverage"] for r in rows])),
@@ -87,6 +87,15 @@ def summarize_rollout_metrics(
             "median_ceil_missing_frac": _median_finite([r["ceil_missing_frac"] for r in rows]),
             "n_shots": len(rows),
         }
+        if any("rollout_dlog10" in r for r in rows):
+            rec["median_rollout_dlog10"] = _median_finite(
+                [r["rollout_dlog10"] for r in rows if "rollout_dlog10" in r]
+            )
+        if any("ceiling_dlog10" in r for r in rows):
+            rec["median_ceiling_dlog10"] = _median_finite(
+                [r["ceiling_dlog10"] for r in rows if "ceiling_dlog10" in r]
+            )
+        summary[name] = rec
     return summary
 
 

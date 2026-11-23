@@ -398,9 +398,13 @@ def resolve_manifest_logspec_fit(manifest: Mapping) -> Path | None:
                 f"manifest has logspec_fit_sha256={expected_sha!r} but logspec_fit_path is null"
             )
         return None
+    if not expected_sha:
+        raise ValueError(
+            f"manifest sets logspec_fit_path={raw_path!r} without logspec_fit_sha256"
+        )
     fit_path = Path(str(raw_path))
     actual_sha = logspec_fit_sha256(fit_path)
-    if expected_sha is not None and actual_sha != str(expected_sha):
+    if actual_sha != str(expected_sha):
         raise ValueError(
             f"logspec_fit_sha256 mismatch for {fit_path}: "
             f"manifest has {expected_sha}, disk has {actual_sha}"

@@ -250,6 +250,211 @@ def test_fit_save_load_and_manifest_sha_checks(tmp_path: Path):
         )
 
 
+def test_logbanddct_domain_from_model_asinh():
+    """domain_from_model(to_model(x)) == to_domain(x) with non-trivial compress='asinh' stats."""
+    rng = np.random.default_rng(99)
+    p, n_bins_freq = 2, 64
+    scale = np.power(10.0, rng.uniform(-6.0, -1.0, size=(p, n_bins_freq)))
+    mean = rng.uniform(-2.0, 2.0, size=(p, n_bins_freq))
+    std = rng.uniform(0.3, 3.0, size=(p, n_bins_freq))
+    st = transform.ChannelStats("asinh", scale, mean, std)
+    floor = np.power(10.0, rng.uniform(-10.0, -4.0, size=(p, n_bins_freq)))
+    log_mean = np.log10(floor) + rng.uniform(1.0, 3.0, size=(p, n_bins_freq))
+    codec = logspec.LogBandDCT(
+        "mirnov-asinh", 0.001024, (p, n_bins_freq), st, k=[32, 16], floor=floor, log_mean=log_mean
+    )
+
+    x_phys = np.power(10.0, rng.uniform(-11.0, 1.0, size=(2, p, n_bins_freq, 10)))
+    x_phys[0, 1, 5, 2] = np.nan
+    x_phys[1, 0, 0, 0] = 0.0
+    z_model = np.stack([transform.to_model(x_phys[i], st) for i in range(x_phys.shape[0])], axis=0)
+
+    u_from_model = codec.domain_from_model(z_model)
+    u_from_phys = codec.to_domain(x_phys)
+    assert np.array_equal(np.isnan(u_from_model), np.isnan(u_from_phys))
+    fin = np.isfinite(u_from_phys)
+    assert np.allclose(u_from_model[fin], u_from_phys[fin], rtol=1e-6, atol=1e-6)
+
+
+def test_logspec_manifest_and_codec_guards_and_dlog10_metrics(tmp_path: Path):
+    """Part 0 guards: missing sha in manifest, missing spectrogram/stats sha in build_mast_codecs, dlog10 metrics."""
+    from types import SimpleNamespace
+
+    port_build = _load_script_module("port_build_cache.py")
+    port_rollout_plots = _load_script_module("port_rollout_plots.py")
+    port_recon_plots = _load_script_module("port_recon_plots.py")
+
+    # 0a: resolve_manifest_logspec_fit raises when logspec_fit_path is set and logspec_fit_sha256 is missing/null.
+    with pytest.raises(ValueError, match="logspec_fit_sha256"):
+        logspec.resolve_manifest_logspec_fit({"logspec_fit_path": str(tmp_path)})
+    with pytest.raises(ValueError, match="logspec_fit_sha256"):
+        logspec.resolve_manifest_logspec_fit(
+            {"logspec_fit_path": str(tmp_path), "logspec_fit_sha256": None}
+        )
+
+    # 0d: legacy manifest without logspec_fit_sha256 refuses a non-null one.
+    legacy_mpath = tmp_path / "legacy_manifest.json"
+    framecache.save_json_atomic(
+        {
+            "assignment_sha256": "a" * 64,
+            "fit_sha256": "b" * 64,
+            "stats_sha256": "c" * 64,
+            "plasma_ip_threshold_A": 50_000.0,
+        },
+        legacy_mpath,
+    )
+    port_build._check_existing_manifest(
+        legacy_mpath,
+        assignment_sha256="a" * 64,
+        fit_sha256="b" * 64,
+        stats_sha256="c" * 64,
+        plasma_ip_threshold_a=50_000.0,
+        logspec_fit_sha256=None,
+    )
+    with pytest.raises(ValueError, match="logspec_fit_sha256"):
+        port_build._check_existing_manifest(
+            legacy_mpath,
+            assignment_sha256="a" * 64,
+            fit_sha256="b" * 64,
+            stats_sha256="c" * 64,
+            plasma_ip_threshold_a=50_000.0,
+            logspec_fit_sha256="d" * 64,
+        )
+
+    # 0b: build_mast_codecs rejects mismatched stats_sha256 and missing spectrogram in logspec_fit.
+    p_cnt, n_freq = 3, 256
+    k = [32, 16, 16, 16, 16, 16, 16, 16]
+    sig_names = tasks.SPECTROGRAM_SIGNALS
+    rng = np.random.default_rng(7)
+    v1_root = tmp_path / "cache_v1"
+    (v1_root / "shots").mkdir(parents=True)
+    stats = {
+        n: transform.ChannelStats(
+            "none",
+            np.ones((p_cnt, n_freq), dtype=np.float64),
+            np.zeros((p_cnt, n_freq), dtype=np.float64),
+            np.ones((p_cnt, n_freq), dtype=np.float64),
+        )
+        for n in sig_names
+    }
+    transform.save_stats(stats, v1_root / "stats.npz")
+    sha = transform.stats_sha256(v1_root / "stats.npz")
+    framecache.save_json_atomic({"stats_sha256": sha}, v1_root / "manifest.json")
+
+    h5_path = v1_root / "shots" / "2001.h5"
+    with h5py.File(h5_path, "w") as f:
+        f.attrs["shot"] = 2001
+        f.attrs["split"] = "train"
+        f.attrs["cache_version"] = cache.CACHE_VERSION
+        f.attrs["stats_sha256"] = sha
+        status = {}
+        for n in sig_names:
+            arr = np.power(10.0, rng.uniform(-7.0, -2.0, size=(p_cnt, n_freq, 20))).astype(np.float32)
+            ds = f.create_dataset(n, data=arr, dtype=np.float32)
+            ds.attrs["t0"] = 0.0
+            ds.attrs["dt"] = 0.001024
+            ds.attrs["dead_nan"] = 0
+            ds.attrs["lost"] = 0
+            ds.attrs["const_channels"] = np.zeros(0, dtype=np.int64)
+            status[n] = "ok"
+        f.attrs["status"] = json.dumps(status)
+
+    splits_dir = tmp_path / "splits"
+    framecache.save_json_atomic({"train": ["2001"], "val": [], "test": []}, splits_dir / "splits.json")
+    assign_path = tmp_path / "assign.json"
+    assign.save_assignment(
+        {n: assign.Setting("band_dct", tuple(k), "band", 64, "") for n in sig_names},
+        assign_path,
+    )
+    specs = [tasks.SignalSpec(n, 0.001024, (p_cnt, n_freq), 0.0, 1.0) for n in sig_names]
+    specs_map = {s.name: s for s in specs}
+
+    # Build a stage-1 fit dir with both spectrogram signals.
+    from tokamak_foundation_model.ignite.mast.tokenizers import fit as tok_fit
+
+    fit_dir = tmp_path / "stage1_fit"
+    n_tok = p_cnt * 8
+    n_val = 32
+    s1_fits = {
+        n: tok_fit.SignalFit(
+            name=n,
+            kind="band_dct",
+            n_shots=1,
+            n_skipped=0,
+            n_examples=10,
+            partly_valid=False,
+            ranges={
+                "band": (
+                    np.full((n_tok, n_val), -4.0),
+                    np.full((n_tok, n_val), 4.0),
+                    np.full((n_tok, n_val), 1.0),
+                )
+            },
+        )
+        for n in sig_names
+    }
+    tok_fit.save_fit(s1_fits, fit_dir, {"stats_sha256": sha})
+
+    # Fit only ONE spectrogram signal -> build_mast_codecs must raise on missing spectrogram.
+    partial_fit = tmp_path / "logspec_partial"
+    logspec.fit_logspec(
+        v1_root, splits_dir, assign_path, partial_fit,
+        signal_names=(sig_names[0],), target_shots=10, workers=1, signal_specs=specs_map,
+    )
+    with pytest.raises(ValueError, match="missing spectrogram"):
+        framecache.build_mast_codecs(specs, v1_root, fit_dir, assign_path, logspec_fit=partial_fit)
+
+    # Fit BOTH, then corrupt stats_sha256 in logspec_fit.json -> build_mast_codecs must raise.
+    full_fit = tmp_path / "logspec_full"
+    logspec.fit_logspec(
+        v1_root, splits_dir, assign_path, full_fit,
+        signal_names=sig_names, target_shots=10, workers=1, signal_specs=specs_map,
+    )
+    codecs, _, _ = framecache.build_mast_codecs(specs, v1_root, fit_dir, assign_path, logspec_fit=full_fit)
+    assert all(isinstance(codecs[n], logspec.LogBandDCT) for n in sig_names)
+
+    bad_json = json.loads((full_fit / "logspec_fit.json").read_text())
+    bad_json["stats_sha256"] = "0" * 64
+    framecache.save_json_atomic(bad_json, full_fit / "logspec_fit.json")
+    with pytest.raises(ValueError, match="stats_sha256"):
+        framecache.build_mast_codecs(specs, v1_root, fit_dir, assign_path, logspec_fit=full_fit)
+
+    # 0c: rollout.decode_and_score_rollout adds rollout_dlog10 / ceiling_dlog10,
+    # _reduce_for_panel uses log10(max(x, floor)), summarize_rollout_metrics aggregates them,
+    # and port_recon_plots renders without error.
+    omv = sig_names[0]
+    codec = codecs[omv]
+    sd = cache.read_shot(h5_path, [omv], stats_sha256=sha)
+    codes, present = framecache.encode_signal_codes(codec, sd[omv], t0=0.0, n_frames=4)
+    assert present
+    ro = SimpleNamespace(gt_codes={omv: codes}, pred_codes={omv: codes.clone()}, k0=1, n_frames=4)
+    decoded, metrics = rollout.decode_and_score_rollout(
+        ro, h5_path, {omv: codec}, {omv: stats[omv]}, t0=0.0, stats_sha256=sha, signal_stds={omv: 1.0}
+    )
+    m = metrics[omv]
+    assert "rollout_dlog10" in m and "ceiling_dlog10" in m
+    assert "rollout_nrmse" in m and "ceiling_nrmse" in m
+    assert np.isfinite(m["rollout_dlog10"]) and m["rollout_dlog10"] == pytest.approx(m["ceiling_dlog10"])
+    assert "log_floor" in decoded[omv]
+
+    t1d, c1d, r1d, _tag = rollout._reduce_for_panel(
+        decoded[omv]["truth"], decoded[omv]["ceiling"], decoded[omv]["rollout"],
+        log_floor=decoded[omv]["log_floor"],
+    )
+    # Log10 power values for 10^-7 .. 10^-2 must be negative.
+    assert np.all(t1d < 0.0) and np.all(c1d < 0.0) and np.all(r1d < 0.0)
+
+    summary = port_rollout_plots.summarize_rollout_metrics({"2001": {"signals": metrics}})
+    assert summary[omv]["median_rollout_dlog10"] == pytest.approx(m["rollout_dlog10"])
+    assert summary[omv]["median_ceiling_dlog10"] == pytest.approx(m["ceiling_dlog10"])
+
+    png = port_recon_plots.plot_recon(
+        "2001", decoded, metrics, 1, 4, 0.0, framecache.DT_FRAME,
+        tmp_path / "recon_2001.png", step=None, with_rollout=False,
+    )
+    assert png.exists() and png.stat().st_size > 1000
+
+
 def test_real_omv_val_shot_roundtrip_and_log_accuracy():
     """Real MAST OMV val shot: encode/decode matches roundtrip, decoded > 0, median |dlog10| < 0.15."""
     if not (_CACHE_V1 / "stats.npz").exists() or not (_CACHE_V1 / "shots").exists():
