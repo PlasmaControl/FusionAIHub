@@ -4,7 +4,7 @@ title: "IGNITE on MAST: stage 1 fixed tokenizers"
 
 # IGNITE on MAST: stage 1 fixed tokenizers
 
-**Status: measured (2026-11-23). The assignment `v1` (1,470 values per 5 ms frame) passes the gate on all 57 (task, signal) pairs; five pairs miss the fidelity target, each recorded with its cost, and one input signal (`interferometer-n_e_line`, through one shot) misses its reconstruction target.**
+**Status: measured (2026-11-23). The assignment `v1` (1,470 values per 5 ms frame) passes the gate on all 57 (task, signal) pairs; five pairs miss the fidelity target, each recorded with its cost, and one input signal (`interferometer-n_e_line`, through one shot) misses its reconstruction target. Stage 1c's learned tokenizers are built and not measured yet.**
 
 ## What this is
 
@@ -587,6 +587,511 @@ Measured 2026-11-23 (job K4 on 100 `val_select` shots, `unquantized`; job K6 on 
 | pass-through (K6, `ranged`) | task_1-2 (`lr1e4`) | `equilibrium-lcfs_r` | val_report | 525 | 0.0427 | 0.0425 | -0.37% | — |
 | pass-through (K6, `ranged`) | task_1-2 (`lr1e4`) | `equilibrium-lcfs_z` | val_report | 525 | 0.0297 | 0.0295 | -0.71% | — |
 
+## Learned tokenizers (stage 1c)
+
+Stage 1c's learned tokenizers are built and not measured yet. The code and its
+tests are committed. None of the controller jobs M1 to M10 under
+[How to run stage 1c](#how-to-run-stage-1c) has run, so every table under
+[Results of the comparison](#results-of-the-comparison) is empty and says "Not
+measured yet." Nothing in this section is a result, and the only numbers in it
+are the ones that carry their date, their split, their number of shots and the
+words "measured" or "rough look". The plan is
+`docs/superpowers/plans/2026-11-22-ignite-mast-stage1c-learned-tokenizers.md`.
+
+**What a recoder is.** A learned tokenizer of this stage is a recoder placed
+behind one of the three fixed codecs above, run at its top rung: the first 16
+cosine values of a frame for a series channel, the 32 values of a band for a
+Mirnov spectrogram, and the first 96 principal components for a profile or the
+flux map. Those are the three front ends with 16, 32 and 96 values, and they are
+not learned. The recoder turns a front end's values into an ordered list of token
+values and back. It is linear (a principal-component basis of the front values,
+fitted on the CPU in minutes; the arms are named `klt` when it takes one stream
+at a time and `pca` when it takes all of them at once) or a small network (an
+encoder, values bounded to (-1, 1), a quantizer that is skipped for a random half
+of the training examples, and a decoder). A stream is one channel of a series
+signal, one (probe, band) pair of a spectrogram, or a whole profile or map. The
+shared tokenizer takes one stream at a time and is told which stream it has; the
+control takes all the streams of a signal at once. A `RecodedCodec` wraps the front
+end and the recoder as a codec of this stage, so the floor instrument above scores
+it unchanged. Its examples are the front values of the 2,000 training shots of
+the fit (`store/v1/train`) and of 100 `val_select` shots spread evenly
+(`store/v1/val`), each stream standardized.
+
+**The two orderings of the values.** The values of a token are ordered by
+precision: each is bounded to (-1, 1) and is read at 8 levels, at 64 levels (which
+contain the 8, and are the 64 bins of this stage's grid) or unrounded, and each
+training example draws one of the three with probabilities 1/4, 1/4 and 1/2. They
+are also ordered by length: the list of values is cut at a random length during
+training and the rest set to zero, so one trained network gives every K up to its
+size and can be set beside the fixed transform at each K. A prefix of the values
+is therefore a coarser version of the same example.
+
+**The identity features.** A network that serves many streams is told which one it
+has by 18 features built from the registry row of the stream (`identity.py`): the
+family (slow, high rate, profile, map), the logarithm of the sampling interval,
+whether the cache compresses the channel, the unit (T, V, A, Wb, W or none of
+them), the channel's place in its array, whether R and Z are known and their
+values, whether it is a band codec and the band's index. A learned vector per
+stream sits beside them. The probes have no position in cache v1: measured
+2026-11-22 from the registry of cache v1 (6,521 rows), R and Z are filled only for
+the flux-map points (4,225 rows) and the two Thomson signals (120 rows each). The
+magnetic probes, flux loops, saddle coils, soft X-ray chords and D-alpha channels
+have a name, a unit and an order in their array and no position, so for them the
+table part of the features says only the family, the sampling interval, the unit,
+the compression and the order, and the rest sits in the learned vector, which does
+not transfer to another machine. Open decision 3 of the plan, taken as its author
+recommends: this is accepted for stage 1 and stated here, and positions from the
+FAIR-MAST geometry come with the next cache version, when the shared tokenizers
+are retrained.
+
+### Shared against specialized
+
+Each comparison has three arms, because shared against concatenated changes two
+things at once: how much data the tokenizer sees, and whether it sees the channels
+together.
+
+- **Shared:** a per-stream tokenizer fitted on every stream of the family (`klt.series`,
+  `net.series` for the series signals; `klt.band`, `net.band` for the two Mirnov
+  spectrograms).
+- **Own:** a per-stream tokenizer fitted on the signal's own diagnostic only
+  (`klt.mag`, `net.mag` on the four magnetics signals; `klt.band.cc`,
+  `klt.band.omv` and their network arms on one Mirnov signal each).
+- **Concatenated:** the control built the old way, one tokenizer per signal that
+  takes all its streams in one input and has no stream identity (`pca.<array>` and
+  `net.<array>` for the four magnetics arrays; `pca.band.<signal>` and
+  `net.bandcat.<signal>` for the Mirnov signals). It gets the same number of
+  values per frame as the arm it is compared with.
+
+What each pair measures: shared against own is the owner's point, that one encoder
+fed more data does better. Own against concatenated is what the design calls the
+cost, the structure across channels that a per-channel tokenizer cannot use.
+Shared against concatenated is the design's own question: "If a specialized one
+clearly beats the shared one, that signal uses the specialized tokenizer and the
+result is recorded." Each pair is also set beside the fixed
+transform of the stage-1b assignment `v1` where the rules below say so. The
+profiles and the flux map have one tokenizer per signal already, so for them
+there is one learned arm against the linear baseline.
+
+The 24 arms, as `train_tokenizer.py arms` lists them (listed 2026-11-23, 11 linear
+and 13 network). "Tokens times values" is per stream for an arm that takes one
+stream at a time and per frame for a concatenated arm. The linear concatenated
+arms keep all the front values of their streams (16 per stream, 32 for the Mirnov
+signals); the network ones keep 8 per stream, except the Mirnov control (below).
+
+| Arm | Signals | Takes | Kind | Tokens times values |
+|---|---|---|---|---|
+| `klt.series` | the 17 series signals with more than one sample per frame (163 channels) | one stream | linear | 1 x 16 |
+| `klt.mag` | the 4 magnetics signals (91 channels) | one stream | linear | 1 x 16 |
+| `pca.ccbv` | `ccbv` (40 channels) | all streams | linear | 160 x 4 |
+| `pca.obr` | `obr` (18 channels) | all streams | linear | 48 x 6 |
+| `pca.obv` | `obv` (18 channels) | all streams | linear | 48 x 6 |
+| `pca.flux` | `flux` (15 channels) | all streams | linear | 40 x 6 |
+| `klt.band` | both Mirnov signals (48 streams) | one stream | linear | 1 x 32 |
+| `klt.band.cc` | `cc` (24 streams) | one stream | linear | 1 x 32 |
+| `klt.band.omv` | `omv` (24 streams) | one stream | linear | 1 x 32 |
+| `pca.band.cc` | `cc` (24 streams) | all streams | linear | 192 x 4 |
+| `pca.band.omv` | `omv` (24 streams) | all streams | linear | 192 x 4 |
+| `net.series` | the 17 series signals (163 channels) | one stream | network | 1 x 16 |
+| `net.mag` | the 4 magnetics signals (91 channels) | one stream | network | 1 x 16 |
+| `net.ccbv` | `ccbv` (40 channels) | all streams | network | 40 x 8 |
+| `net.obr` | `obr` (18 channels) | all streams | network | 24 x 6 |
+| `net.obv` | `obv` (18 channels) | all streams | network | 24 x 6 |
+| `net.flux` | `flux` (15 channels) | all streams | network | 20 x 6 |
+| `net.band` | both Mirnov signals (48 streams) | one stream | network | 1 x 32 |
+| `net.band.cc` | `cc` (24 streams) | one stream | network | 1 x 32 |
+| `net.band.omv` | `omv` (24 streams) | one stream | network | 1 x 32 |
+| `net.bandcat.cc` | `cc` (24 streams) | all streams | network | 54 x 8 |
+| `net.bandcat.omv` | `omv` (24 streams) | all streams | network | 54 x 8 |
+| `net.profile` | the 4 profiles (`lcfs_r`, `lcfs_z`, Thomson `t_e` and `n_e`) | one stream | network | 24 x 4 |
+| `net.map` | the flux map (`equilibrium-psi`) | one stream | network | 48 x 2 |
+
+The short names are `ccbv`, `obr` and `obv` for the three poloidal probe arrays
+(`magnetics-b_field_pol_probe_<name>_field`), `flux` for
+`magnetics-flux_loop_flux`, `cc` for `magnetics-b_field_tor_probe_cc_field` and
+`omv` for `magnetics-b_field_pol_probe_omv_voltage`. The last line of the listing
+is "24 arms". The arms of the Mirnov signals have two controls on purpose:
+`pca.band.*` is the linear one and `net.bandcat.*` the network one, and the second
+holds 54 tokens of 8 (432 values) where the first holds 192 tokens of 4 (768
+values, of which an assignment keeps 432, 108 tokens).
+
+### Rules of the comparison
+
+Stated before any number existed. The nine rules below are copied from the plan's
+section "Which number decides what", word for word, including its stage-0 numbers
+as of 2026-11-22 (the stage-0 page holds the current ones). Each was fixed before
+the measurement, 2026-11-22, and none is changed here to fit a result. They add to
+the seven rules of [Rules](#rules) above and do not replace them.
+
+1. **The gap.** For two tokenizers A and B of one signal: over the shots both have, `gap = (mean error of B - mean error of A) / mean error of B`, with a 95% interval from 2,000 paired resamples of the shots (seed 0).
+
+    *Fixed before the measurement, 2026-11-22.*
+
+2. **"A beats B":** the interval lies above 0; and, if A or B is a network, the gap is larger than the spread of the gap over three seeds of that network (largest minus smallest). **"A clearly beats B":** A beats B and the gap is at least 0.10. The threshold 0.10 is the author's reading of the design's word "clearly".
+
+    *Fixed before the measurement, 2026-11-22.*
+
+3. **Same size.** Two per-channel tokenizers are compared at the same number of values per token, the K of assignment `v1`. A concatenated tokenizer is compared at the same number of values per frame for the signal (channels times K). Each comparison is also reported at half and at a quarter of that size for the concatenated arm, and with the number of values each arm needs to reach 1b's target for the signal.
+
+    *Fixed before the measurement, 2026-11-22.*
+
+4. **Learned shared tokenizer against the fixed transform** (series channels; the design: "It replaces the fixed transform for any signal where it has the lower error"). A learned shared tokenizer (linear or network, the better on `val_select`) replaces the cosine transform for a signal if it beats it on `val_select` and again on `val_report`. Otherwise the cosine transform stays: it has no weights, cannot collapse and works at any frame duration.
+
+    *Fixed before the measurement, 2026-11-22.*
+
+5. **Learned tokenizer against its linear baseline** (profiles, map, Mirnov bands; the design: "A learned tokenizer that does not beat its linear baseline is replaced by the baseline"). The baseline is 1b's codec for the signal (principal components; the band transform). The learned one is used only if it beats the baseline on `val_select` and again on `val_report`.
+
+    *Fixed before the measurement, 2026-11-22.*
+
+6. **Shared against specialized** (the four magnetics signals; the two Mirnov signals). Reported per signal: shared against own, own against concatenated, shared against concatenated, in linear form and as networks. "The specialized one clearly beats the shared one" is judged between the best shared arm and the best concatenated arm (each chosen on `val_select`), by rule 2 on `val_select` and again on `val_report`. For the magnetics, which no task predicts, two more numbers are reported and decide nothing alone: the input round-trip of the direct models of tasks 1-1 and 1-2 (1b's instrument I) with each arm's tokens, and the damage of one missing channel to the other channels. What follows from a clear win is open decision 1; this plan writes `v2` (shared) and `v2c` (the clear winners swapped in) and decides nothing further.
+
+    *Fixed before the measurement, 2026-11-22.*
+
+7. **Collapse.** A network is collapsed if, for any token, the first value's use of the 8 levels has a normalised entropy under 0.3 on the `val_select` examples (`ignite.gate.utilization`; 0.3 is baseline IGNITE's `gate_min_code_entropy`). A collapsed tokenizer takes part in no comparison and is reported. The count of values whose entropy is at least 0.3 is reported as "active values" and decides nothing.
+
+    *Fixed before the measurement, 2026-11-22.*
+
+8. **A network that loses at seed 0** is trained once more with learning rate 1e-4 before the loss stands (stage 0, direct model: a rate of 3e-4 was unstable on task 1-2 and 1e-4 was not, while on tasks 1-1 and 2-1 the lower rate was worse by 0.0056 each; so the lower rate is a second try, not the default). **A network that wins at seed 0** gets seeds 1 and 2 before the win stands. A run whose validation error still falls by more than 1% in its last quarter is extended once to twice its steps.
+
+    *Fixed before the measurement, 2026-11-22.*
+
+9. **Stage 2 does not wait.** Stage 2 starts on 1b's `v1`. `v2` replaces it only where rules 4 and 5 say so. If nothing learned beats anything, `v2` equals `v1`, and that is a result.
+
+    *Fixed before the measurement, 2026-11-22.*
+
+**Readings the controller added before any measurement.** Three readings, written
+on 2026-11-23 before any production store, recoder or comparison existed. None
+changes a rule above.
+
+- **`interferometer-n_e_line` is one shot's row (ruling C11).** Its cache-side error
+  in a comparison is carried by one shot, 16575, one of the 100 `val_select` shots
+  of stage 1b's job K2 (measured 2026-11-23, see [Results](#results)). Its row
+  of `s-klt` against `v1` is an exact re-basis at K = 16 (the `v1` setting of this
+  signal is the cosine transform at K = 16) and a tie by construction, so it says
+  nothing about learned tokenizers.
+- **The input round-trip cites K4's line (ruling C15).** Rule 6's round-trip is
+  read from K4 (measured 2026-11-23, `val_select`, 100 shots asked and 88, 92, 89
+  and 95 scored, `unquantized`, in the table of
+  [The pass-through and input round-trip costs](#the-pass-through-and-input-round-trip-costs)):
+  the raw score and the score through `v1`, for task 1-1 (`s90k`) 0.12497 and
+  0.12527, task 1-2 (`lr1e4`) 0.03686 and 0.03755, task 2-1 (`s90k`) 0.13358 and
+  0.13400, task 4-1 (`h050b256`) 0.16211 and 0.16255. These are the numbers the
+  reading cites, instead of the `val_report` scores of 2026-11-22 that the plan
+  quoted; the conclusion is the same (read the round-trip mainly on task 1-2, see
+  [How to run stage 1c](#how-to-run-stage-1c)).
+- **Task 4-5's floor is bounded by the frame oracle (ruling C17).** Measured
+  2026-11-23 on `val_select`, 62 shots with 4-5 windows, 21,598 windows: the frame
+  oracle (all 32 values in every band) scores 0.5142 for the task, 0.6267 on
+  `magnetics-b_field_tor_probe_cc_field` and 0.4017 on
+  `magnetics-b_field_pol_probe_omv_voltage` (the last two are also in the note of
+  [The assignment](#the-assignment)), and the floor on `cc` is flat in k
+  (1b's step a and step b both give 0.6267). So a tie between Mirnov tokenizers
+  under rules 5 and 6 is expected whatever the tokenizer is (inferred, not
+  measured). If the owner answers open decision 1 of stage 1b with per-column low
+  bins before M4 runs, the Mirnov arms are planned again before M4 to M7. The
+  Mirnov networks stay fourth in the cut order.
+
+### Where stage 1c departs from the design
+
+Each item names what [the design](./ignite-mast-design.md) says and the reason for
+the departure. The first nine are decisions of the plan's author, written
+2026-11-22; no measurement is behind them unless the item says so. The rulings of
+the controller that follow them changed the method on 2026-11-23, each with the
+number behind it. A number from a trial is a rough look on the trial store of
+2026-11-23: 8 training shots for the fit and 2 `val_select` shots (11806 and
+30467) for the validation examples. It is not a result.
+
+- **A learned tokenizer is a recoder behind a fixed transform.** The design says
+  "encoder + finite scalar quantizer + decoder" on one channel, profile or map in
+  one frame. Here the first layer of the encoder and the last layer of the decoder
+  are the fixed transform of stage 1b at its top rung (16 cosine values, 32 per
+  band, 96 principal components) and are not learned. Reasons: any sampling rate,
+  missing samples and the units are handled once, by code that 1b has already
+  tested and scored; the error of the top rung is known from 1b's ladders, so
+  what the learned part can add at most is known before it is trained; and a
+  linear recoder is then exactly the best linear tokenizer of that input,
+  computable on the CPU. The cost: the learned tokenizer cannot use what the top
+  rung has dropped (for the soft X-ray cameras and D-alpha, the part above
+  1.6 kHz).
+- **The values of a token are ordered in two ways.** The design says that for a
+  learned tokenizer the order is precision, a second quantizer level encoding what
+  the first missed, with the later parts dropped at random during training. Here
+  the precision order is the 8 and 64 levels or no rounding of a bounded value
+  (the 64-level reading is the design's second level, and the three are drawn with
+  probabilities 1/4, 1/4 and 1/2, which keeps the design's "quantizer skipped for
+  a random half"). The length order, a random cut of the list of values, is the
+  author's addition: it lets one trained network give every K up to its size, so
+  it can be compared with the fixed transform at each K.
+- **The quantizer is this plan's own few lines, not baseline IGNITE's
+  `SpectroQuantizer`.** Reason: the token value that stage 2 predicts is the
+  bounded value itself, which the library hides. Baseline files are not touched.
+- **"Built the old way" means one tokenizer per cached signal, all its channels in
+  one input, no channel identity.** The control uses the same network body and the
+  same training recipe as the shared tokenizer and differs only in what an example
+  is. Baseline IGNITE's own `SlowTSCodec` is not used (another architecture,
+  another time base, other losses): a difference would then mix the architecture
+  with the question. There is one control per probe array (four for the
+  magnetics) and not one for all 91 magnetics channels, because a codec of stage
+  1b serves one signal; the linear comparison also reports the joint basis of all
+  91 channels at the same number of values, as a number only.
+- **Three arms, not two.** Reason: shared against concatenated changes two things
+  at once, how much data the tokenizer sees and whether it sees the channels
+  together, so each comparison has a third arm, the per-channel tokenizer fitted on
+  the signal's own diagnostic only (see
+  [Shared against specialized](#shared-against-specialized)).
+- **The loss counts every channel equally.** Squared error in example units, each
+  channel scaled to unit variance, the same in every arm. TokaMark's score weights
+  channels by their physical variance. The comparison is read in TokaMark units
+  regardless, and [Limits](#limits) says where the two disagree.
+- **"Statistics first" for the fluctuation path is met by the input, not by an
+  adversarial decoder.** A band example is the frame-mean power spectrum of the
+  band, which is already a statistic.
+- **Fluctuation tokens for the 50 kHz channels are left out.** Reason: their
+  targets in the benchmark are waveforms, a token that holds band power cannot
+  lower a waveform error, and a codec that does not decode to a waveform does not
+  fit the instruments of stage 1b, so no stage-1 number can judge them. The
+  stage-2 plan adds the band as input tokens and judges it by an ablation. Job
+  M10 measures what the band holds as a statistic instead.
+- **The Mirnov control cannot measure what the design's risk row hopes.** The design
+  says the Mirnov-only control measures what the cost is for mode numbers read from
+  the phase between coils. The cached spectrograms hold power only, so the control
+  measures whether the three probes' power spectra are better coded together. The
+  phase question needs raw Mirnov waveforms and is left to a later plan.
+- **The plan's open decisions (ruling C0).** The plan names five open decisions for
+  the owner, who approved the plan on 2026-11-22 (16:17 UTC) without answering them.
+  They are taken as the plan's author recommends until the owner says otherwise.
+  (1) A shared tokenizer is adopted only on rule 6's measured win; a clear win of
+  the control goes into a second assignment `v2c` while `v2` keeps the shared
+  tokenizer, and stage 2 decides on the scores of tasks 1-1 and 1-2. (2) The
+  number of values per frame that each arm needs to reach 0.0176 is reported and
+  not adopted on. (3) Channel identity without positions is accepted for stage 1
+  (above). (4) No fluctuation tokens for the 50 kHz channels in stage 1. (5) If
+  stage 1 is late, the cut order is: the learned map tokenizer (trained only if
+  stage 1b's linear baseline misses its target), the extra seeds, the learned
+  profile tokenizer, the Mirnov networks, the series networks; the linear arms
+  are never cut. Reason: each changes the goal, the bar or what is published, and
+  the owner can reverse any of them.
+- **Token sizes (rulings C4 and C5).** The Mirnov network control `net.bandcat.*` is
+  54 tokens of 8 (432 values), not 24 tokens of 8 (192): `v1` keeps 432 values per
+  frame on each Mirnov signal (3 x (32 + 7 x 16), job K3, measured 2026-11-23),
+  and at 192 values `recode` would exit with "holds" and the network control
+  could not be built at the size of `v1`. The linear `pca.band.*` arms keep all
+  768 values (24 x 32, in 192 tokens of 4), of which an assignment holds 432 (108
+  tokens). The concatenated arms of `obr`, `obv` and `flux` use tokens of 6, linear
+  and network alike: `pca.<array>` keeps all S x 16 values and `net.<array>` keeps
+  S x 8, so `v1`'s 18, 36 and 30 values per frame are exact (3, 6 and 5 tokens) and
+  every arm total divides by 6 (288 and 144 for `obr` and `obv`, 240 and 120 for
+  `flux`). `ccbv` keeps tokens of 4 and 8, because 160 is exact in both. Reason:
+  rule 3 asks for equal values per frame, and rounding down to tokens of 8 would
+  take 18, 36 and 30 values to 16, 32 and 24, a handicap to the concatenated
+  control of 11%, 11% and 20% (arithmetic from the token sizes, not measured)
+  that biases a tie, where rounding up would favour it.
+- **Network floors run on the CPU (ruling C7).** `score --instrument floor` keeps
+  stage 1b's refusal of `--gpu`, `--share-gpu` and `--variant` before any file is
+  read, and the script limits torch to one thread in its floor workers. Reason: the
+  alternative makes a refusal depend on reading the assignment file, and the
+  networks are small (tokens of 8, at most 432 values). If a network floor pass
+  takes more than 3 times the pass of the matching linear arm, the controller stops
+  and reports; no network floor has been timed yet.
+- **Concatenated linear recoders are fitted on zero-filled rows (ruling C21).** A
+  missing stream is 0 in example units when a concatenated recoder encodes, and
+  `fit_linear` now fits on rows filled the same way, not on a pairwise covariance.
+  The plan's text "used pairwise" is superseded for concatenated recoders.
+  Reason, rough look, 2-shot trial store, 2026-11-23 (the 40 `ccbv` probes, a basis
+  of 640 front values fitted on the trial's 672 training frames, the share left
+  over measured on its 167 validation frames of 2 `val_select` shots): fitted
+  pairwise it is 0.0074, 0.0072, 0.0071 and 0.0071 at 40, 80, 160 and 320 values,
+  fitted on zero-filled rows 0.0006, 0.0002, 0.0001 and 0.0000, so the pairwise
+  fit was 12 to 36 times higher at 40 and 80 values. The cause: 69% of the trial's
+  `ccbv` rows have a missing stream (4.5% of the entries), and a pairwise
+  covariance with that many gaps is not positive semi-definite (131 negative
+  eigenvalues of 640), which puts real energy last in the order of the basis. The
+  per-stream recoders and stage 1b's profile codecs are not affected (their rows
+  are finite, and a profile's missing points are solved by a ridge). The cost,
+  inferred and not measured: a zero-filled basis spends some components on which
+  streams are missing, and a masked fit might keep a little more per value, so the
+  linear controls are slightly pessimistic.
+- **The left-over of the joint basis uses the same zero-fill (ruling C23).**
+  `compare.left_over` fits on training rows filled as above, through the one helper
+  that `fit_linear` calls, so the own concatenated basis of `joint` equals
+  `train_tokenizer.py linear --arm pca.<signal>`. Reason: a third copy of the fit
+  would measure the pairwise defect of the previous item for the own basis and for
+  the joint one.
+- **`joint` counts a frame when every listed signal has a finite stream in it
+  (ruling C25).** A missing stream is 0 in the encode and counts in neither sum, as
+  in `linear`'s left-over and in the previous items. Reason, rough look, 2-shot
+  trial store, 2026-11-23, `val_select`: 0 of 167 validation frames have all 91
+  magnetics streams finite (dead probes), so a count of complete frames has no
+  data. The three numbers of `joint` are therefore fractions over the finite
+  entries, not over complete frames; they use one mask, so their order can be
+  compared.
+- **`joint` matches the frames of different signals by position in the shot
+  (ruling C26).** The stores drop the start time, so this assumes that the signals
+  of one shot start together. Measured 2026-11-23 on all 11,188 shot files of
+  cache v1 (the start time of every signal; no score is involved): the four
+  magnetics signals share one start time exactly in all 11,156 shots that have
+  them, and all series signals of a shot share one in 11,188 of 11,188 shots. The
+  two Mirnov spectrograms start 1.022 ms later, under one frame, and `joint`
+  already refuses to mix them with the 16-value magnetics. If a later cache version
+  gave signals their own start times, the rows of `joint` would misalign without a
+  warning, and the error would work against the joint basis.
+- **The 50 kHz band's NaN rules (rulings C13 and C14).** A frame with a missing
+  sample is NaN in every band value and is left out of every sum, checked before
+  the transform: the cosine transform of a frame with some missing samples gives
+  the frame mean and zeros, which would enter the sums as zero band power. The
+  saddle coils' `band_to_trend` is empty by design: `v1` gives them K 1, and the
+  trend path then holds no value above the mean to divide by (the line is NaN for
+  K under 2); their share below 5 kHz and their persistence are read. D-alpha and
+  the soft X-ray cameras (K 2 or 4 in `v1`) have trend power from cosine value 1
+  on. Reason: a number that is not measured stays empty, and no data is not a
+  negative.
+
+### How to run stage 1c
+
+The controller runs these jobs from `/home/nvidia/FusionAIHub` with
+`IGNITE_MAST_ROOT` unset, after stage 1b's jobs K1 to K3 (the fit `fit/v1` and the
+assignment `v1`) and after the tasks of plan 1c that the table names (Task n is
+that plan's task n). In the commands `RT="scripts/mast/py.sh
+scripts/mast/run_tokenizer.py"`, `TT="scripts/mast/py.sh
+scripts/mast/train_tokenizer.py"` and `S1=/models/intermediate/mast/stage1`. Every
+job without a GPU is started with `CUDA_VISIBLE_DEVICES=""`. Logs go to
+`$S1/logs/`. This stage writes under `$S1`: `store/v1/{train,val}/`,
+`recoders/<name>/` and `compare/`; assignments and scores go where stage 1b puts
+them.
+
+Which script holds which sub-command (checked in the argument parsers of both
+scripts): `run_tokenizer.py` (`$RT`) holds `fit`, `score`, `ladder`, `assign`,
+`recode`, `gate`, `compare` and `seeds`, and `train_tokenizer.py` (`$TT`) holds
+`store`, `linear`, `joint`, `arms`, `train` and `fluct`.
+
+Every command starts with `OMP_NUM_THREADS=16`, or with `OMP_NUM_THREADS=8` where
+three or four jobs share a GPU. Reason, measured 2026-11-23: one CPU test of the
+training loop took 86 to 111 s at torch's default thread count on this 352-core
+node under load, and 1.6 s with 8 threads.
+
+Every duration in the table is the plan author's estimate, not a measurement;
+none was measured for this code. Unlike the stage-0 trainings, whose speed was set
+by the loaders, these hold their examples in memory (about 2,000 shots times 100
+frames times 163 channels of 16 values: 2 GB for the series family, an estimate),
+so several can share one GPU.
+
+| Job | After | Command | GPU | Duration | What is read from the output |
+|---|---|---|---|---|---|
+| M1 store | Task 3, K3 | `OMP_NUM_THREADS=16 $TT store --workers 64` | none | 10 to 30 min | 24 lines. No signal says "no data"; the skipped shots per signal match 1b's fit. |
+| M2 linear arms | M1 | `OMP_NUM_THREADS=16 $TT linear --arm A` for the 11 linear arms, all at once | none | 1 to 5 min each | Per signal the share left at 1, 2, 4, 8, 16 values per stream. It falls from left to right. |
+| M3 joint basis | M1, Task 4 | `OMP_NUM_THREADS=16 $TT joint --signals ccbv,obr,obv,flux` | none | minutes | Per size three shares: the joint basis of the 91 channels, each array's own basis, the per-channel basis. This is the upper limit of what coding channels together can give in linear form. |
+| M4 recoded assignments and their floors | M2, Task 4 | `OMP_NUM_THREADS=16 $RT recode --name s-klt --from v1 --arm klt.series`; `o-klt` (`klt.mag`); `c-pca` (`pca.ccbv,pca.obr,pca.obv,pca.flux`), `c-pca.h` and `c-pca.q` (the same with `--scale 0.5`, `0.25`); `b-klt` (`klt.band`); `bo-klt` (`klt.band.cc,klt.band.omv`); `bc-pca` (`pca.band.cc,pca.band.omv`), `bc-pca.h`, `bc-pca.q`. Then M5's `compare` once: it prints every `score` command whose floor is missing (`OMP_NUM_THREADS=16 $RT score --task T --split val_select --n-shots 100 --assignment A --mode unquantized`); run those in waves | none | about 20 passes of 3 to 15 min; about 1 h | `recode` prints equal values per frame before and after (a concatenated network arm may be a few values short: tokens of 8). The last line of each pass. |
+| M5 linear comparison | M4 | `OMP_NUM_THREADS=16 $RT compare --a A --b B --drop-channel --reach 0.0176` for the pairs: `s-klt:v1` (rule 4); `s-klt:o-klt`, `c-pca:o-klt`, `c-pca:s-klt`, `c-pca.h:s-klt`, `c-pca.q:s-klt`, `c-pca:v1` (rule 6, magnetics); `b-klt:v1` (rule 5); `b-klt:bo-klt`, `bc-pca:bo-klt`, `bc-pca:b-klt`, `bc-pca.h:b-klt`, `bc-pca.q:b-klt` (rule 6, Mirnov) | none | minutes each | The 13 tables. They go to the owner the day they exist, with M3's line: this is the linear answer to shared against specialized, and the networks cannot change what the data holds, only how much of it a tokenizer of that size gets. |
+| M6 networks, seed 0 | Task 6, M1 | `OMP_NUM_THREADS=8 $TT train --arm A --seed 0 --gpu N --share-gpu` for the 13 network arms, three or four per GPU | 4, shared | 5 to 20 min each; under 1 h | The last line of each run. `collapsed yes` (exit 3): that arm takes part in no comparison. `plateau no`: run it once more with `--steps 40000 --variant long` (rule 8). |
+| M7 network comparison | M6 | `OMP_NUM_THREADS=16 $RT recode` to `s-net0` (`net.series.s0`), `o-net0` (`net.mag.s0`), `c-net0` (the four `net.<array>.s0`), `b-net0` (`net.band.s0`), `bo-net0` (`net.band.cc.s0,net.band.omv.s0`), `bc-net0` (`net.bandcat.cc.s0,net.bandcat.omv.s0`), `p-net0` (`net.profile.s0`), `m-net0` (`net.map.s0`); the missing floors as in M4, on the CPU (see the departures above); then `OMP_NUM_THREADS=16 $RT compare` for the pairs of M5 with the network in place of the linear arm, and `s-net0:s-klt`, `b-net0:b-klt`, `p-net0:v1`, `m-net0:v1` (rule 5) | none | about 12 passes of 5 to 20 min; about 1 h | The tables, as in M5. |
+| M8 rule 8 | M7 | For a network that lost: `OMP_NUM_THREADS=8 $TT train --arm A --seed 0 --lr 1e-4 --variant lr1e4 --gpu N --share-gpu`, then its comparison again. For a network that won: seeds 1 and 2, their assignments and floors, then `OMP_NUM_THREADS=16 $RT seeds --pairs a0:b,a1:b,a2:b --label val_select-n100` | 4, shared | up to 26 runs and their floors; 1 to 2 h | The gaps of the three seeds, their spread and the word with that spread. |
+| M9 `v2`, `v2c` and their confirmation | M8 | `OMP_NUM_THREADS=16 $RT recode --name v2 --from v1 --arm <the winners by rules 4 and 5> --signals <their signals>`; `v2c` from `v2` with the concatenated winners of rule 6. For every task with a changed output signal: 1b's K5 passes on `val_report` in the three read-outs; `OMP_NUM_THREADS=16 $RT compare --label val_report` for the decided pairs; for tasks 1-1 and 1-2 `OMP_NUM_THREADS=16 $RT score --task T --split val_report --instrument inputs --assignment A --mode unquantized --variant V --gpu N` with `v2` and `v2c`; `OMP_NUM_THREADS=16 $RT gate --assignment $S1/assignments/v2.json` | 4 passes with a GPU | 1 to 2 h without a GPU, 4 passes of 15 to 45 min with one, the gate 5 to 15 min | A choice made on `val_select` stands only if `val_report` gives the same word. The gate's last line. If `v2` equals `v1`, nothing is scored again and the page says so. |
+| M10 the 50 kHz band | Task 7, K3 | `OMP_NUM_THREADS=16 $TT fluct --workers 64` | none | 5 to 15 min | Four lines; they go to the stage-2 plan. |
+
+The variant `V` of a direct model is the one the headroom table shows for the task
+(1b says how it is chosen). As of 2026-11-22 the direct model of task 1-1 is behind
+the best published score (0.1361 on `val_report` against 0.0941; 0.1235 with three
+times the steps) and that of task 1-2 is ahead with learning rate 1e-4 (0.0362
+against 0.0412): the input round-trip of rule 6 is therefore read mainly on task
+1-2, and its number for task 1-1 is reported with that limit. Task 1-2's margin,
+0.0037 at the interval's near end, is under the 0.0041 that separated two
+trainings of one configuration on task 1-1 (both measured 2026-11-23, see "How
+firm the verdicts are" in
+[the stage-0 page](./ignite-mast-stage0.md#the-other-seven-tasks-stage-1a)), so by
+that guide the verdict of task 1-2 is not firm.
+
+After M9 the controller fills the five tables below, sets the status line of this
+page and commits with the numbers, their date, split and shot counts in the body.
+Stage 2 does not wait for any of this: it starts on `v1`.
+
+### Results of the comparison
+
+Five tables, each with column heads only. Each one is filled with its date, split
+and number of shots in the line above it, as the tables of
+[Results](#results) are, and none holds a number before the job that produces it
+has run. A cell that stays empty is a score nobody has stored; it is not 0 and not
+a good result.
+
+#### The linear arms
+
+One row per signal and pair, from the comparison files of M5
+(`$S1/compare/<a>__<b>.<label>.csv`, one per pair, with the label
+`val_select-n100` first and `val_report` for the confirmation). The gap is that
+of rule 1, `(mean_b - mean_a) / mean_b`, positive when `a` has the lower error,
+with its 95% interval over 2,000 paired resamples of the shots; `gap_ba` is the
+same with the roles swapped. `source` is the task whose stored
+floor is read, or `cache` for a signal no task predicts. The two missing-channel
+ratios (`drop_a`, `drop_b`) are the mean error with one channel dropped over the
+mean error without it, written for the series arrays under `--drop-channel`. The
+two reach columns (`reach_a`, `reach_b`) are the smallest size of the arm, taken
+at 1/8, 1/4, 1/2, 1 and 2 times its values, whose error is at or under 0.0176
+(`--reach`), empty if none is.
+
+| Pair (a:b) | Signal | Source | Values per frame (a) | Values per frame (b) | Shots | Mean error (a) | Mean error (b) | Gap | Gap, low end | Gap, high end | Gap of b against a | Low end (b against a) | High end (b against a) | Word at one seed | Missing-channel ratio (a) | Missing-channel ratio (b) | Values to reach 0.0176 (a) | Values to reach 0.0176 (b) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+
+Not measured yet.
+
+#### The networks
+
+The same rows and columns as the linear arms, from the comparison files of M7 and
+M8, with the gap of each seed and its spread added from `seeds`, which prints
+`gaps ...; spread ...; word` per signal and writes nothing, so those columns are
+copied from its print. The spread is the largest gap over the seeds minus the
+smallest (rule 2), and the word is the verdict of the first pair with that spread.
+
+| Pair (a:b) | Signal | Source | Values per frame (a) | Values per frame (b) | Shots | Mean error (a) | Mean error (b) | Gap | Gap, low end | Gap, high end | Gap of b against a | Low end (b against a) | High end (b against a) | Word at one seed | Missing-channel ratio (a) | Missing-channel ratio (b) | Values to reach 0.0176 (a) | Values to reach 0.0176 (b) | Gap, seed 0 | Gap, seed 1 | Gap, seed 2 | Spread of the gaps | Word with the spread |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+
+Not measured yet.
+
+#### The trainings
+
+One row per trained network, from `$S1/recoders/<name>/result.json` (its keys are
+`best_step`, `best_val_mse`, `best_val_full`, `steps`, `seconds`, `plateau`,
+`collapsed` and `usage`). `val_mse` is the validation squared error in example
+units at the best step, averaged over the prefix lengths of the values, and
+`val_full` the same at all values. `plateau` is yes if the best `val_mse` of the
+last quarter of the log rows is not more than 1% under the best before it, and no
+if it still fell by more than that, in which case the run is repeated with twice
+the steps (rule 8). `collapsed` is
+yes, no or unchecked (rule 7): a signal without validation examples has no
+verdict, which is unchecked and not a "no", because no data is not a negative.
+The active values are the count per signal of the values whose normalized entropy
+is at least 0.3, and decide nothing.
+
+| Name | Steps | Best step | `val_mse` | `val_full` | Plateau | Collapsed | Active values | Seconds |
+|---|---|---|---|---|---|---|---|---|
+
+Not measured yet.
+
+#### The decisions
+
+One row per signal that a rule decides, from M9 and the confirmation on
+`val_report`. A choice made on `val_select` stands only if `val_report` gives the
+same word. If `v2` equals `v1`, nothing was scored again and this table says so.
+
+| Signal | Rule | Tokenizer a | Tokenizer b | Error of a | Error of b | Word | Held by `v2` | Held by `v2c` |
+|---|---|---|---|---|---|---|---|---|
+
+Not measured yet.
+
+#### The 50 kHz band
+
+One row per series signal with 250 samples per 5 ms frame (four on cache v1), from
+`$S1/compare/fluct.csv`, which `fluct` writes (job M10). It is a statistic of the
+power above the trend path, by frequency, and no tokenizer is built. With 250
+samples of 0.02 ms in a 5 ms frame, group `i` is the band from `i` to `i + 1`
+kHz (derived from the frame length, not measured). `band_to_trend` is the band's
+power over the power of the trend values, and it is empty for the saddle coils,
+because `v1` gives them K 1 (ruling C14). `persistence` is the median, over the
+(shot, channel) pairs for which it is defined, of the correlation between the
+logarithm of one frame's band power and the next frame's.
+
+| Signal | K of the trend (`k_trend`) | Channel-frames (`n_frames`) | Band to trend (`band_to_trend`) | Share below 5 kHz (`share_below_5khz`) | Persistence (`persistence`) | Share of the band in each 1 kHz group (`bin_00` to `bin_24`) |
+|---|---|---|---|---|---|---|
+
+Not measured yet.
+
 ## Limits
 
 - **The fit is on 2,000 training shots.** The ranges and bases are fitted on
@@ -664,3 +1169,22 @@ Measured 2026-11-23 (job K4 on 100 `val_select` shots, `unquantized`; job K6 on 
   the 100 `val_select` shots has, and `not fitted: no training shot has it`
   tells the other case apart. An empty cell is a score nobody has stored yet.
   None of them is a good result and none is 0.
+- **The learned tokenizers' loss counts channels equally.** The loss of stage 1c's
+  networks is a squared error in example units, each channel scaled to unit
+  variance, while TokaMark weights channels by their physical variance. The
+  comparison is read in TokaMark units, and where the two disagree for a signal the
+  weighting of TokaMark is the one that counts for the benchmark. Not measured.
+- **The Mirnov comparison is on power spectra.** The cached spectrograms hold power
+  only, so the comparison of the two Mirnov signals says nothing about the phase
+  between probes, from which a mode number is read. That needs raw waveforms, which
+  cache v1 does not hold.
+- **No magnetics signal is a benchmark target.** The magnetics arrays and the
+  Mirnov signals are inputs only, so a tokenizer for them is judged by
+  reconstruction and by the input round-trip of two tasks only (1-1 and 1-2, the
+  direct models of rule 6), and no benchmark score says what the dynamics model
+  gains or loses from one choice or the other (open decision 1 of the plan).
+- **A learned tokenizer sees only what the front end keeps.** A recoder sits behind
+  the top rung of a fixed codec (16 cosine values, 32 per band, 96 principal
+  components), so it cannot use what that rung drops (for the 50 kHz channels, the
+  part above 1.6 kHz), and what it can add at most is known from the ladder of
+  stage 1b at that rung.
