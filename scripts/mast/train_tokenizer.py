@@ -9,7 +9,10 @@ training store and writes ``<stage1>/recoders/NAME``; it prints, per signal, the
 examples' energy that is left after keeping the first 1, 2, 4, 8 and 16 values per stream. `arms` lists the 24
 arms and which recoders exist. `joint --signals a,b,c,d` measures, on the stores, what one basis over all streams
 of several signals leaves out beside each signal's own concatenated basis and one per-stream basis pooled over all
-their streams, at the same number of values in all. Networks are trained by later sub-commands of this file.
+their streams, at the same number of values in all. `train --arm NAME` trains the network of one network arm on
+the stores (on one GPU, or on the CPU with `--cpu`) and writes ``<stage1>/recoders/<NAME>.s<seed>[.<variant>]``:
+the weights of the best validation, the log, the provenance and, last, ``result.json`` with the collapse check;
+it exits 3 if the network collapsed. It is the only sub-command that imports torch, and only after its refusals.
 
 Units. "Front values" are what a front codec's ``encode_domain`` returns (`store.Norm` takes them to "example
 units": per-stream standardized), and "recoder values" are what a recoder returns. This file does nothing at
@@ -19,7 +22,12 @@ import time except define (`store` starts spawned workers, which import it again
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import importlib.util
 import json
+import math
+import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -27,9 +35,10 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 import numpy as np
+import pandas as pd
 
 from tokamak_foundation_model.ignite.mast import cache, paths, registry, tasks, transform
-from tokamak_foundation_model.ignite.mast.tokenizers import assign, fit, grid
+from tokamak_foundation_model.ignite.mast.tokenizers import assign, code_sha256, fit, grid
 from tokamak_foundation_model.ignite.mast.tokenizers import learned
 from tokamak_foundation_model.ignite.mast.tokenizers.frames import frame_len
 from tokamak_foundation_model.ignite.mast.tokenizers.learned import compare, identity, recode, store
@@ -43,6 +52,11 @@ MAGNETICS = ("magnetics-b_field_pol_probe_ccbv_field", "magnetics-b_field_pol_pr
 BANDS = tasks.SPECTROGRAM_SIGNALS
 SHORT = {"ccbv": MAGNETICS[0], "obr": MAGNETICS[1], "obv": MAGNETICS[2], "flux": MAGNETICS[3],
          "cc": BANDS[0], "omv": BANDS[1]}
+HEADROOM_SCRIPT = Path(__file__).resolve().with_name("run_headroom.py")
+_VARIANT = re.compile(r"[A-Za-z0-9_-]+")
+DEFAULT_LR, DEFAULT_STEPS = 3e-4, 20000   # `train.TrainConfig`'s (a test holds them equal; torch is not imported here)
+RUN_FILES = ("result.json", "recoder.json", "best.pt", "train_log.csv", "norm.npz", "table.npz", "ranges.npz",
+             "config.json", "trained_by.json")        # what a run writes, `result.json` first and so first to go
 BANDCAT_TOKENS = 54                       # tokens of 8 = 432 values: v1's 3 x (32 + 7 x 16) per Mirnov signal (ruling C4)
 
 
@@ -514,6 +528,167 @@ def run_arms(args: argparse.Namespace) -> int:
     return 0
 
 
+# ----------------------------------------------------------------------------------------- train
+
+def _run_headroom():
+    """`scripts/mast/run_headroom.py` loaded by path (its GPU and lock helpers; `py.sh` runs Python with `-I`, so the
+    scripts directory is not importable). The module name is `run_tokenizer.py`'s, so one process loads it once.
+    Loading it imports torch (through `harness`) but does not initialize CUDA, so `CUDA_VISIBLE_DEVICES` can still be
+    set after it, as `run_headroom.py` documents; `train` loads it for `--cpu` only after its refusals."""
+    name = "run_headroom_for_tokenizer"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, HEADROOM_SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module  # dataclasses look their module up here
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+def _refuse_train_options(args: argparse.Namespace) -> None:
+    """`Refused` for options that do not fit, before anything is read."""
+    if (args.gpu is None) == (not args.cpu):
+        raise Refused("give exactly one of --gpu N (a GPU without a compute process) and --cpu")
+    if args.share_gpu and args.gpu is None:
+        raise Refused("--share-gpu belongs to --gpu")
+    if args.variant is not None and not _VARIANT.fullmatch(args.variant):
+        raise Refused(f"--variant {args.variant!r} is not a name (letters, digits, - and _)")
+    if (args.lr != DEFAULT_LR or args.steps != DEFAULT_STEPS) and args.variant is None:
+        raise Refused("--lr and --steps other than the defaults name another run: give it a --variant")
+    if args.steps < 1 or not (math.isfinite(args.lr) and args.lr > 0) or args.seed < 0:
+        raise Refused("--steps is at least 1, --lr is positive and --seed is not negative")
+
+
+def _unfinished(run_dir: Path, force: bool) -> None:
+    """`Refused` if `run_dir` holds a finished run (a `result.json`) and `force` is not given."""
+    if (run_dir / "result.json").exists() and not force:
+        raise Refused(f"{run_dir / 'result.json'} exists: a trained network is not overwritten; --force trains it "
+                      "again, or give another --seed or --variant")
+
+
+def run_train(args: argparse.Namespace) -> int:
+    """Train the network of one arm on the training store, validate on the validation store, write the run into
+    ``<stage1>/recoders/<arm>.s<seed>[.<variant>]`` and print its last line. Exit 2 for a refusal (the options, the
+    arm, a finished run, a busy GPU: before any store is read), 1 for a loss that is not finite, 3 if the network
+    collapsed (`compare.usage`), else 0. Written: `config.json` and `trained_by.json` before the first step,
+    `train.lock` while it trains, `train_log.csv` and `best.pt` during it, then `recoder.json`, `norm.npz` and
+    `table.npz` (a network's values have the even grid: no ranges) and last `result.json`."""
+    _refuse_train_options(args)
+    series, profiles, maps, streams = catalog(registry.all_signals())
+    all_arms = arms(series, profiles, maps, streams)
+    if args.arm not in all_arms:
+        raise Refused(f"unknown arm {args.arm!r}; `arms` lists them")
+    arm = all_arms[args.arm]
+    if not arm.net:
+        raise Refused(f"{arm.name} is a linear arm: it is fitted by `linear`, not trained")
+    stage1 = paths.stage1_dir()
+    name = net_name(arm.name, args.seed, args.variant)
+    run_dir = recoders_root() / name
+    _unfinished(run_dir, args.force)
+    dirs = {"train": stage1 / "store" / STORE_VERSION / "train", "val": stage1 / "store" / STORE_VERSION / "val"}
+    for d in dirs.values():
+        if not (d / "store.json").is_file():
+            raise Refused(f"there is no store at {d}: run `store` first")
+    device = "cpu"
+    if args.gpu is not None:
+        rh = _run_headroom()
+        if rh._cuda_initialized():
+            raise Refused("CUDA is already initialized in this process, so --gpu cannot select the GPU")
+        looked_up = rh._look_up_gpu(args.gpu)
+        if looked_up is None:
+            return 2                                            # it printed why
+        gpu_uuid, gpu_pids = looked_up
+        if rh._refuse_busy_gpu(args.gpu, gpu_pids, args.share_gpu):
+            return 2
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_uuid           # read when CUDA starts, which it has not: the GPU is cuda:0
+        device = "cuda:0"
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        rh = _run_headroom()
+    from tokamak_foundation_model.ignite.mast.tokenizers.learned import nets, train as trainer   # torch, from here on
+
+    try:
+        train, train_meta = store.load_store(dirs["train"], list(arm.signals))
+        val, _ = store.load_store(dirs["val"], list(arm.signals))
+    except (OSError, KeyError, ValueError) as e:
+        raise Refused(f"the stores do not hold the signals of {arm.name} ({type(e).__name__}: {e})") from e
+    info = {n: train_meta["signals"][n] for n in arm.signals}
+    if arm.concat and len(arm.signals) != 1:
+        raise Refused(f"{arm.name} is concatenated over {len(arm.signals)} signals; plan 1c has one per such arm")
+    for n in arm.signals:
+        s = train[n].values.shape[1]
+        if s != streams[n] or s != info[n]["n_streams"]:
+            raise Refused(f"the store holds {n} with {s} streams, the registry has {streams[n]}")
+    depths = {n: train[n].values.shape[2] for n in arm.signals}
+    if not arm.concat and len(set(depths.values())) != 1:
+        raise Refused(f"{arm.name} takes one stream at a time, and its signals have {depths} values per stream")
+    d_in = train[arm.signals[0]].values.shape[1] * depths[arm.signals[0]] if arm.concat else depths[arm.signals[0]]
+    root = Path(train_meta["cache_dir"])
+    try:
+        table = identity.build_table(registry.load_registry(root / "registry.csv"),
+                                     [(n, info[n]["kind"], info[n]["n_streams"]) for n in arm.signals])
+    except (OSError, ValueError) as e:
+        raise Refused(f"the stream table cannot be made from {root / 'registry.csv'} ({type(e).__name__}: {e})") from e
+    norms = {n: store.fit_norm(train[n].values) for n in arm.signals}
+    train_ex = trainer.examples(train, norms, table, concat=arm.concat)
+    val_ex = trainer.examples(val, norms, table, concat=arm.concat)
+    if len(train_ex[0]) == 0 or len(val_ex[0]) == 0:
+        raise Refused(f"{arm.name}: {len(train_ex[0])} training and {len(val_ex[0])} validation examples; both need some")
+    cfg = trainer.TrainConfig(steps=args.steps, lr=args.lr, seed=args.seed)
+    net_config = {"d_in": int(d_in), "n_values": int(arm.n_tok * arm.n_val), "n_streams": 0 if arm.concat else len(table),
+                  "d_model": int(cfg.d_model), "depth": int(cfg.depth), "p_drop_ident": float(cfg.p_drop_ident),
+                  "concat": bool(arm.concat), "n_tok": int(arm.n_tok), "n_val": int(arm.n_val)}
+
+    _prepare(run_dir)                                           # after every refusal above
+    try:
+        lock = rh._take_lock(run_dir)
+    except rh.Refused as e:
+        raise Refused(str(e)) from e
+    try:
+        _unfinished(run_dir, args.force)                        # another training may have finished since the first look
+        for f in RUN_FILES:                                     # the files of an unfinished run, or of the one --force replaces
+            (run_dir / f).unlink(missing_ok=True)
+        rh._write_json_atomic(run_dir / "config.json", {
+            "arm": arm.name, "seed": args.seed, "variant": args.variant, "train": dataclasses.asdict(cfg), "net": net_config})
+        rh._write_json_atomic(run_dir / "trained_by.json", {
+            "learned_code_sha256": learned.code_sha256(), "tokenizer_code_sha256": code_sha256(),
+            "assignment_sha256": train_meta["assignment_sha256"], "fit_sha256": train_meta["fit_sha256"],
+            "stats_sha256": train_meta["stats_sha256"], "argv": list(args.argv),
+            "date": datetime.now(timezone.utc).isoformat()})
+        try:
+            result = trainer.train(net_config, cfg, train_ex, val_ex, table, run_dir, device,
+                                   log=lambda line: print(line, flush=True))
+        except FloatingPointError as e:
+            print(f"failed: {e}; {run_dir} holds the log up to it and no result.json", file=sys.stderr)
+            return 1
+        recoder = nets.load_net_recoder(run_dir, table)         # the best weights, as a later reader loads them
+        usage = {}
+        for n in arm.signals:                                   # rule 7: one verdict per signal, on the validation examples
+            e, _, ident = trainer.examples({n: val[n]}, {n: norms[n]}, table, concat=arm.concat)
+            if len(e) == 0:
+                usage[n] = {"n_examples": 0, "collapsed": None}   # no data is not a verdict
+                print(f"{name} {n}: no validation examples, no verdict", flush=True)
+                continue
+            values = recoder.encode(e, ident)
+            usage[n] = compare.usage(values.reshape(len(values), arm.n_tok, arm.n_val))
+            print(f"{name} {n}: first value entropy {usage[n]['first_value_entropy']:.3f}, active values "
+                  f"{usage[n]['active_values']} of {arm.n_val}, {usage[n]['n_examples']} examples, "
+                  f"{'COLLAPSED' if usage[n]['collapsed'] else 'not collapsed'}", flush=True)
+        collapsed = any(u["collapsed"] is True for u in usage.values())
+        meta = {"signals": info, "arm": arm.name, "seed": args.seed, "variant": args.variant,
+                "date": datetime.now(timezone.utc).isoformat(), "n_train_examples": int(len(train_ex[0])),
+                "n_val_examples": int(len(val_ex[0])), "store": {k: v for k, v in train_meta.items() if k != "signals"}}
+        recode.save_recoder(run_dir, recoder, norms, table, meta)
+        plateau = trainer.plateau(pd.read_csv(run_dir / trainer.LOG_CSV))
+        rh._write_json_atomic(run_dir / "result.json", {**result, "plateau": plateau, "collapsed": collapsed,
+                                                        "usage": usage})
+    finally:
+        rh._release_lock(lock)
+    print(f"{name}: best val_mse {result['best_val_mse']:.4g} at step {result['best_step']} of {result['steps']}, "
+          f"plateau {'yes' if plateau else 'no'}, collapsed {'yes' if collapsed else 'no'}, {result['seconds']:.0f} s",
+          flush=True)
+    return 3 if collapsed else 0
+
+
 # -------------------------------------------------------------------------------------------- main
 
 def _parser() -> argparse.ArgumentParser:
@@ -540,11 +715,24 @@ def _parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("arms", help="list the arms and which recoders exist")
     p.set_defaults(run=run_arms)
+
+    p = sub.add_parser("train", help="train the network of one network arm on the stores")
+    p.add_argument("--arm", required=True, help="a network arm (`arms` lists them)")
+    p.add_argument("--seed", type=int, default=0, help="seed of the weights, the batches and the net's draws (default 0)")
+    p.add_argument("--gpu", type=int, default=None, help="train on this GPU (one without a compute process, unless --share-gpu)")
+    p.add_argument("--share-gpu", action="store_true", help="use a GPU that has compute processes")
+    p.add_argument("--cpu", action="store_true", help="train on the CPU (no GPU is selected)")
+    p.add_argument("--lr", type=float, default=DEFAULT_LR, help=f"learning rate (default {DEFAULT_LR}; another needs --variant)")
+    p.add_argument("--steps", type=int, default=DEFAULT_STEPS, help=f"optimizer steps (default {DEFAULT_STEPS}; another needs --variant)")
+    p.add_argument("--variant", default=None, help="a name that is appended to the run directory (<arm>.s<seed>.<variant>)")
+    p.add_argument("--force", action="store_true", help="train again over a finished run (its files are removed first)")
+    p.set_defaults(run=run_train)
     return ap
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    args.argv = list(sys.argv[1:] if argv is None else argv)      # what `train` records in trained_by.json
     try:
         return args.run(args)
     except Refused as e:
