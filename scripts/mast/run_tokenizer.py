@@ -179,10 +179,15 @@ def run_fit(args: argparse.Namespace) -> int:
     if args.n_shots < 1 or args.workers < 1:
         print("refused: --n-shots and --workers are at least 1", file=sys.stderr)
         return 2
-    _prepare(fit_dir)
     root = _cache_root(args)
-    manifest = json.loads((root / "manifest.json").read_text())
+    try:
+        manifest = json.loads((root / "manifest.json").read_text())
+        manifest["stats_sha256"], manifest["tokamark_revision"]
+    except (OSError, ValueError, KeyError) as e:
+        print(f"refused: the manifest of {root} cannot be read ({type(e).__name__}: {e})", file=sys.stderr)
+        return 2
     shots = cache.pick_evenly(tasks.split_shots("train"), args.n_shots)
+    _prepare(fit_dir)  # after every refusal and read that can fail: nothing is left behind by one
     started = time.monotonic()
     fits = fit.fit_all(root, shots, workers=args.workers)
     for name, f in fits.items():
@@ -322,7 +327,6 @@ def run_score(args: argparse.Namespace) -> int:
         return 0 if math.isfinite(float(stored["nrmse"])) else 1
     if reason != "no score.json":
         print(f"re-scoring {args.task} {name} {label}: {reason}", flush=True)
-    _prepare(out_dir)
     if gpu_instrument and rh._refuse_busy_gpu(args.gpu, gpu_pids, args.share_gpu):
         return 2
 
@@ -331,6 +335,7 @@ def run_score(args: argparse.Namespace) -> int:
     records: dict[str, object] = {"instrument": args.instrument, "mode": args.mode,
                                   "assignment": assignment_path.name if assignment_path else None,
                                   "variant": variant, "n_shots_asked": args.n_shots}
+    predict_fn = _build_predictor(args, task, cache_root, assignment_path, fit_dir, checkpoint)
     if gpu_instrument:
         stale = rh.stale_reason(stage0, args.task, table.predictor_name("direct", variant), "val_report")
         records["direct_stale_reason"] = stale
@@ -338,7 +343,6 @@ def run_score(args: argparse.Namespace) -> int:
         if stale:
             print(f"warning: the direct score of {variant} is stale ({stale}); the model is the checkpoint "
                   "scored here, whatever that score says", file=sys.stderr, flush=True)
-    predict_fn = _build_predictor(args, task, cache_root, assignment_path, fit_dir, checkpoint)
     if gpu_instrument and provenance["checkpoint_sha256"] != provenance_of(
             assignment_path, fit_dir if assignment_path else None, cache_root, checkpoint)["checkpoint_sha256"]:
         print(f"refused: {checkpoint} changed while the predictor was being built", file=sys.stderr)

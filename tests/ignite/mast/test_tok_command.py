@@ -134,3 +134,14 @@ def test_fit_writes_once_and_refuses_to_overwrite(tmp_path, monkeypatch, capsys)
     assert meta["shots"] == [30000, 30013, 30026, 30039] and len(meta["tokenizer_code_sha256"]) == 64
     assert rt.main(["fit", "--n-shots", "4", "--workers", "2"]) == 2
     assert "--force" in capsys.readouterr().err
+
+
+def test_a_fit_refused_for_a_missing_manifest_leaves_no_directory(tmp_path, monkeypatch, capsys):
+    rt = load()
+    monkeypatch.setenv("IGNITE_MAST_ROOT", str(tmp_path))
+    (tmp_path / "cache" / "v1").mkdir(parents=True)                              # no manifest.json in it
+    monkeypatch.setattr(rt.tasks, "split_shots", lambda split: list(range(30000, 30040)))
+    monkeypatch.setattr(rt.fit, "fit_all", lambda *a, **k: pytest.fail("fit_all must not run"))
+    assert rt.main(["fit", "--n-shots", "4", "--workers", "2"]) == 2
+    assert "manifest" in capsys.readouterr().err
+    assert not (tmp_path / "stage1" / "fit" / "v1").exists()
