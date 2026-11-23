@@ -593,9 +593,10 @@ Stage 1c's learned tokenizers are built and not measured yet. The code and its
 tests are committed. None of the controller jobs M1 to M10 under
 [How to run stage 1c](#how-to-run-stage-1c) has run, so every table under
 [Results of the comparison](#results-of-the-comparison) is empty and says "Not
-measured yet." Nothing in this section is a result, and the only numbers in it
-are the ones that carry their date, their split, their number of shots and the
-words "measured" or "rough look". The plan is
+measured yet." No number in this section is a stage-1c result yet. The numbers
+of the design (sizes, probabilities, thresholds) are the plan's choices, and the
+measured facts it cites (rulings C15, C17 and C26) carry their date, their split
+and their number of shots. The plan is
 `docs/superpowers/plans/2026-11-22-ignite-mast-stage1c-learned-tokenizers.md`.
 
 **What a recoder is.** A learned tokenizer of this stage is a recoder placed
@@ -901,10 +902,11 @@ number behind it. A number from a trial is a rough look on the trial store of
   over measured on its 167 validation frames of 2 `val_select` shots): fitted
   pairwise it is 0.0074, 0.0072, 0.0071 and 0.0071 at 40, 80, 160 and 320 values,
   fitted on zero-filled rows 0.0006, 0.0002, 0.0001 and 0.0000, so the pairwise
-  fit was 12 to 36 times higher at 40 and 80 values. The cause: 69% of the trial's
-  `ccbv` rows have a missing stream (4.5% of the entries), and a pairwise
-  covariance with that many gaps is not positive semi-definite (131 negative
-  eigenvalues of 640), which puts real energy last in the order of the basis. The
+  fit was 12 to 36 times higher at 40 and 80 values. The cause (these three
+  figures are on the trial's 672 training rows, not on its validation frames):
+  69% of the trial's `ccbv` rows have a missing stream (4.5% of the entries), and
+  a pairwise covariance with that many gaps is not positive semi-definite (131
+  negative eigenvalues of 640), which puts real energy last in the order of the basis. The
   per-stream recoders and stage 1b's profile codecs are not affected (their rows
   are finite, and a profile's missing points are solved by a ridge). The cost,
   inferred and not measured: a zero-filled basis spends some components on which
@@ -963,10 +965,15 @@ scripts): `run_tokenizer.py` (`$RT`) holds `fit`, `score`, `ladder`, `assign`,
 `recode`, `gate`, `compare` and `seeds`, and `train_tokenizer.py` (`$TT`) holds
 `store`, `linear`, `joint`, `arms`, `train` and `fluct`.
 
-Every command starts with `OMP_NUM_THREADS=16`, or with `OMP_NUM_THREADS=8` where
-three or four jobs share a GPU. Reason, measured 2026-11-23: one CPU test of the
-training loop took 86 to 111 s at torch's default thread count on this 352-core
-node under load, and 1.6 s with 8 threads.
+Every command starts with the `OMP_NUM_THREADS` it is launched with, and each job
+gets its own count so that workers times threads stay under the node's 352 cores:
+16 for a job that runs alone in one process, 2 per worker for the jobs of 64
+workers, 8 for each of the 11 linear arms run at once and for the trainings that
+share a GPU, and 4 per pass for the floor passes, many of which run at once (the
+floor worker itself keeps torch at one thread, see the departures). Reason,
+measured 2026-11-23: one CPU test of the training loop took 86 to 111 s at
+torch's default thread count on this 352-core node under load, and 1.6 s with 8
+threads.
 
 Every duration in the table is the plan author's estimate, not a measurement;
 none was measured for this code. Unlike the stage-0 trainings, whose speed was set
@@ -976,16 +983,16 @@ so several can share one GPU.
 
 | Job | After | Command | GPU | Duration | What is read from the output |
 |---|---|---|---|---|---|
-| M1 store | Task 3, K3 | `OMP_NUM_THREADS=16 $TT store --workers 64` | none | 10 to 30 min | 24 lines. No signal says "no data"; the skipped shots per signal match 1b's fit. |
-| M2 linear arms | M1 | `OMP_NUM_THREADS=16 $TT linear --arm A` for the 11 linear arms, all at once | none | 1 to 5 min each | Per signal the share left at 1, 2, 4, 8, 16 values per stream. It falls from left to right. |
+| M1 store | Task 3, K3 | `OMP_NUM_THREADS=2 $TT store --workers 64` | none | 10 to 30 min | 24 lines. No signal says "no data"; the skipped shots per signal match 1b's fit. |
+| M2 linear arms | M1 | `OMP_NUM_THREADS=8 $TT linear --arm A` for the 11 linear arms, all at once | none | 1 to 5 min each | Per signal the share left at 1, 2, 4, 8, 16 values per stream. It falls from left to right. |
 | M3 joint basis | M1, Task 4 | `OMP_NUM_THREADS=16 $TT joint --signals ccbv,obr,obv,flux` | none | minutes | Per size three shares: the joint basis of the 91 channels, each array's own basis, the per-channel basis. This is the upper limit of what coding channels together can give in linear form. |
-| M4 recoded assignments and their floors | M2, Task 4 | `OMP_NUM_THREADS=16 $RT recode --name s-klt --from v1 --arm klt.series`; `o-klt` (`klt.mag`); `c-pca` (`pca.ccbv,pca.obr,pca.obv,pca.flux`), `c-pca.h` and `c-pca.q` (the same with `--scale 0.5`, `0.25`); `b-klt` (`klt.band`); `bo-klt` (`klt.band.cc,klt.band.omv`); `bc-pca` (`pca.band.cc,pca.band.omv`), `bc-pca.h`, `bc-pca.q`. Then M5's `compare` once: it prints every `score` command whose floor is missing (`OMP_NUM_THREADS=16 $RT score --task T --split val_select --n-shots 100 --assignment A --mode unquantized`); run those in waves | none | about 20 passes of 3 to 15 min; about 1 h | `recode` prints equal values per frame before and after (a concatenated network arm may be a few values short: tokens of 8). The last line of each pass. |
+| M4 recoded assignments and their floors | M2, Task 4 | `OMP_NUM_THREADS=16 $RT recode --name s-klt --from v1 --arm klt.series`; `o-klt` (`klt.mag`); `c-pca` (`pca.ccbv,pca.obr,pca.obv,pca.flux`), `c-pca.h` and `c-pca.q` (the same with `--scale 0.5`, `0.25`); `b-klt` (`klt.band`); `bo-klt` (`klt.band.cc,klt.band.omv`); `bc-pca` (`pca.band.cc,pca.band.omv`), `bc-pca.h`, `bc-pca.q`. Then M5's `compare` once: it prints every `score` command whose floor is missing (`OMP_NUM_THREADS=4 $RT score --task T --split val_select --n-shots 100 --assignment A --mode unquantized`); run those in waves | none | about 20 passes of 3 to 15 min; about 1 h | `recode` prints equal values per frame before and after (a concatenated network arm may be a few values short: tokens of 8). The last line of each pass. |
 | M5 linear comparison | M4 | `OMP_NUM_THREADS=16 $RT compare --a A --b B --drop-channel --reach 0.0176` for the pairs: `s-klt:v1` (rule 4); `s-klt:o-klt`, `c-pca:o-klt`, `c-pca:s-klt`, `c-pca.h:s-klt`, `c-pca.q:s-klt`, `c-pca:v1` (rule 6, magnetics); `b-klt:v1` (rule 5); `b-klt:bo-klt`, `bc-pca:bo-klt`, `bc-pca:b-klt`, `bc-pca.h:b-klt`, `bc-pca.q:b-klt` (rule 6, Mirnov) | none | minutes each | The 13 tables. They go to the owner the day they exist, with M3's line: this is the linear answer to shared against specialized, and the networks cannot change what the data holds, only how much of it a tokenizer of that size gets. |
-| M6 networks, seed 0 | Task 6, M1 | `OMP_NUM_THREADS=8 $TT train --arm A --seed 0 --gpu N --share-gpu` for the 13 network arms, three or four per GPU | 4, shared | 5 to 20 min each; under 1 h | The last line of each run. `collapsed yes` (exit 3): that arm takes part in no comparison. `plateau no`: run it once more with `--steps 40000 --variant long` (rule 8). |
-| M7 network comparison | M6 | `OMP_NUM_THREADS=16 $RT recode` to `s-net0` (`net.series.s0`), `o-net0` (`net.mag.s0`), `c-net0` (the four `net.<array>.s0`), `b-net0` (`net.band.s0`), `bo-net0` (`net.band.cc.s0,net.band.omv.s0`), `bc-net0` (`net.bandcat.cc.s0,net.bandcat.omv.s0`), `p-net0` (`net.profile.s0`), `m-net0` (`net.map.s0`); the missing floors as in M4, on the CPU (see the departures above); then `OMP_NUM_THREADS=16 $RT compare` for the pairs of M5 with the network in place of the linear arm, and `s-net0:s-klt`, `b-net0:b-klt`, `p-net0:v1`, `m-net0:v1` (rule 5) | none | about 12 passes of 5 to 20 min; about 1 h | The tables, as in M5. |
+| M6 networks, seed 0 | Task 6, M1 | `OMP_NUM_THREADS=8 $TT train --arm A --seed 0 --gpu N --share-gpu` for the 13 network arms, two or three per GPU | 4, shared | 5 to 20 min each; under 1 h | The last line of each run. `collapsed yes` (exit 3): that arm takes part in no comparison. `plateau no`: run it once more with `--steps 40000 --variant long` (rule 8). |
+| M7 network comparison | M6 | `OMP_NUM_THREADS=16 $RT recode` to `s-net0` (`net.series.s0`), `o-net0` (`net.mag.s0`), `c-net0` (the four `net.<array>.s0`), `b-net0` (`net.band.s0`), `bo-net0` (`net.band.cc.s0,net.band.omv.s0`), `bc-net0` (`net.bandcat.cc.s0,net.bandcat.omv.s0`), `p-net0` (`net.profile.s0`), `m-net0` (`net.map.s0`); the missing floors as in M4 (`OMP_NUM_THREADS=4` per pass, on the CPU: see the departures above); then `OMP_NUM_THREADS=16 $RT compare` for the pairs of M5 with the network in place of the linear arm, and `s-net0:s-klt`, `b-net0:b-klt`, `p-net0:v1`, `m-net0:v1` (rule 5) | none | about 12 passes of 5 to 20 min; about 1 h | The tables, as in M5. |
 | M8 rule 8 | M7 | For a network that lost: `OMP_NUM_THREADS=8 $TT train --arm A --seed 0 --lr 1e-4 --variant lr1e4 --gpu N --share-gpu`, then its comparison again. For a network that won: seeds 1 and 2, their assignments and floors, then `OMP_NUM_THREADS=16 $RT seeds --pairs a0:b,a1:b,a2:b --label val_select-n100` | 4, shared | up to 26 runs and their floors; 1 to 2 h | The gaps of the three seeds, their spread and the word with that spread. |
-| M9 `v2`, `v2c` and their confirmation | M8 | `OMP_NUM_THREADS=16 $RT recode --name v2 --from v1 --arm <the winners by rules 4 and 5> --signals <their signals>`; `v2c` from `v2` with the concatenated winners of rule 6. For every task with a changed output signal: 1b's K5 passes on `val_report` in the three read-outs; `OMP_NUM_THREADS=16 $RT compare --label val_report` for the decided pairs; for tasks 1-1 and 1-2 `OMP_NUM_THREADS=16 $RT score --task T --split val_report --instrument inputs --assignment A --mode unquantized --variant V --gpu N` with `v2` and `v2c`; `OMP_NUM_THREADS=16 $RT gate --assignment $S1/assignments/v2.json` | 4 passes with a GPU | 1 to 2 h without a GPU, 4 passes of 15 to 45 min with one, the gate 5 to 15 min | A choice made on `val_select` stands only if `val_report` gives the same word. The gate's last line. If `v2` equals `v1`, nothing is scored again and the page says so. |
-| M10 the 50 kHz band | Task 7, K3 | `OMP_NUM_THREADS=16 $TT fluct --workers 64` | none | 5 to 15 min | Four lines; they go to the stage-2 plan. |
+| M9 `v2`, `v2c` and their confirmation | M8 | `OMP_NUM_THREADS=16 $RT recode --name v2 --from v1 --arm <the winners by rules 4 and 5> --signals <their signals>`; `v2c` from `v2` with the concatenated winners of rule 6. For every task with a changed output signal: 1b's K5 passes on `val_report` in the three read-outs (floors, `OMP_NUM_THREADS=4` per pass); `OMP_NUM_THREADS=16 $RT compare --label val_report` for the decided pairs; for tasks 1-1 and 1-2 `OMP_NUM_THREADS=8 $RT score --task T --split val_report --instrument inputs --assignment A --mode unquantized --variant V --gpu N` with `v2` and `v2c`; `OMP_NUM_THREADS=16 $RT gate --assignment $S1/assignments/v2.json` | 4 passes with a GPU | 1 to 2 h without a GPU, 4 passes of 15 to 45 min with one, the gate 5 to 15 min | A choice made on `val_select` stands only if `val_report` gives the same word. The gate's last line. If `v2` equals `v1`, nothing is scored again and the page says so. |
+| M10 the 50 kHz band | Task 7, K3 | `OMP_NUM_THREADS=2 $TT fluct --workers 64` | none | 5 to 15 min | Four lines; they go to the stage-2 plan. |
 
 The variant `V` of a direct model is the one the headroom table shows for the task
 (1b says how it is chosen). As of 2026-11-22 the direct model of task 1-1 is behind
@@ -1078,7 +1085,8 @@ Not measured yet.
 #### The 50 kHz band
 
 One row per series signal with 250 samples per 5 ms frame (four on cache v1), from
-`$S1/compare/fluct.csv`, which `fluct` writes (job M10). It is a statistic of the
+`$S1/compare/fluct.csv`, which `fluct` writes (job M10) with 25 separate columns
+`bin_00` to `bin_24`, shown here as one. It is a statistic of the
 power above the trend path, by frequency, and no tokenizer is built. With 250
 samples of 0.02 ms in a 5 ms frame, group `i` is the band from `i` to `i + 1`
 kHz (derived from the frame length, not measured). `band_to_trend` is the band's
