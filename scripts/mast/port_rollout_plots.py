@@ -31,11 +31,7 @@ def _resolve_device(spec: str) -> torch.device:
     return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-def _select_shots(
-    cache_dir: Path, shots_arg: str, n_shots: int, seed: int
-) -> list[str]:
-    if shots_arg.strip():
-        return [s.strip() for s in shots_arg.split(",") if s.strip()]
+def _select_shots(cache_dir: Path, n_shots: int, seed: int) -> list[str]:
     splits_path = cache_dir / "splits.json"
     if not splits_path.exists():
         raise FileNotFoundError(f"splits.json not found in {cache_dir}; pass --shots")
@@ -51,6 +47,42 @@ def _select_shots(
 
 def _mode_tag(actuator_mode: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", actuator_mode).strip("_") or "real"
+
+
+def _median_finite(values: list[float]) -> float:
+    finite = [v for v in values if math.isfinite(v)]
+    if not finite:
+        return float("nan")
+    return float(np.median(finite))
+
+
+def summarize_rollout_metrics(
+    per_shot: dict[str, dict],
+) -> dict[str, dict[str, float | int]]:
+    """Aggregate per-shot metrics into per-signal medians and coverage.
+
+    Every shot where a signal had finite truth in the predicted window is kept,
+    including all-NaN rollouts (which carry ``pred_coverage = 0.0`` and are never dropped).
+    """
+    grouped: dict[str, list[dict[str, float]]] = {}
+    for shot_rec in per_shot.values():
+        for name, m in shot_rec["signals"].items():
+            # Keep every shot where the signal had truth-finite predicted points.
+            if math.isfinite(m["pred_coverage"]):
+                grouped.setdefault(name, []).append(m)
+
+    summary: dict[str, dict[str, float | int]] = {}
+    for name, rows in sorted(grouped.items()):
+        summary[name] = {
+            "median_rollout_nrmse": _median_finite([r["rollout_nrmse"] for r in rows]),
+            "median_ceiling_nrmse": _median_finite([r["ceiling_nrmse"] for r in rows]),
+            "median_pred_coverage": float(np.median([r["pred_coverage"] for r in rows])),
+            "median_ceil_coverage": _median_finite([r["ceil_coverage"] for r in rows]),
+            "median_pred_missing_frac": _median_finite([r["pred_missing_frac"] for r in rows]),
+            "median_ceil_missing_frac": _median_finite([r["ceil_missing_frac"] for r in rows]),
+            "n_shots": len(rows),
+        }
+    return summary
 
 
 def run_rollout_plots(
@@ -76,6 +108,7 @@ def run_rollout_plots(
     manifest = layout.load_manifest(cache_dir)
     dt_frame = float(manifest.get("dt_frame", framecache.DT_FRAME))
     act_stats = framecache.ActuatorStats.from_manifest_dict(manifest["actuators"])
+    signal_stds = manifest.get("signal_physical_std")
 
     cache_root = Path(cache_root or manifest["cache_v1_root"])
     assignment_path = Path(assignment_path or manifest["assignment_path"])
@@ -93,12 +126,10 @@ def run_rollout_plots(
     shot_list = (
         [str(s) for s in shots]
         if shots is not None
-        else _select_shots(cache_dir, "", n_shots, seed)
+        else _select_shots(cache_dir, n_shots, seed)
     )
     tag = _mode_tag(actuator_mode)
     per_shot: dict[str, dict] = {}
-    roll_vals: dict[str, list[float]] = {}
-    ceil_vals: dict[str, list[float]] = {}
 
     for shot in shot_list:
         ro, entry, edited_act = port_rollout.rollout_mast_shot(
@@ -123,6 +154,7 @@ def run_rollout_plots(
             dt_frame=dt_frame,
             present=entry.get("present"),
             stats_sha256=stats_sha,
+            signal_stds=signal_stds,
         )
         cf_nbi = (
             port_rollout.counterfactual_nbi_physical(edited_act, act_stats, stats)
@@ -150,22 +182,12 @@ def run_rollout_plots(
             "figure": str(png_path),
             "signals": sig_metrics,
         }
-        for name, m in sig_metrics.items():
-            if math.isfinite(m["rollout_nrmse"]):
-                roll_vals.setdefault(name, []).append(m["rollout_nrmse"])
-            if math.isfinite(m["ceiling_nrmse"]):
-                ceil_vals.setdefault(name, []).append(m["ceiling_nrmse"])
         print(
             f"[port_rollout] shot {shot}: k0={ro.k0} F={ro.n_frames} -> {png_path}",
             flush=True,
         )
 
-    mean_rollout = {
-        name: float(np.mean(vals)) for name, vals in sorted(roll_vals.items())
-    }
-    mean_ceiling = {
-        name: float(np.mean(vals)) for name, vals in sorted(ceil_vals.items())
-    }
+    summary = summarize_rollout_metrics(per_shot)
     record = {
         "ckpt": str(Path(ckpt).resolve()),
         "step": int(step),
@@ -176,8 +198,7 @@ def run_rollout_plots(
         "k0": int(k0 or cfg.k0_seed),
         "horizon": int(horizon),
         "shots": shot_list,
-        "mean_rollout_nrmse": mean_rollout,
-        "mean_ceiling_nrmse": mean_ceiling,
+        "summary": summary,
         "per_shot": per_shot,
     }
     metrics_path = out_dir / "rollout_metrics.json"

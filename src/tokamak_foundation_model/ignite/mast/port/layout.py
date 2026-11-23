@@ -9,15 +9,15 @@ All patches are applied by attribute assignment on the imported module objects
   - ``train_dynamics.build_presence`` -> reads the exact ``present`` flags stored in
     each cached ``{shot}.pt`` (falling back to dev-peter's heuristic if absent).
   - ``train_dynamics._ACT_SPEC`` / ``_FRAME_S`` and ``eval_dynamics.FRAME_S`` /
-    ``_global_actuator_stats`` -> populated from ``_codec_manifest.json`` so
-    actuator widths and counterfactual actuator modes match MAST.
+    ``_global_actuator_stats`` -> populated from ``_codec_manifest.json`` with
+    physical-unit actuator stats for linear actuators and ``ValueError`` guards on
+    ``scale:``/``ramp:``/``set:`` for ``asinh``-compressed actuators.
 """
 
 from __future__ import annotations
 
 import contextlib
 import json
-import os
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
@@ -37,6 +37,8 @@ with warnings.catch_warnings():
     from ... import eval_dynamics as ev
     from ... import train_dynamics as td
 from ...dynamics_config import ModalitySpec
+from .. import transform
+from . import framecache
 
 _ORIG = {
     "td_cache_modality_specs": td.cache_modality_specs,
@@ -46,6 +48,9 @@ _ORIG = {
     "td_frame_s": td._FRAME_S,
     "ev_frame_s": ev.FRAME_S,
     "ev_global_actuator_stats": ev._global_actuator_stats,
+    "ev_scale_actuators": ev._scale_actuators,
+    "ev_ramp_actuators": ev._ramp_actuators,
+    "ev_set_actuators": ev._set_actuators,
 }
 
 
@@ -78,12 +83,71 @@ def actuator_spec_from_manifest(cache_dir: Path | str) -> Tuple[Tuple[str, int],
     return tuple((str(n), int(c)) for n, c in zip(act["names"], act["channels"]))
 
 
-def _actuator_stats_from_manifest(cache_dir: Path | str) -> Tuple[torch.Tensor, torch.Tensor]:
-    act = load_manifest(cache_dir)["actuators"]
+def _actuator_physical_stats_from_manifest(
+    cache_dir: Path | str,
+) -> Tuple[torch.Tensor, torch.Tensor, frozenset[str]]:
+    """Return ``(mu_phys, sd_phys, asinh_groups)`` composed into physical units."""
+    manifest = load_manifest(cache_dir)
+    act = manifest["actuators"]
+    compress = act.get("compress")
+    mu_phys = act.get("mu_phys")
+    sd_phys = act.get("sd_phys")
+    if compress is not None and mu_phys is not None and sd_phys is not None:
+        asinh_groups = frozenset(
+            str(n) for n, c in zip(act["names"], compress) if str(c) == "asinh"
+        )
+        mu_arr = [float("nan") if x is None else float(x) for x in mu_phys]
+        sd_arr = [float("nan") if x is None else float(x) for x in sd_phys]
+        return (
+            torch.as_tensor(mu_arr, dtype=torch.float32),
+            torch.as_tensor(sd_arr, dtype=torch.float32),
+            asinh_groups,
+        )
+    v1_root = manifest.get("cache_v1_root")
+    if v1_root and (Path(v1_root) / "stats.npz").exists():
+        v1_stats = transform.load_stats(Path(v1_root) / "stats.npz")
+        act_stats = framecache.ActuatorStats.from_manifest_dict(act)
+        comp, mp, sp = framecache.compose_physical_actuator_stats(act_stats, v1_stats)
+        asinh_groups = frozenset(
+            str(n) for n, c in zip(act_stats.names, comp) if c == "asinh"
+        )
+        return (
+            torch.as_tensor(mp, dtype=torch.float32),
+            torch.as_tensor(sp, dtype=torch.float32),
+            asinh_groups,
+        )
     return (
         torch.as_tensor(act["mu"], dtype=torch.float32),
         torch.as_tensor(act["sd"], dtype=torch.float32),
+        frozenset(),
     )
+
+
+def _spec_groups(kind: str, spec: str) -> list[str]:
+    """Extract actuator group names targeted by a ``scale:``, ``ramp:``, or ``set:`` spec."""
+    if kind == "ramp":
+        return [spec.partition("@")[0].partition("=")[0].strip()]
+    groups: list[str] = []
+    for term in spec.split("+"):
+        head = term.partition("@")[0].partition("=")[0]
+        if kind == "set":
+            head = head.partition("[")[0]
+        groups.append(head.strip())
+    return groups
+
+
+def _wrap_physical_actuator_edit(orig_fn, kind: str, asinh_groups: frozenset[str]):
+    """Reject ``scale:``/``ramp:``/``set:`` on ``asinh``-compressed actuators with a clear ValueError."""
+    def _checked(edited, spec: str, K0: int, n_frames: int) -> None:
+        for group in _spec_groups(kind, spec):
+            if group in asinh_groups:
+                raise ValueError(
+                    f"{kind}: actuator mode is not supported for asinh-compressed actuator "
+                    f"{group!r} (linear edits in asinh space do not map to physical units)"
+                )
+        return orig_fn(edited, spec, K0, n_frames)
+
+    return _checked
 
 
 def resolve_mast_split(
@@ -116,7 +180,6 @@ def resolve_mast_split(
 
     if write and out_dir is not None:
         out_path = Path(out_dir)
-        out_path.mkdir(parents=True, exist_ok=True)
         record = {
             "source": str(splits_path.resolve()),
             "cache_dir": str(cache_path.resolve()),
@@ -131,9 +194,7 @@ def resolve_mast_split(
             "test": test,
         }
         target = out_path / "split_shots.json"
-        tmp = target.with_suffix(f".json.tmp.{os.getpid()}")
-        tmp.write_text(json.dumps(record, indent=1))
-        os.replace(tmp, target)
+        framecache.save_json_atomic(record, target, indent=1)
         log(
             f"[mast-port] split loaded from {splits_path} -> {target} "
             f"(train {len(train)}/val {len(val)}/test {len(test)} HELD OUT)"
@@ -166,18 +227,15 @@ def build_mast_presence(
         return _ORIG["td_build_presence"](cache_dir, out_path=out_path, log=log)
     if out_path is not None:
         out = Path(out_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
-        tmp.write_text(
-            json.dumps({"cache_dir": str(cache), "presence": presence}, indent=0)
+        framecache.save_json_atomic(
+            {"cache_dir": str(cache), "presence": presence}, out, indent=0
         )
-        os.replace(tmp, out)
         log(f"[mast-port] presence -> {out} ({len(presence)} shots)")
     return presence
 
 
 def patch_ignite(cache_dir: Path | str | None = None) -> None:
-    """Assign MAST layout, split, presence, and actuator hooks onto dev-peter's modules."""
+    """Assign MAST layout, split, presence, and physical-unit actuator hooks onto dev-peter's modules."""
     td.cache_modality_specs = modality_specs_from_manifest
     td.resolve_split = resolve_mast_split
     td.build_presence = build_mast_presence
@@ -189,8 +247,18 @@ def patch_ignite(cache_dir: Path | str | None = None) -> None:
             dt_frame = float(manifest.get("dt_frame", 0.005))
             td._FRAME_S = dt_frame
             ev.FRAME_S = dt_frame
-            stats = _actuator_stats_from_manifest(cache_dir)
-            ev._global_actuator_stats = lambda _s=stats: _s
+            mu_phys, sd_phys, asinh_groups = _actuator_physical_stats_from_manifest(cache_dir)
+            stats_pair = (mu_phys, sd_phys)
+            ev._global_actuator_stats = lambda _s=stats_pair: _s
+            ev._scale_actuators = _wrap_physical_actuator_edit(
+                _ORIG["ev_scale_actuators"], "scale", asinh_groups
+            )
+            ev._ramp_actuators = _wrap_physical_actuator_edit(
+                _ORIG["ev_ramp_actuators"], "ramp", asinh_groups
+            )
+            ev._set_actuators = _wrap_physical_actuator_edit(
+                _ORIG["ev_set_actuators"], "set", asinh_groups
+            )
 
 
 def unpatch_ignite() -> None:
@@ -202,6 +270,9 @@ def unpatch_ignite() -> None:
     td._FRAME_S = _ORIG["td_frame_s"]
     ev.FRAME_S = _ORIG["ev_frame_s"]
     ev._global_actuator_stats = _ORIG["ev_global_actuator_stats"]
+    ev._scale_actuators = _ORIG["ev_scale_actuators"]
+    ev._ramp_actuators = _ORIG["ev_ramp_actuators"]
+    ev._set_actuators = _ORIG["ev_set_actuators"]
 
 
 @contextlib.contextmanager

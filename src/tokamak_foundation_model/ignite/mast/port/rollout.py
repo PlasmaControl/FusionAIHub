@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -41,8 +41,6 @@ KEY_PLOT_SIGNALS: tuple[PlotSignalSpec, ...] = (
     PlotSignalSpec("magnetics-b_field_pol_probe_omv_voltage", "Mirnov OMV", "a.u.", 1.0),
     PlotSignalSpec("summary-power_nbi", r"$P_{\mathrm{NBI}}$ (ctx)", "MW", 1e-6),
 )
-
-_PLOT_SPECS_BY_NAME: dict[str, PlotSignalSpec] = {s.name: s for s in KEY_PLOT_SIGNALS}
 
 
 def load_mast_model(ckpt_path: Path | str, cache_dir: Path | str, device: torch.device):
@@ -102,18 +100,67 @@ def rollout_mast_shot(
     return rollout, entry, edited_act
 
 
-def _nrmse(pred: np.ndarray, gt: np.ndarray) -> float:
-    """``rmse(pred - gt) / (std(gt) + 1e-12)`` over mutually finite entries in float64."""
+def _resolve_global_std(
+    name: str,
+    signal_stds: Mapping[str, float | None] | None,
+    st: transform.ChannelStats,
+    codec: tok_codecs.Codec,
+) -> float:
+    """Resolve a signal's global physical-unit std (never per-window std)."""
+    if signal_stds is not None and name in signal_stds and signal_stds[name] is not None:
+        val = float(signal_stds[name])
+        if math.isfinite(val) and val > 0.0:
+            return val
+    if st.compress == "none":
+        rms = float(np.sqrt(np.mean(np.asarray(st.std, dtype=np.float64) ** 2)))
+        if math.isfinite(rms) and rms > 0.0:
+            return rms
+    val = float(codec.signal_std)
+    return val if math.isfinite(val) and val > 0.0 else float("nan")
+
+
+def _nrmse_global(pred: np.ndarray, gt: np.ndarray, global_std: float) -> float:
+    """``rmse(pred - gt) / global_std`` over mutually finite entries in float64."""
+    if not (math.isfinite(global_std) and global_std > 0.0):
+        return float("nan")
     finite = np.isfinite(pred) & np.isfinite(gt)
     if not finite.any():
         return float("nan")
-    p = pred[finite].astype(np.float64)
-    g = gt[finite].astype(np.float64)
-    std = float(np.std(g))
-    if std <= 0.0:
+    err = pred[finite].astype(np.float64) - gt[finite].astype(np.float64)
+    return float(np.sqrt(np.mean(err * err))) / float(global_std)
+
+
+def _frame_channel_coverage(
+    pred: np.ndarray,
+    gt: np.ndarray,
+    sample_f: np.ndarray,
+    k0: int,
+    n_frames: int,
+) -> float:
+    """Fraction of truth-finite ``(frame, channel)`` points where ``pred`` is finite."""
+    n_pred_f = int(n_frames) - int(k0)
+    if n_pred_f <= 0 or gt.shape[-1] == 0:
         return float("nan")
-    err = p - g
-    return float(np.sqrt(np.mean(err * err))) / (std + 1e-12)
+    n_ch = int(math.prod(gt.shape[:-1]))
+    g = np.isfinite(gt).reshape(n_ch, -1)
+    p = np.isfinite(pred).reshape(n_ch, -1)
+    f_rel = np.asarray(sample_f, dtype=np.int64) - int(k0)
+    gt_fc = np.zeros((n_ch, n_pred_f), dtype=bool)
+    pr_fc = np.zeros((n_ch, n_pred_f), dtype=bool)
+    np.logical_or.at(gt_fc.T, f_rel, g.T)
+    np.logical_or.at(pr_fc.T, f_rel, p.T)
+    denom = int(gt_fc.sum())
+    if denom == 0:
+        return float("nan")
+    return float((gt_fc & pr_fc).sum() / denom)
+
+
+def _missing_token_frac(codes: torch.Tensor, k0: int, n_frames: int, missing_code: int) -> float:
+    """Fraction of predicted-frame tokens equal to ``missing_code``."""
+    sub = codes[int(k0) : int(n_frames)]
+    if sub.numel() == 0:
+        return float("nan")
+    return float((sub == int(missing_code)).float().mean().item())
 
 
 def _align_truth_to_window(
@@ -122,60 +169,44 @@ def _align_truth_to_window(
     t0: float,
     n_frames: int,
     dt_frame: float,
-) -> tuple[np.ndarray | None, np.ndarray | None, int]:
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
     """Slice cache-v1 signal to ``[t0, t0 + n_frames * dt_frame)`` in physical units.
 
-    Returns ``(truth_phys, sample_times_s, n_samples)`` or ``(None, None, 0)`` if absent.
+    Samples are assigned to frames by sample centre time ``cs.t0 + (i + 0.5) * cs.dt``.
+    Returns ``(truth_phys, sample_times_s, sample_frame_idx)`` or ``(None, None, None)``.
     """
     if cs is None or cs.values.shape[-1] == 0:
-        return None, None, 0
-    t_len = cs.values.shape[-1]
-    dt = float(cs.dt)
-    ts = float(cs.t0) + np.arange(t_len, dtype=np.float64) * dt
-    # Align frame 0 of the signal to frame 0 of the shot window.
-    sig_offset = int(round((float(cs.t0) - float(t0)) / dt_frame))
-    f_all = frames.frame_index(t_len, dt) + sig_offset
-    keep = (f_all >= 0) & (f_all < n_frames)
+        return None, None, None
+    t_len = int(cs.values.shape[-1])
+    ts = framecache.sample_times(t_len, cs.t0, cs.dt)
+    fi = framecache.sample_frame_index(t_len, cs.t0, cs.dt, t0, dt_frame=dt_frame)
+    keep = (fi >= 0) & (fi < n_frames)
     if not keep.any():
-        return None, None, 0
+        return None, None, None
     idx = np.flatnonzero(keep)
     lo, hi = int(idx[0]), int(idx[-1]) + 1
     phys = transform.to_physical(cs.values[..., lo:hi], st)
-    return phys, ts[lo:hi], hi - lo
+    return phys, ts[lo:hi], fi[lo:hi]
 
 
 def _decode_aligned(
     codec: tok_codecs.Codec,
     codes: torch.Tensor,
-    cs: cache.CachedSignal | None,
-    t0: float,
+    sample_f: np.ndarray | None,
     n_frames: int,
     dt_frame: float,
-    truth_n: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Decode ``codes`` to physical units on the exact time grid of ``truth`` (or uniform grid)."""
-    if cs is not None and truth_n > 0:
-        sig_offset = int(round((float(cs.t0) - float(t0)) / dt_frame))
-        # Decode starting from the signal's aligned frame index.
-        if sig_offset <= 0:
-            decoded = framecache.decode_signal_codes(
-                codec, codes[:n_frames], n_samples=truth_n, dt_frame=dt_frame
-            )
-            sample_f = frames.frame_index(truth_n, float(cs.dt))
-            return decoded, sample_f
-        # Signal starts after t0 (rare): slice codes from sig_offset onward.
-        sub_codes = codes[sig_offset:n_frames]
+    """Decode ``codes`` to physical units onto the exact frame indices ``sample_f``."""
+    if sample_f is not None and len(sample_f) > 0:
         decoded = framecache.decode_signal_codes(
-            codec, sub_codes, n_samples=truth_n, dt_frame=dt_frame
+            codec, codes[:n_frames], dt_frame=dt_frame, sample_frame_idx=sample_f
         )
-        sample_f = frames.frame_index(truth_n, float(cs.dt)) + sig_offset
         return decoded, sample_f
     n_samp = framecache.samples_for_frames(n_frames, codec.dt, dt_frame=dt_frame)
     decoded = framecache.decode_signal_codes(
         codec, codes[:n_frames], n_samples=n_samp, dt_frame=dt_frame
     )
-    sample_f = frames.frame_index(n_samp, codec.dt)
-    return decoded, sample_f
+    return decoded, frames.frame_index(n_samp, codec.dt)
 
 
 def decode_and_score_rollout(
@@ -188,12 +219,14 @@ def decode_and_score_rollout(
     *,
     present: Mapping[str, bool] | None = None,
     stats_sha256: str | None = None,
+    signal_stds: Mapping[str, float | None] | None = None,
 ) -> tuple[dict[str, dict], dict[str, dict[str, float]]]:
     """Decode ground-truth codes (ceiling) and predicted codes (rollout) to physical units.
 
-    Computes per-signal NRMSE over the predicted frames ``[k0, F)`` of:
-      - ``rollout_nrmse``: rollout vs cache-v1 ground truth (physical units);
-      - ``ceiling_nrmse``: tokenizer ceiling (true codes decoded) vs ground truth.
+    Computes over the predicted frames ``[k0, F)`` using each signal's global physical std:
+      - ``rollout_nrmse`` and ``ceiling_nrmse`` (shared global-std denominator);
+      - ``pred_coverage`` and ``ceil_coverage`` (truth-finite ``(frame, channel)`` coverage);
+      - ``pred_missing_frac`` and ``ceil_missing_frac`` (fraction of tokens equal to ``missing_code``).
     """
     mod_names = list(rollout.gt_codes)
     shot_data = cache.read_shot(Path(shot_h5_path), mod_names, stats_sha256=stats_sha256)
@@ -205,34 +238,52 @@ def decode_and_score_rollout(
         if name not in codecs:
             continue
         codec = codecs[name]
+        _n_bins, missing_code, _vocab = framecache.codec_vocab(codec)
         is_present = True if present is None else bool(present.get(name, True))
         cs = shot_data.get(name) if is_present else None
-        truth_phys, times_s, n_samp = _align_truth_to_window(
+        truth_phys, times_s, sample_f = _align_truth_to_window(
             cs, stats[name], t0=t0, n_frames=n_frames, dt_frame=dt_frame
         )
-        if truth_phys is None or not is_present:
+        if truth_phys is None or sample_f is None or not is_present:
             decoded[name] = {
                 "present": False,
-                "times_s": t0 + np.arange(n_frames, dtype=np.float64) * dt_frame,
+                "times_s": framecache.sample_times(n_frames, t0, dt_frame),
                 "truth": None,
                 "ceiling": None,
                 "rollout": None,
             }
-            metrics[name] = {"rollout_nrmse": float("nan"), "ceiling_nrmse": float("nan")}
+            metrics[name] = {
+                "rollout_nrmse": float("nan"),
+                "ceiling_nrmse": float("nan"),
+                "pred_coverage": float("nan"),
+                "ceil_coverage": float("nan"),
+                "pred_missing_frac": float("nan"),
+                "ceil_missing_frac": float("nan"),
+            }
             continue
 
         ceil_phys, sample_f = _decode_aligned(
-            codec, rollout.gt_codes[name], cs, t0, n_frames, dt_frame, n_samp
+            codec, rollout.gt_codes[name], sample_f, n_frames, dt_frame
         )
         pred_phys, _ = _decode_aligned(
-            codec, rollout.pred_codes[name], cs, t0, n_frames, dt_frame, n_samp
+            codec, rollout.pred_codes[name], sample_f, n_frames, dt_frame
         )
         pred_sel = sample_f >= k0
+        global_std = _resolve_global_std(name, signal_stds, stats[name], codec)
+        pred_miss = _missing_token_frac(rollout.pred_codes[name], k0, n_frames, missing_code)
+        ceil_miss = _missing_token_frac(rollout.gt_codes[name], k0, n_frames, missing_code)
         if pred_sel.any():
-            r_nrmse = _nrmse(pred_phys[..., pred_sel], truth_phys[..., pred_sel])
-            c_nrmse = _nrmse(ceil_phys[..., pred_sel], truth_phys[..., pred_sel])
+            gt_p = truth_phys[..., pred_sel]
+            pr_p = pred_phys[..., pred_sel]
+            ce_p = ceil_phys[..., pred_sel]
+            sf_p = sample_f[pred_sel]
+            r_nrmse = _nrmse_global(pr_p, gt_p, global_std)
+            c_nrmse = _nrmse_global(ce_p, gt_p, global_std)
+            pred_cov = _frame_channel_coverage(pr_p, gt_p, sf_p, k0, n_frames)
+            ceil_cov = _frame_channel_coverage(ce_p, gt_p, sf_p, k0, n_frames)
         else:
-            r_nrmse = c_nrmse = float("nan")
+            r_nrmse = c_nrmse = pred_cov = ceil_cov = float("nan")
+
         decoded[name] = {
             "present": True,
             "times_s": times_s,
@@ -240,7 +291,14 @@ def decode_and_score_rollout(
             "ceiling": ceil_phys,
             "rollout": pred_phys,
         }
-        metrics[name] = {"rollout_nrmse": r_nrmse, "ceiling_nrmse": c_nrmse}
+        metrics[name] = {
+            "rollout_nrmse": r_nrmse,
+            "ceiling_nrmse": c_nrmse,
+            "pred_coverage": pred_cov,
+            "ceil_coverage": ceil_cov,
+            "pred_missing_frac": pred_miss,
+            "ceil_missing_frac": ceil_miss,
+        }
     return decoded, metrics
 
 
@@ -355,7 +413,39 @@ def plot_shot_rollout(
         ax.axvline(t_seed_end_ms, color="0.35", ls="--", lw=0.9, zorder=4)
 
         ylabel = f"{spec.label}\n({spec.unit})" if spec.unit else spec.label
+        s = spec.scale
+        show_cf = (
+            spec.name == "summary-power_nbi"
+            and actuator_mode != "real"
+            and cf_nbi is not None
+            and len(cf_nbi) > int(k0)
+        )
         if not entry["present"] or entry["truth"] is None:
+            if show_cf:
+                pred_idx = np.arange(int(k0), len(cf_nbi))
+                f_times_ms = (float(t0) + (pred_idx + 0.5) * float(dt_frame)) * 1e3
+                (cf_line,) = ax.plot(
+                    f_times_ms,
+                    cf_nbi[pred_idx] * s,
+                    color="#1F77B4",
+                    lw=1.35,
+                    ls=":",
+                    label=f"Actuator ({actuator_mode})",
+                    zorder=5,
+                )
+                ax.legend(
+                    handles=[cf_line],
+                    loc="upper left",
+                    fontsize=8,
+                    frameon=True,
+                    framealpha=0.85,
+                    edgecolor="none",
+                )
+                ax.set_ylabel(ylabel, fontsize=9)
+                ax.grid(alpha=0.25, lw=0.5)
+                ax.spines["top"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                continue
             ax.set_facecolor("0.95")
             ax.text(
                 0.5, 0.5, "not recorded", transform=ax.transAxes,
@@ -369,16 +459,22 @@ def plot_shot_rollout(
         gt_1d, ceil_1d, roll_1d, ch_tag = _reduce_for_panel(
             entry["truth"], entry["ceiling"], entry["rollout"]
         )
-        s = spec.scale
         ax.plot(times_ms, gt_1d * s, color="#111111", lw=1.35, label="Ground truth", zorder=2)
         ax.plot(times_ms, ceil_1d * s, color="0.52", lw=1.05, ls="--", label="Tokenizer ceiling", zorder=3)
         ax.plot(times_ms, roll_1d * s, color="#D62728", lw=1.15, alpha=0.9, label="Rollout", zorder=4)
 
-        if spec.name == "summary-power_nbi" and actuator_mode != "real" and cf_nbi is not None:
-            f_times_ms = (float(t0) + (np.arange(len(cf_nbi)) + 0.5) * float(dt_frame)) * 1e3
-            ax.plot(
-                f_times_ms, cf_nbi * s, color="#1F77B4", lw=1.25, ls=":",
-                label=f"Actuator ({actuator_mode})", zorder=5,
+        cf_line = None
+        if show_cf:
+            pred_idx = np.arange(int(k0), len(cf_nbi))
+            f_times_ms = (float(t0) + (pred_idx + 0.5) * float(dt_frame)) * 1e3
+            (cf_line,) = ax.plot(
+                f_times_ms,
+                cf_nbi[pred_idx] * s,
+                color="#1F77B4",
+                lw=1.35,
+                ls=":",
+                label=f"Actuator ({actuator_mode})",
+                zorder=5,
             )
 
         ax.set_ylabel(ylabel, fontsize=9)
@@ -405,6 +501,15 @@ def plot_shot_rollout(
             )
         if idx == 0:
             ax.legend(loc="upper left", ncol=4, fontsize=8, frameon=True, framealpha=0.85, edgecolor="none")
+        elif cf_line is not None:
+            ax.legend(
+                handles=[cf_line],
+                loc="upper left",
+                fontsize=8,
+                frameon=True,
+                framealpha=0.85,
+                edgecolor="none",
+            )
 
     axes[-1].set_xlim(t_start_ms, t_end_ms)
     axes[-1].set_xlabel("Time (ms)", fontsize=10)

@@ -19,7 +19,6 @@ Each cached shot ``{shot}.pt`` holds:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
@@ -39,6 +38,11 @@ DT_FRAME: float = frames.FRAME_S
 MIN_CACHED_FRAMES: int = 8      # matches train_dynamics._MIN_CACHED_FRAMES
 PLACEHOLDER_CODE: int = 0       # matches train_dynamics._PLACEHOLDER_CODE
 
+# Cuts the pre-breakdown vacuum and the post-termination tail, which are not
+# plasma dynamics; DIII-D IGNITE likewise starts its frames at 1.0 s.
+PLASMA_IP_THRESHOLD_A: float = 50_000.0
+PLASMA_IP_SIGNAL: str = "summary-ip"
+
 
 @dataclass(frozen=True)
 class ActuatorStats:
@@ -50,13 +54,16 @@ class ActuatorStats:
     sd: np.ndarray
     n_train_shots: int
     n_valid_frames: np.ndarray
+    compress: tuple[str, ...] = ()
+    mu_phys: np.ndarray | None = None
+    sd_phys: np.ndarray | None = None
 
     @property
     def total_dim(self) -> int:
         return int(sum(self.channels))
 
     def to_manifest_dict(self) -> dict:
-        return {
+        doc = {
             "names": list(self.names),
             "channels": [int(c) for c in self.channels],
             "total_dim": self.total_dim,
@@ -65,9 +72,39 @@ class ActuatorStats:
             "n_train_shots": int(self.n_train_shots),
             "n_valid_frames": [int(x) for x in self.n_valid_frames],
         }
+        if self.compress:
+            doc["compress"] = list(self.compress)
+        if self.mu_phys is not None:
+            doc["mu_phys"] = [
+                float(x) if math.isfinite(float(x)) else None for x in self.mu_phys
+            ]
+        if self.sd_phys is not None:
+            doc["sd_phys"] = [
+                float(x) if math.isfinite(float(x)) else None for x in self.sd_phys
+            ]
+        return doc
 
     @classmethod
     def from_manifest_dict(cls, doc: Mapping) -> ActuatorStats:
+        compress = tuple(str(c) for c in doc.get("compress", ()))
+        mu_phys_raw = doc.get("mu_phys")
+        sd_phys_raw = doc.get("sd_phys")
+        mu_phys = (
+            np.asarray(
+                [float("nan") if x is None else float(x) for x in mu_phys_raw],
+                dtype=np.float64,
+            )
+            if mu_phys_raw is not None
+            else None
+        )
+        sd_phys = (
+            np.asarray(
+                [float("nan") if x is None else float(x) for x in sd_phys_raw],
+                dtype=np.float64,
+            )
+            if sd_phys_raw is not None
+            else None
+        )
         return cls(
             names=tuple(doc["names"]),
             channels=tuple(int(c) for c in doc["channels"]),
@@ -75,6 +112,9 @@ class ActuatorStats:
             sd=np.asarray(doc["sd"], dtype=np.float64),
             n_train_shots=int(doc["n_train_shots"]),
             n_valid_frames=np.asarray(doc["n_valid_frames"], dtype=np.int64),
+            compress=compress,
+            mu_phys=mu_phys,
+            sd_phys=sd_phys,
         )
 
 
@@ -148,47 +188,68 @@ def codec_vocab(codec: tok_codecs.Codec) -> tuple[int, int, int]:
     return n_bins, missing_code, n_bins + 1
 
 
+def sample_times(t_len: int, t0: float, dt: float) -> np.ndarray:
+    """Sample centre times ``t0 + (i + 0.5) * dt`` in seconds."""
+    return float(t0) + (np.arange(int(t_len), dtype=np.float64) + 0.5) * float(dt)
+
+
+def sample_frame_index(
+    t_len: int,
+    sig_t0: float,
+    sig_dt: float,
+    window_t0: float,
+    dt_frame: float = DT_FRAME,
+) -> np.ndarray:
+    """Frame index of each sample relative to ``window_t0``, using sample centres."""
+    ts = sample_times(t_len, sig_t0, sig_dt)
+    return np.floor((ts - float(window_t0)) / float(dt_frame)).astype(np.int64)
+
+
 def plasma_frame_range(
     shot_data: Mapping[str, cache.CachedSignal | None],
-    plasma_names: Sequence[str],
+    ip_stats: transform.ChannelStats,
+    *,
+    ip_threshold_a: float = PLASMA_IP_THRESHOLD_A,
     dt_frame: float = DT_FRAME,
-) -> tuple[float, float, int, int, int] | None:
-    """First to last 5 ms frame where any non-actuator plasma signal is valid.
+) -> tuple[tuple[float, float, int, int, int] | None, str]:
+    """First to last 5 ms frame where ``|frame_mean(summary-ip)| >= ip_threshold_a``.
 
-    Returns ``(t0_ref, t0, f_start, f_end, n_frames)`` where ``t0_ref`` is the
-    minimum ``t0`` among valid plasma signals, ``f_start`` and ``f_end`` are
-    inclusive frame indices relative to ``t0_ref``, ``n_frames = f_end - f_start + 1``
-    and ``t0 = t0_ref + f_start * dt_frame``. Returns ``None`` if no plasma signal
-    has any finite sample.
+    Returns ``((t0_ref, t0, f_start, f_end, n_frames), "ok")`` where ``t0_ref`` is
+    ``summary-ip.t0``, ``f_start`` and ``f_end`` are inclusive frame indices relative
+    to ``t0_ref``, ``n_frames = f_end - f_start + 1``, and
+    ``t0 = t0_ref + f_start * dt_frame``. Returns ``(None, reason)`` if ``summary-ip``
+    is absent/all-NaN (``"no_summary_ip"``) or never reaches the plasma current
+    threshold (``"no_plasma_above_ip_threshold"``).
     """
-    t0_ref = math.inf
-    t_min = math.inf
-    t_max = -math.inf
-    for name in plasma_names:
-        cs = shot_data.get(name)
-        if cs is None:
-            continue
-        t_len = cs.values.shape[-1]
-        if t_len == 0:
-            continue
-        any_fin = np.isfinite(cs.values).reshape(-1, t_len).any(axis=0)
-        if not any_fin.any():
-            continue
-        if cs.t0 < t0_ref:
-            t0_ref = float(cs.t0)
-        i0 = int(np.argmax(any_fin))
-        i1 = int(t_len - 1 - np.argmax(any_fin[::-1]))
-        t_min = min(t_min, float(cs.t0) + i0 * float(cs.dt))
-        t_max = max(t_max, float(cs.t0) + i1 * float(cs.dt))
-    if not math.isfinite(t_min) or not math.isfinite(t0_ref):
-        return None
-    f_start = max(0, int(math.floor((t_min - t0_ref + 1e-9) / dt_frame)))
-    f_end = int(math.floor((t_max - t0_ref + 1e-9) / dt_frame))
-    if f_end < f_start:
-        return None
+    cs_ip = shot_data.get(PLASMA_IP_SIGNAL)
+    if cs_ip is None or cs_ip.values.shape[-1] == 0:
+        return None, "no_summary_ip"
+    t_len = int(cs_ip.values.shape[-1])
+    ip_phys = transform.to_physical(cs_ip.values, ip_stats).reshape(-1, t_len)
+    ip_1d = ip_phys[0]
+    ok = np.isfinite(ip_1d)
+    if not ok.any():
+        return None, "no_summary_ip"
+
+    t0_ref = float(cs_ip.t0)
+    fi = sample_frame_index(t_len, cs_ip.t0, cs_ip.dt, t0_ref, dt_frame=dt_frame)
+    n_total = int(fi[-1]) + 1
+    sums = np.zeros(n_total, dtype=np.float64)
+    counts = np.zeros(n_total, dtype=np.int64)
+    np.add.at(sums, fi, np.where(ok, ip_1d, 0.0))
+    np.add.at(counts, fi, ok.astype(np.int64))
+    has = counts > 0
+    means = np.divide(
+        sums, counts, out=np.full(n_total, np.nan, dtype=np.float64), where=has
+    )
+    active = np.flatnonzero(has & (np.abs(means) >= float(ip_threshold_a)))
+    if active.size == 0:
+        return None, "no_plasma_above_ip_threshold"
+    f_start = int(active[0])
+    f_end = int(active[-1])
     n_frames = f_end - f_start + 1
-    t0 = t0_ref + f_start * dt_frame
-    return t0_ref, t0, f_start, f_end, n_frames
+    t0 = t0_ref + f_start * float(dt_frame)
+    return (t0_ref, t0, f_start, f_end, n_frames), "ok"
 
 
 def raw_actuator_frames(
@@ -214,8 +275,7 @@ def raw_actuator_frames(
             continue
         vals = np.asarray(cs.values, dtype=np.float64).reshape(n_ch, -1)
         t_len = vals.shape[1]
-        ts = float(cs.t0) + (np.arange(t_len, dtype=np.float64) + 0.5) * float(cs.dt)
-        fi = np.floor((ts - float(t0)) / dt_frame).astype(np.int64)
+        fi = sample_frame_index(t_len, cs.t0, cs.dt, t0, dt_frame=dt_frame)
         in_range = (fi >= 0) & (fi < n_frames)
         if not in_range.any():
             cols_mean.append(np.full((n_frames, n_ch), np.nan, dtype=np.float64))
@@ -267,38 +327,107 @@ def _chan_merge(
     return n_tot, mean, m2
 
 
-def shot_actuator_moments(
+def compose_physical_actuator_stats(
+    act_stats: ActuatorStats,
+    stats: Mapping[str, transform.ChannelStats],
+) -> tuple[tuple[str, ...], np.ndarray, np.ndarray]:
+    """Compose model-unit actuator z-score stats into physical units for linear actuators.
+
+    For ``compress == "none"``: ``mu_phys = mu * st.std + st.mean``, ``sd_phys = sd * st.std``.
+    For ``compress == "asinh"``: ``mu_phys`` and ``sd_phys`` are ``NaN`` (linear physical
+    counterfactual edits are invalid in asinh space and rejected by ``layout``).
+    """
+    compress: list[str] = []
+    mu_phys = np.full(act_stats.total_dim, np.nan, dtype=np.float64)
+    sd_phys = np.full(act_stats.total_dim, np.nan, dtype=np.float64)
+    offset = 0
+    for name, n_ch in zip(act_stats.names, act_stats.channels):
+        st = stats[name]
+        compress.append(str(st.compress))
+        if st.compress == "none":
+            st_mean = np.asarray(st.mean, dtype=np.float64).reshape(n_ch)
+            st_std = np.asarray(st.std, dtype=np.float64).reshape(n_ch)
+            mu_phys[offset : offset + n_ch] = (
+                act_stats.mu[offset : offset + n_ch] * st_std + st_mean
+            )
+            sd_phys[offset : offset + n_ch] = (
+                act_stats.sd[offset : offset + n_ch] * st_std
+            )
+        offset += n_ch
+    return tuple(compress), mu_phys, sd_phys
+
+
+def shot_training_moments(
     shot_path: Path,
     act_specs: Sequence[tasks.SignalSpec],
-    plasma_names: Sequence[str],
+    modality_order: Sequence[str],
+    stats: Mapping[str, transform.ChannelStats],
+    *,
     stats_sha256: str | None = None,
+    ip_threshold_a: float = PLASMA_IP_THRESHOLD_A,
     dt_frame: float = DT_FRAME,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    """Per-channel ``(count, mean, M2)`` of valid actuator frames for one shot."""
-    needed = sorted(set(plasma_names) | {s.name for s in act_specs})
+    min_frames: int = MIN_CACHED_FRAMES,
+) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray, np.ndarray]] | None:
+    """Compute actuator model-unit moments and per-signal physical moments on one training shot."""
+    needed = sorted(
+        {PLASMA_IP_SIGNAL} | set(modality_order) | {s.name for s in act_specs}
+    )
     shot_data = cache.read_shot(Path(shot_path), needed, stats_sha256=stats_sha256)
-    span = plasma_frame_range(shot_data, plasma_names, dt_frame=dt_frame)
+    span, _reason = plasma_frame_range(
+        shot_data,
+        stats[PLASMA_IP_SIGNAL],
+        ip_threshold_a=ip_threshold_a,
+        dt_frame=dt_frame,
+    )
     if span is None:
         return None
     _t0_ref, t0, _f_start, _f_end, n_frames = span
-    if n_frames < MIN_CACHED_FRAMES:
+    if n_frames < min_frames:
         return None
+
     means, valid = raw_actuator_frames(
         shot_data, act_specs, t0=t0, n_frames=n_frames, dt_frame=dt_frame
     )
     n_ch = means.shape[1]
-    count = valid.sum(axis=0).astype(np.int64)
-    has = count > 0
+    act_count = valid.sum(axis=0).astype(np.int64)
+    has = act_count > 0
     sums = np.where(valid, means, 0.0).sum(axis=0)
-    mean = np.divide(sums, count, out=np.zeros(n_ch, dtype=np.float64), where=has)
-    diff = np.where(valid, means - mean[None, :], 0.0)
-    m2 = (diff ** 2).sum(axis=0)
-    return count, mean, m2
+    act_mean = np.divide(sums, act_count, out=np.zeros(n_ch, dtype=np.float64), where=has)
+    diff = np.where(valid, means - act_mean[None, :], 0.0)
+    act_m2 = (diff ** 2).sum(axis=0)
+
+    n_sig = len(modality_order)
+    sig_count = np.zeros(n_sig, dtype=np.int64)
+    sig_mean = np.zeros(n_sig, dtype=np.float64)
+    sig_m2 = np.zeros(n_sig, dtype=np.float64)
+    for i, name in enumerate(modality_order):
+        cs = shot_data.get(name)
+        if cs is None or cs.values.shape[-1] == 0:
+            continue
+        fi = sample_frame_index(cs.values.shape[-1], cs.t0, cs.dt, t0, dt_frame=dt_frame)
+        keep = (fi >= 0) & (fi < n_frames)
+        if not keep.any():
+            continue
+        idx = np.flatnonzero(keep)
+        lo, hi = int(idx[0]), int(idx[-1]) + 1
+        phys = transform.to_physical(cs.values[..., lo:hi], stats[name])
+        ok = np.isfinite(phys)
+        if not ok.any():
+            continue
+        vals = phys[ok].astype(np.float64)
+        c = int(vals.size)
+        m = float(vals.mean())
+        sig_count[i] = c
+        sig_mean[i] = m
+        sig_m2[i] = float(np.sum((vals - m) ** 2))
+
+    return (act_count, act_mean, act_m2), (sig_count, sig_mean, sig_m2)
 
 
 def finalize_actuator_stats(
     act_specs: Sequence[tasks.SignalSpec],
     moments: Sequence[tuple[np.ndarray, np.ndarray, np.ndarray]],
+    stats: Mapping[str, transform.ChannelStats] | None = None,
 ) -> ActuatorStats:
     """Combine per-shot ``(count, mean, M2)`` tuples into global :class:`ActuatorStats`."""
     names = tuple(s.name for s in act_specs)
@@ -316,7 +445,7 @@ def finalize_actuator_stats(
     )
     sd = np.sqrt(np.maximum(var, 0.0))
     sd = np.where((acc_n > 0) & (sd > 0.0), sd, 1.0)
-    return ActuatorStats(
+    base = ActuatorStats(
         names=names,
         channels=channels,
         mu=acc_mean,
@@ -324,6 +453,41 @@ def finalize_actuator_stats(
         n_train_shots=n_shots,
         n_valid_frames=acc_n,
     )
+    if stats is None:
+        return base
+    compress, mu_phys, sd_phys = compose_physical_actuator_stats(base, stats)
+    return ActuatorStats(
+        names=base.names,
+        channels=base.channels,
+        mu=base.mu,
+        sd=base.sd,
+        n_train_shots=base.n_train_shots,
+        n_valid_frames=base.n_valid_frames,
+        compress=compress,
+        mu_phys=mu_phys,
+        sd_phys=sd_phys,
+    )
+
+
+def finalize_signal_physical_std(
+    modality_order: Sequence[str],
+    moments: Sequence[tuple[np.ndarray, np.ndarray, np.ndarray]],
+) -> dict[str, float]:
+    """Combine per-shot physical-unit ``(count, mean, M2)`` tuples into global per-signal std."""
+    n_sig = len(modality_order)
+    acc_n = np.zeros(n_sig, dtype=np.int64)
+    acc_mean = np.zeros(n_sig, dtype=np.float64)
+    acc_m2 = np.zeros(n_sig, dtype=np.float64)
+    for count, mean, m2 in moments:
+        acc_n, acc_mean, acc_m2 = _chan_merge(acc_n, acc_mean, acc_m2, count, mean, m2)
+    var = np.divide(
+        acc_m2, acc_n, out=np.full(n_sig, np.nan, dtype=np.float64), where=acc_n > 0
+    )
+    sd = np.sqrt(np.maximum(var, 0.0))
+    return {
+        str(name): (float(sd[i]) if acc_n[i] > 0 and math.isfinite(float(sd[i])) else float("nan"))
+        for i, name in enumerate(modality_order)
+    }
 
 
 def normalize_actuators(
@@ -345,15 +509,90 @@ def normalize_actuators(
     )
 
 
+def _groups_from_frame_index(
+    fi: np.ndarray, n_frames: int
+) -> list[tuple[int, np.ndarray, np.ndarray]]:
+    """Group monotonically non-decreasing frame indices ``fi`` in ``[0, n_frames)`` by frame length.
+
+    Returns ``[(length, frame_ids, first_sample_offsets)]``.
+    """
+    lens = np.bincount(fi, minlength=n_frames)
+    starts = np.concatenate([[0], np.cumsum(lens)[:-1]])
+    out: list[tuple[int, np.ndarray, np.ndarray]] = []
+    for length in np.unique(lens):
+        if length == 0:
+            continue
+        ids = np.flatnonzero(lens == length)
+        out.append((int(length), ids, starts[ids]))
+    return out
+
+
+def _encode_domain_by_frame_index(
+    codec: tok_codecs.Codec,
+    u_w: np.ndarray,
+    fi_w: np.ndarray,
+    n_frames: int,
+) -> np.ndarray:
+    """Encode domain samples ``u_w`` ``(1, *values_shape, M)`` onto frames ``fi_w`` in ``[0, n_frames)``."""
+    if isinstance(codec, tok_codecs.FrameDCT):
+        flat = np.asarray(u_w, dtype=np.float64).reshape(1, codec.n_tok, u_w.shape[-1])
+        aligned = np.full((n_frames, codec.n_tok, codec.k), np.nan, dtype=np.float64)
+        for length, ids, starts in _groups_from_frame_index(fi_w, n_frames):
+            cols = starts[:, None] + np.arange(length)
+            v = tok_codecs.dct_values(flat[:, :, cols], codec.k)  # (1, n_tok, m, k)
+            aligned[ids] = np.moveaxis(v[0], 1, 0)
+        return aligned
+
+    if isinstance(codec, tok_codecs.BandDCT):
+        u64 = np.asarray(u_w, dtype=np.float64)  # (1, P, n_bins, M)
+        p, _n_bins = codec.values_shape
+        aligned = np.full((n_frames, codec.n_tok, codec.n_val), np.nan, dtype=np.float64)
+        for length, ids, starts in _groups_from_frame_index(fi_w, n_frames):
+            cols = starts[:, None] + np.arange(length)
+            seg = u64[..., cols]  # (1, P, n_bins, m, length)
+            ok = ~np.isnan(seg)
+            count = ok.sum(-1)
+            mean = np.divide(
+                np.where(ok, seg, 0.0).sum(-1),
+                count,
+                out=np.full(count.shape, np.nan),
+                where=count > 0,
+            )  # (1, P, n_bins, m)
+            spec = np.moveaxis(
+                mean.reshape(1, p, codec.n_bands, tok_codecs.BAND_BINS, -1), -1, 2
+            )  # (1, P, m, n_bands, 32)
+            v = tok_codecs.dct_values(spec, codec.n_val)  # (1, P, m, n_bands, n_val)
+            aligned[ids] = np.moveaxis(v[0], 1, 0).reshape(
+                len(ids), codec.n_tok, codec.n_val
+            )
+        return codec._mask(aligned)
+
+    if isinstance(codec, tok_codecs.LinearCodec):
+        if len(fi_w) > 1 and (np.diff(fi_w) < 1).any():
+            raise ValueError(
+                f"{codec.name}: multiple samples fell in one frame for LinearCodec"
+            )
+        vals_local = codec.encode_domain(u_w)[0]
+        f_local = codec._frame_of_sample(u_w.shape[-1])
+        aligned = np.full((n_frames, codec.n_tok, codec.n_val), np.nan, dtype=np.float64)
+        aligned[fi_w] = vals_local[f_local]
+        return aligned
+
+    raise TypeError(f"unsupported codec type for time-aligned encoding: {type(codec).__name__}")
+
+
 def encode_signal_codes(
     codec: tok_codecs.Codec,
     cs: cache.CachedSignal | None,
-    t0_ref: float,
-    f_start: int,
+    t0: float,
     n_frames: int,
     dt_frame: float = DT_FRAME,
 ) -> tuple[torch.Tensor, bool]:
-    """Encode one cached signal onto frames ``[f_start, f_start + n_frames)``.
+    """Encode one cached signal onto the ``n_frames`` window starting at ``t0``.
+
+    Samples are assigned to frames by sample centre time ``cs.t0 + (i + 0.5) * cs.dt``
+    relative to ``t0`` (no rounded start offset), eliminating sub-frame drift such as
+    Mirnov's +1.022 ms start offset.
 
     Returns ``(codes_int32[n_frames, n_tok * n_val], is_present)``.
     Absent or all-invalid signals return ``PLACEHOLDER_CODE`` frames and ``False``.
@@ -368,25 +607,28 @@ def encode_signal_codes(
             torch.full((n_frames, n_flat), PLACEHOLDER_CODE, dtype=torch.int32),
             False,
         )
-    vals = codec.encode_domain(codec.domain_from_model(cs.values[None]))[0]
-    f_sig = vals.shape[0]
-    sig_offset = int(round((float(cs.t0) - float(t0_ref)) / dt_frame))
-    aligned = np.full((n_frames, codec.n_tok, codec.n_val), np.nan, dtype=np.float64)
-    # Source frames [src_lo, src_hi) map to destination frames [dst_lo, dst_hi)
-    src_lo = max(0, f_start - sig_offset)
-    src_hi = min(f_sig, f_start + n_frames - sig_offset)
-    if src_hi > src_lo:
-        dst_lo = src_lo + sig_offset - f_start
-        dst_hi = dst_lo + (src_hi - src_lo)
-        aligned[dst_lo:dst_hi] = vals[src_lo:src_hi]
+
+    t_len = int(cs.values.shape[-1])
+    fi = sample_frame_index(t_len, cs.t0, cs.dt, t0, dt_frame=dt_frame)
+    keep = (fi >= 0) & (fi < n_frames)
+    if not keep.any():
+        return (
+            torch.full((n_frames, n_flat), PLACEHOLDER_CODE, dtype=torch.int32),
+            False,
+        )
+    idx = np.flatnonzero(keep)
+    lo, hi = int(idx[0]), int(idx[-1]) + 1
+    u_w = codec.domain_from_model(cs.values[None, ..., lo:hi])
+    aligned = _encode_domain_by_frame_index(codec, u_w, fi[lo:hi], n_frames)
+
     if not np.isfinite(aligned).any():
         return (
             torch.full((n_frames, n_flat), PLACEHOLDER_CODE, dtype=torch.int32),
             False,
         )
     _n_bins, missing_code, _vocab = codec_vocab(codec)
-    idx = codec.grids.index(aligned)  # (n_frames, n_tok, n_val), -1 where NaN
-    code_arr = np.where(idx < 0, missing_code, idx).reshape(n_frames, n_flat)
+    idx_q = codec.grids.index(aligned)  # (n_frames, n_tok, n_val), -1 where NaN
+    code_arr = np.where(idx_q < 0, missing_code, idx_q).reshape(n_frames, n_flat)
     return torch.from_numpy(code_arr.astype(np.int32)), True
 
 
@@ -402,16 +644,81 @@ def samples_for_frames(n_frames: int, dt: float, dt_frame: float = DT_FRAME) -> 
     return est
 
 
+def _neutralize_dropped(codec: tok_codecs.Codec, dec_vals: np.ndarray) -> np.ndarray:
+    """Set positions a codec drops to 0.0 before ``codec.read`` so stray missing codes cannot poison kept values."""
+    if isinstance(codec, tok_codecs.BandDCT):
+        return np.where(codec._keep[None, :, :], dec_vals, 0.0)
+    if isinstance(codec, tok_codecs.LinearCodec) and codec.n_values > 0:
+        keep = (codec.eigenvalues[: codec.n_values] > 0).reshape(codec.n_tok, codec.n_val)
+        if not keep.all():
+            return np.where(keep[None, :, :], dec_vals, 0.0)
+    return dec_vals
+
+
+def _decode_domain_by_frame_index(
+    codec: tok_codecs.Codec,
+    dec_vals: np.ndarray,
+    fi: np.ndarray,
+    n_frames: int,
+) -> np.ndarray:
+    """Decode ``dec_vals`` ``(1, n_frames, n_tok, n_val)`` onto samples with frame indices ``fi``."""
+    n_samp = len(fi)
+    if isinstance(codec, tok_codecs.FrameDCT):
+        out = np.full((1, codec.n_tok, n_samp), np.nan, dtype=np.float64)
+        for length, ids, starts in _groups_from_frame_index(fi, n_frames):
+            cols = starts[:, None] + np.arange(length)
+            v_grp = np.moveaxis(dec_vals[:, ids], 1, 2)  # (1, n_tok, m, k)
+            if length < v_grp.shape[-1]:
+                v_grp = v_grp.copy()
+                v_grp[..., length:] = 0.0
+            out[:, :, cols] = tok_codecs.dct_decode(v_grp, length)
+        return codec.from_domain(out.reshape((1,) + codec.values_shape + (n_samp,)))[0]
+
+    if isinstance(codec, tok_codecs.BandDCT):
+        p, n_bins = codec.values_shape
+        out = np.full((1, p, n_bins, n_samp), np.nan, dtype=np.float64)
+        for length, ids, starts in _groups_from_frame_index(fi, n_frames):
+            cols = starts[:, None] + np.arange(length)
+            d = tok_codecs.dct_decode(
+                dec_vals[:, ids].reshape(1, len(ids), p, codec.n_bands, dec_vals.shape[3]),
+                tok_codecs.BAND_BINS,
+            )
+            spec = np.moveaxis(d.reshape(1, len(ids), p, n_bins), 1, -1)
+            out[..., cols] = spec[..., None]
+        return codec.from_domain(out)[0]
+
+    if isinstance(codec, tok_codecs.LinearCodec):
+        if codec.n_values == 0:
+            dom = np.broadcast_to(
+                codec.profile_mean.reshape(codec.values_shape + (1,)),
+                codec.values_shape + (n_samp,),
+            ).copy()
+        else:
+            a = dec_vals[0, fi].reshape(n_samp, codec.n_values)
+            dom = codec.profile_mean + a @ codec.basis[: codec.n_values]
+            dom = np.moveaxis(dom, 0, 1).reshape(codec.values_shape + (n_samp,))
+        return codec.from_domain(dom[None])[0]
+
+    raise TypeError(f"unsupported codec type for time-aligned decoding: {type(codec).__name__}")
+
+
 def decode_signal_codes(
     codec: tok_codecs.Codec,
     codes: torch.Tensor | np.ndarray,
     n_samples: int | None = None,
     dt_frame: float = DT_FRAME,
+    sample_frame_idx: np.ndarray | None = None,
 ) -> np.ndarray:
     """Decode ``(F, n_tok * n_val)`` bin codes back to physical units ``(*values_shape, n_samples)``.
 
     Codes ``0 .. n_bins - 1`` map to the codec's grid centres; ``missing_code``
-    (``>= n_bins`` or ``< 0``) maps to ``NaN``.
+    (``>= n_bins`` or ``< 0``) maps to ``NaN`` at kept positions. Positions dropped
+    by the codec (e.g. ``BandDCT`` coefficients beyond ``k[band]``) are neutralized
+    to ``0.0`` before ``codec.read`` so a stray missing code there cannot wipe a band.
+
+    When ``sample_frame_idx`` is provided (monotonically non-decreasing frame indices
+    in ``[0, F)`` for each output sample), samples are decoded onto that exact frame
+    mapping instead of ``frames.frame_index(n_samples, codec.dt)``.
     """
     arr = codes.detach().cpu().numpy() if isinstance(codes, torch.Tensor) else np.asarray(codes)
     if arr.ndim != 2 or arr.shape[1] != codec.n_tok * codec.n_val:
@@ -427,7 +734,11 @@ def decode_signal_codes(
     tok_i = np.arange(codec.n_tok)[None, :, None]
     val_i = np.arange(codec.n_val)[None, None, :]
     dec_vals = np.where(valid, centres[tok_i, val_i, safe], np.nan)
+    dec_vals = _neutralize_dropped(codec, dec_vals)
     dec_vals = codec.read(dec_vals[None], "unquantized")
+    if sample_frame_idx is not None:
+        fi = np.asarray(sample_frame_idx, dtype=np.int64)
+        return _decode_domain_by_frame_index(codec, dec_vals, fi, n_frames)
     if n_samples is None:
         n_samples = samples_for_frames(n_frames, codec.dt, dt_frame=dt_frame)
     return codec.decode(dec_vals, int(n_samples))[0]
@@ -439,23 +750,31 @@ def encode_shot(
     modality_order: Sequence[str],
     act_specs: Sequence[tasks.SignalSpec],
     act_stats: ActuatorStats,
-    plasma_names: Sequence[str],
+    stats: Mapping[str, transform.ChannelStats],
     *,
     stats_sha256: str | None = None,
+    ip_threshold_a: float = PLASMA_IP_THRESHOLD_A,
     dt_frame: float = DT_FRAME,
     min_frames: int = MIN_CACHED_FRAMES,
 ) -> tuple[dict | None, str]:
     """Encode one MAST cache-v1 HDF5 shot into a Phase-B frame-code cache entry.
 
     Returns ``(entry, "ok")`` or ``(None, reason)`` where ``reason`` is
-    ``"no_plasma_data"`` or ``"too_short"``.
+    ``"no_summary_ip"``, ``"no_plasma_above_ip_threshold"``, or ``"too_short"``.
     """
-    needed = sorted(set(modality_order) | set(plasma_names) | {s.name for s in act_specs})
+    needed = sorted(
+        {PLASMA_IP_SIGNAL} | set(modality_order) | {s.name for s in act_specs}
+    )
     shot_data = cache.read_shot(Path(shot_path), needed, stats_sha256=stats_sha256)
-    span = plasma_frame_range(shot_data, plasma_names, dt_frame=dt_frame)
+    span, reason = plasma_frame_range(
+        shot_data,
+        stats[PLASMA_IP_SIGNAL],
+        ip_threshold_a=ip_threshold_a,
+        dt_frame=dt_frame,
+    )
     if span is None:
-        return None, "no_plasma_data"
-    t0_ref, t0, f_start, _f_end, n_frames = span
+        return None, reason
+    _t0_ref, t0, _f_start, _f_end, n_frames = span
     if n_frames < min_frames:
         return None, "too_short"
 
@@ -466,7 +785,7 @@ def encode_shot(
         codec = codecs[name]
         _n_bins, _missing_code, vocab = codec_vocab(codec)
         sig_codes, is_present = encode_signal_codes(
-            codec, shot_data.get(name), t0_ref, f_start, n_frames, dt_frame=dt_frame
+            codec, shot_data.get(name), t0, n_frames, dt_frame=dt_frame
         )
         codes[name] = sig_codes
         vocabs[name] = vocab
@@ -505,10 +824,26 @@ def build_manifest(
     fit_sha256: str,
     cache_root: Path,
     stats_sha256: str,
+    stats: Mapping[str, transform.ChannelStats] | None = None,
+    signal_physical_std: Mapping[str, float] | None = None,
+    plasma_ip_threshold_a: float = PLASMA_IP_THRESHOLD_A,
     dt_frame: float = DT_FRAME,
     t0_start: float = 0.0,
 ) -> dict:
     """Build the ``_codec_manifest.json`` payload for a MAST frame-code cache."""
+    if stats is not None and (act_stats.mu_phys is None or act_stats.sd_phys is None):
+        compress, mu_phys, sd_phys = compose_physical_actuator_stats(act_stats, stats)
+        act_stats = ActuatorStats(
+            names=act_stats.names,
+            channels=act_stats.channels,
+            mu=act_stats.mu,
+            sd=act_stats.sd,
+            n_train_shots=act_stats.n_train_shots,
+            n_valid_frames=act_stats.n_valid_frames,
+            compress=compress,
+            mu_phys=mu_phys,
+            sd_phys=sd_phys,
+        )
     modalities: dict[str, dict] = {}
     bin_counts: set[int] = set()
     for spec in signals:
@@ -526,11 +861,18 @@ def build_manifest(
             "codec_n_tok": int(codec.n_tok),
             "codec_n_val": int(codec.n_val),
         }
+    phys_std_doc: dict[str, float | None] = {}
+    if signal_physical_std is not None:
+        for name in modalities:
+            val = signal_physical_std.get(name, float("nan"))
+            phys_std_doc[name] = float(val) if math.isfinite(float(val)) else None
     return {
         "t0_start": float(t0_start),
         "dt_frame": float(dt_frame),
+        "plasma_ip_threshold_A": float(plasma_ip_threshold_a),
         "modalities": modalities,
         "actuators": act_stats.to_manifest_dict(),
+        "signal_physical_std": phys_std_doc,
         "assignment_name": Path(assignment_path).stem,
         "assignment_path": str(Path(assignment_path).resolve()),
         "assignment_sha256": str(assignment_sha256),
@@ -555,14 +897,17 @@ def build_manifest(
                 "present signal (dead channels, pre/post-EFIT or TS frames, absent "
                 "X-point) receive a dedicated missing_code = n_bins (64) with "
                 "codebook_size = n_bins + 1 (65) so missing values are never collapsed "
-                "to bin 0 and decode back to NaN. MaskGIT's [MASK] id is codebook_size "
-                "(65)."
+                "to bin 0 and decode back to NaN at kept positions. MaskGIT's [MASK] "
+                "id is codebook_size (65)."
             ),
             "frame_range": (
-                "Frames run on a 5 ms grid from the shot's first to last frame where "
-                "any non-actuator plasma signal has a valid (finite) sample in cache "
-                "v1. Per-shot frame-0 time is stored in each {shot}.pt as 't0'; "
-                "t0_start=0.0 is recorded for dev-peter's manifest reader."
+                f"Frames run on a 5 ms grid from the shot's first to last frame "
+                f"(inclusive) where |frame_mean(summary-ip)| >= {plasma_ip_threshold_a:g} A "
+                "in physical units, cutting the pre-breakdown vacuum and post-termination "
+                "tail (analogous to DIII-D IGNITE starting at 1.0 s). Samples are assigned "
+                "to frames by sample centre time t0 + (i + 0.5) * dt. Per-shot frame-0 "
+                "time is stored in each {shot}.pt as 't0'; t0_start=0.0 is recorded for "
+                "dev-peter's manifest reader."
             ),
             "modalities_scope": (
                 f"All {len(modalities)} signals with a codec in the assignment are "
@@ -573,8 +918,9 @@ def build_manifest(
                 "Union of task.actuators across all 14 TokaMark tasks in sorted order "
                 "(5 signals, 8 channels). Each frame holds the per-frame mean in "
                 "cache-v1 model units, z-scored with global mean/sd fitted over "
-                "training shots only. Invalid actuator frames are set to 0 after "
-                "z-scoring and recorded in 'actuator_valid'."
+                "training shots' plasma frames only. Invalid actuator frames are set "
+                "to 0 after z-scoring and recorded in 'actuator_valid'. Composed "
+                "physical-unit stats (mu_phys, sd_phys) are stored for linear actuators."
             ),
         },
     }
@@ -591,21 +937,13 @@ def save_pt_atomic(obj: dict, path: Path) -> None:
         tmp.unlink(missing_ok=True)
 
 
-def save_json_atomic(doc: dict, path: Path) -> None:
+def save_json_atomic(doc: dict, path: Path, *, indent: int | None = 2) -> None:
     """Atomically write JSON ``doc`` to ``path``."""
     path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     try:
-        tmp.write_text(json.dumps(doc, indent=2) + "\n")
+        tmp.write_text(json.dumps(doc, indent=indent) + "\n")
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
-
-
-def file_sha256(path: Path) -> str:
-    """Hex SHA-256 of a file."""
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for block in iter(lambda: f.read(1 << 20), b""):
-            h.update(block)
-    return h.hexdigest()

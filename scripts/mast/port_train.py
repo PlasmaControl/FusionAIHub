@@ -20,6 +20,13 @@ _TOOL_FLAGS = {"--precompute", "--build_presence", "--patch_actuators", "-h", "-
 def run(argv: list[str] | None = None):
     """Apply MAST layout/split patches and invoke ``train_dynamics.main``."""
     raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if any(a == "--live_end_json" or a.startswith("--live_end_json=") for a in raw_argv):
+        raise ValueError(
+            "--live_end_json is not supported by port_train.py: the MAST cache uses "
+            "per-shot t0 and plasma-only 5 ms frame ranges, and the upstream "
+            "frame_s/t0_start live_end path is not ported."
+        )
+
     peek = argparse.ArgumentParser(add_help=False)
     peek.add_argument("--cache_dir", default=None)
     known, _rest = peek.parse_known_args(raw_argv)
