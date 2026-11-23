@@ -7,7 +7,7 @@ that the first ``k`` of them are the best ``k``-value description of the token; 
 them into bins and back. A frame with no valid sample has NaN values and decodes to NaN: no data is
 not a value.
 
-This file grows in Tasks 4 (the linear codec) and 5 (the band cosine transform).
+This file grows in Task 5 (the band cosine transform).
 """
 
 from __future__ import annotations
@@ -254,3 +254,158 @@ class FrameDCT(Codec):
             d = dct_decode(np.moveaxis(v[:, ids], 1, 2), length)     # (N, n_tok, m, length)
             out[:, :, cols] = d
         return out.reshape((v.shape[0],) + self.values_shape + (n,))
+
+
+# ------------------------------------------------------------------------------- principal components
+
+def fit_pca(x: np.ndarray, n_components: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """Principal components of rows with missing points, from every pair of valid points.
+
+    `x` is ``(N, D)``, NaN for missing, in whatever unit the caller wants the components in. Returns
+    ``(mean (D,), basis (n, D), eigenvalues (n,), total_variance)`` with ``n = min(n_components, D)``.
+    The mean of a point is over the rows where it is valid (0 if never). The covariance of two points
+    is over the rows where both are valid, about the two points' means over those same rows
+    (pairwise-complete), so a point that is never valid, or a pair never valid together, contributes 0.
+    The basis rows are orthonormal eigenvectors by decreasing eigenvalue; a negative eigenvalue (which
+    pairwise covariance can give) is set to 0. `total_variance` is the trace of the covariance.
+
+    The rows are visited in chunks: three D by D float64 sums (of ``x x``, of ``x`` over the rows where
+    the other point is valid, and of the pair counts) are kept, and `x` is never copied whole. The sums
+    are taken about each point's own mean (a first pass) so that a large mean does not cancel the
+    variance; the covariance does not depend on that shift.
+    """
+    x = np.asarray(x)
+    if x.ndim != 2:
+        raise ValueError(f"x must be (N, D), got {x.shape}")
+    n_rows, d = x.shape
+    n = min(int(n_components), d)
+    if n < 0:
+        raise ValueError(f"n_components must not be negative, got {n_components}")
+    step = max(1, 4_000_000 // max(d, 1))
+    total = np.zeros(d)
+    count = np.zeros(d)
+    for i in range(0, n_rows, step):
+        c = np.asarray(x[i:i + step], dtype=np.float64)
+        ok = np.isfinite(c)
+        total += np.where(ok, c, 0.0).sum(0)
+        count += ok.sum(0)
+    mean = np.divide(total, count, out=np.zeros(d), where=count > 0)
+    xx = np.zeros((d, d))                          # sum of x_i x_j over the rows where both are valid
+    xv = np.zeros((d, d))                          # sum of x_i over the rows where j is valid, at [i, j]
+    vv = np.zeros((d, d))                          # the number of rows where both are valid
+    for i in range(0, n_rows, step):
+        c = np.asarray(x[i:i + step], dtype=np.float64)
+        ok = np.isfinite(c)
+        z = np.where(ok, c - mean, 0.0)
+        v = ok.astype(np.float64)
+        xx += z.T @ z
+        xv += z.T @ v
+        vv += v.T @ v
+    nn = np.where(vv > 0, vv, 1.0)
+    cov = xx / nn - (xv / nn) * (xv.T / nn)
+    cov[vv == 0] = 0.0
+    cov = 0.5 * (cov + cov.T)
+    evals, evecs = np.linalg.eigh(cov)
+    order = np.argsort(evals)[::-1][:n]
+    eig = np.maximum(evals[order], 0.0)
+    return mean, evecs[:, order].T.copy(), eig, float(np.trace(cov))
+
+
+class LinearCodec(Codec):
+    """A profile or map as coefficients on principal components; one example is one sample in time.
+
+    The signal ``(*values_shape)`` at one sample is flattened row-major to ``D = prod(values_shape)``
+    points. ``n_values`` coefficients are split into ``n_tok = n_values // values_per_token`` tokens of
+    ``n_val = values_per_token`` values; token ``i`` holds components ``i * n_val`` to
+    ``(i + 1) * n_val - 1`` so a prefix of the tokens is a coarser profile. Every frame must hold one
+    sample (`ValueError` otherwise); a frame no sample falls in (``dt`` above 5 ms) has NaN values.
+
+    With `B` the first `n_values` basis rows restricted to the valid points and `e` their eigenvalues,
+    the values `a` of a row `r` solve ``(B B^T + lam * diag(1 / e)) a = B (r - profile_mean)[valid]``
+    with ``lam = max(ridge, 1e-10 * eigenvalues[0])``; components with ``e == 0`` are fixed to 0. For a
+    row with no missing point the first tokens' values do not depend on `n_values` (for an orthonormal
+    basis), with missing points they do, slightly. A row with no valid point has NaN values. `decode`
+    gives ``profile_mean + a @ basis[:n_values]`` at every point, also where the input was missing;
+    with ``n_values = 0`` there is no token and it is the mean profile (a NaN frame cannot be told
+    apart then). `profile_mean` ``(D,)`` and `basis` ``(m, D)`` are in the codec's domain.
+    """
+
+    def __init__(self, name: str, dt: float, values_shape: tuple[int, ...], stats: ChannelStats,
+                 profile_mean: np.ndarray, basis: np.ndarray, eigenvalues: np.ndarray, n_values: int,
+                 values_per_token: int, domain: str = "linear", ridge: float = 0.0,
+                 grids: GridSet | None = None, signal_mean: float = 0.0, signal_std: float = 1.0) -> None:
+        if values_per_token < 1 or n_values % values_per_token:
+            raise ValueError(f"n_values={n_values} must be a multiple of values_per_token={values_per_token}")
+        basis = np.asarray(basis, dtype=np.float64)
+        d = int(np.prod(values_shape, dtype=np.int64))
+        if basis.ndim != 2 or basis.shape[1] != d:
+            raise ValueError(f"basis must be (m, {d}), got {basis.shape}")
+        if n_values > len(basis):
+            raise ValueError(f"n_values={n_values} is more than the {len(basis)} basis rows")
+        profile_mean = np.asarray(profile_mean, dtype=np.float64)
+        eigenvalues = np.asarray(eigenvalues, dtype=np.float64)
+        if profile_mean.shape != (d,) or eigenvalues.shape != (len(basis),):
+            raise ValueError(f"profile_mean must be ({d},) and eigenvalues ({len(basis)},), "
+                             f"got {profile_mean.shape} and {eigenvalues.shape}")
+        super().__init__(name, dt, values_shape, stats, n_tok=n_values // values_per_token,
+                         n_val=values_per_token, domain=domain, grids=grids, signal_mean=signal_mean,
+                         signal_std=signal_std)
+        self.profile_mean = profile_mean
+        self.basis = basis
+        self.eigenvalues = eigenvalues
+        self.n_values = n_values
+        self.ridge = ridge
+        self.lam = max(ridge, 1e-10 * float(eigenvalues[0])) if len(eigenvalues) else ridge
+        self.n_points = d
+
+    def _frame_of_sample(self, n: int) -> np.ndarray:
+        """Frame of each of `n` samples, ``(n,)`` int64; `ValueError` if two samples share a frame."""
+        f = frames.frame_index(n, self.dt)
+        if n > 1 and (np.diff(f) < 1).any():
+            raise ValueError(f"the linear codec wants one sample per frame; dt={self.dt} gives more")
+        return f
+
+    def encode_domain(self, u: np.ndarray) -> np.ndarray:
+        """Domain ``(N, *values_shape, T)`` to values ``(N, F, n_tok, n_val)`` float64."""
+        u = np.asarray(u, dtype=np.float64)
+        n, t = u.shape[0], u.shape[-1]
+        f = self._frame_of_sample(t)
+        out = np.full((n, int(f[-1]) + 1, self.n_tok, self.n_val), np.nan)
+        if self.n_values == 0:
+            return out
+        r = np.moveaxis(u.reshape(n, self.n_points, t), 2, 1).reshape(n * t, self.n_points) - self.profile_mean
+        a = np.full((n * t, self.n_values), np.nan)
+        e = self.eigenvalues[: self.n_values]
+        active = np.flatnonzero(e > 0)
+        ok = np.isfinite(r)
+        has = ok.any(1)
+        a[has] = 0.0                                          # components with e == 0 stay 0
+        if len(active):
+            b = self.basis[: self.n_values][active]            # (m, D)
+            pen = self.lam / e[active]
+            packed = np.packbits(ok, axis=1)
+            _, first, inverse = np.unique(packed, axis=0, return_index=True, return_inverse=True)
+            inverse = inverse.reshape(-1)
+            for g in range(len(first)):
+                rows = np.flatnonzero((inverse == g) & has)
+                if not len(rows):
+                    continue
+                v = ok[first[g]]
+                bv = b[:, v]
+                sol = np.linalg.solve(bv @ bv.T + np.diag(pen), bv @ r[np.ix_(rows, np.flatnonzero(v))].T)
+                a[np.ix_(rows, active)] = sol.T
+        out[:, f] = a.reshape(n, t, self.n_tok, self.n_val)
+        return out
+
+    def decode_domain(self, values: np.ndarray, n: int) -> np.ndarray:
+        """Values ``(N, F, n_tok, n_val)`` to the domain ``(N, *values_shape, n)``; NaN for a NaN frame."""
+        v = np.asarray(values, dtype=np.float64)
+        if v.ndim != 4 or v.shape[2:] != (self.n_tok, self.n_val):
+            raise ValueError(f"values must be (N, F, {self.n_tok}, {self.n_val}), got {v.shape}")
+        f = self._frame_of_sample(n)
+        if v.shape[1] <= int(f[-1]):
+            raise ValueError(f"{n} samples need {int(f[-1]) + 1} frames, values have {v.shape[1]}")
+        a = v[:, f].reshape(v.shape[0] * n, self.n_values)
+        out = self.profile_mean + a @ self.basis[: self.n_values]      # NaN in a row stays in that row
+        out = out.reshape(v.shape[0], n, self.n_points)
+        return np.moveaxis(out, 1, 2).reshape((v.shape[0],) + self.values_shape + (n,))
