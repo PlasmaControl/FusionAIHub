@@ -95,6 +95,13 @@ def main() -> None:
     ap.add_argument("--figures", type=int, default=6)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--temperature", type=float, default=1.0)
+    # dev-peter's decode options (eval_dynamics --gate / --consensus_*), off by default.
+    ap.add_argument("--gate", type=float, default=0.0)
+    ap.add_argument("--consensus-n", type=int, default=1)
+    ap.add_argument("--consensus-q", type=float, default=0.5)
+    ap.add_argument("--consensus-mode", choices=("majority", "mean"), default="majority")
+    # MaskGIT unmasking steps per frame; 0 keeps the checkpoint's (maskgit_decode_steps, 10 here).
+    ap.add_argument("--decode-steps", type=int, default=0)
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
 
@@ -121,6 +128,9 @@ def main() -> None:
     model = cfg = step = None
     if args.ckpt is not None:
         model, cfg, step = port_rollout.load_mast_model(args.ckpt, args.cache_dir, dev)
+        if args.decode_steps > 0:
+            # generate_frame reads model.cfg; set both in case they are different objects.
+            cfg.maskgit_decode_steps = model.cfg.maskgit_decode_steps = int(args.decode_steps)
         win, k0 = int(cfg.max_frames), int(cfg.k0_seed)
     else:
         layout.patch_ignite(args.cache_dir)
@@ -146,7 +156,10 @@ def main() -> None:
             if model is not None:
                 g = torch.Generator(device=dev).manual_seed(args.seed)
                 ro = ev.rollout_shot(model, cfg, entry, k0, args.temperature, g, dev, actuator_mode="real",
-                                     cache_dir=args.cache_dir, shot=shot, start=start)
+                                     cache_dir=args.cache_dir, shot=shot, start=start,
+                                     decode={"gate": args.gate, "consensus_n": args.consensus_n,
+                                             "consensus_q": args.consensus_q,
+                                             "consensus_mode": args.consensus_mode})
                 preds["rollout"] = {n: ro.pred_codes[n] for n in gt}
                 pers = {}
                 for n, c in gt.items():
@@ -201,7 +214,9 @@ def main() -> None:
     df.to_parquet(out / "mode_fidelity.parquet")
     summ = {"ckpt": str(args.ckpt) if args.ckpt else None, "step": step, "k0": k0, "window": win,
             "n_shots": len(shots), "n_rows": int(len(df)), "tol_px": q.AGREE_TOL,
-            "temperature": args.temperature}
+            "temperature": args.temperature, "gate": args.gate, "consensus_n": args.consensus_n,
+            "consensus_q": args.consensus_q, "consensus_mode": args.consensus_mode,
+            "decode_steps": int(cfg.maskgit_decode_steps) if cfg is not None else None}
     for s in sorted(df.sig.unique()) if len(df) else []:
         d = df[df.sig == s]
         summ[s] = {"n": int(len(d))}

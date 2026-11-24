@@ -232,6 +232,78 @@ windows are mode-active (54% without it). Run 7 therefore changes the coding and
 what the loss sees at once; it is compared with run 5 on the mode fidelity of
 its rollouts, not on loss.
 
+### Run 7 at step 5,000, and why it was stopped
+
+Mode fidelity with the final keep map (12 val shots, 3 windows each, the probes
+classed ok; 102 OMV probe-windows where the rollout decodes), measured
+2026-11-24. "Mode share" is the fraction of pixels TokEye marks coherent in the
+spectrogram compared (truth 0.085), a realism check that does not ask where the
+modes are.
+
+| OMV | mask F1 | rollout beats persistence | mode share | peak contrast |
+|---|---|---|---|---|
+| truth | | | 0.085 | 12.6 dB |
+| codec ceiling (band-DCT) | 0.957 | | 0.100 | 9.7 dB |
+| last seed frame held (persistence) | 0.189 | | 0.159 | 6.0 dB |
+| run 5, step 30,000, temperature 1.0 | 0.163 | 44 of 102 | 0.116 | 5.8 dB |
+| run 7, step 5,000, temperature 1.0 | 0.095 | 16 of 102 | 0.036 | 3.8 dB |
+
+Paired on the same windows, run 7 is 0.049 below run 5 in mask F1 (95% shot
+bootstrap −0.095 to −0.010) and better on 28 of 102. Its rollouts are dim: a
+third of run 5's mode share. CC reads the same way (0.055 against 0.144). Over
+all 40 signals its median rollout NRMSE at step 5,000 is 0.180, against run 5's
+0.142 at the same step (better on 15 of 40).
+
+Why the peak codec does not help: its peak slots are filled whether or not a
+mode is there. On 60 val shots with OMV (4,619 complete frames of the
+`frame_codes_v1b_peakspec_cam_live_da` cache), a band holds a peak in 97.9% of
+quiet frames (TokEye mode share under 0.02) and 95.8% of mode-active ones, with
+median heights of 0.40 and 0.45 decade; 27% and 39% of bands hold a peak of 0.5
+decade or more. The 1 dB threshold sits far below the bumps of a 5 ms frame mean,
+so most of the 96 peak slots a frame carry noise, which no model can predict,
+and a higher threshold alone would still keep a quarter of the bands on quiet
+frames. Telling modes from noise would need persistence across frames or a
+TokEye-informed gate in the codec. Run 7 was stopped at step about 5,800
+(ruling R25; checkpoints kept).
+
+Run 5's rollouts are not empty of modes either: TokEye lights more of them than
+of the truth (0.116 against 0.085), but in other places and with less contrast
+than the codec allows (5.8 against 9.7 dB).
+
+**Run 8** (`runs/v1b_logspec_cam_live_da_tokeye_f32_d512L12`, started 21:52
+UTC) is run 7's launcher on `frame_codes_v1b_logspec_cam_live_da`: the band-DCT
+Mirnov codec of runs 5 and 6, the D-alpha level + spikes codec, and the same
+TokEye selection (the presence file was built on this cache; same 961,093
+windows). Run 7 against run 8 at equal steps isolates the Mirnov codec; run 8
+against run 5 is D-alpha v2 plus the selection.
+
+### Decode options (no retraining)
+
+dev-peter's sampler has options that act only at rollout time.
+`tokeye_mode_fidelity.py` passes them through, all off by default: `--gate`,
+`--consensus-n/-q/-mode` and `--decode-steps` (MaskGIT unmasking steps per frame;
+0 keeps the checkpoint's, 10). On run 5's final checkpoint, same windows as
+above:
+
+| OMV, run 5 step 30,000 | mask F1 | rollout beats persistence | identical to persistence | mode share | peak contrast |
+|---|---|---|---|---|---|
+| temperature 1.0 (as trained and plotted) | 0.163 | 44 of 102 | 0 | 0.116 | 5.8 dB |
+| temperature 0.7 | 0.177 | 44 of 99 | 0 | 0.117 | 6.1 dB |
+| temperature 0.5 | 0.176 | 45 of 102 | 0 | 0.118 | 6.1 dB |
+| gate 0.2 | 0.189 | 27 of 101 | 57 | 0.159 | 6.0 dB |
+| gate 0.5 | 0.189 | 15 of 102 | 83 | 0.155 | 6.0 dB |
+| 30 unmasking steps a frame (10 trained) | 0.181 | 45 of 102 | 0 | 0.116 | 6.0 dB |
+
+The gate keeps the previous frame's code wherever the sampled code had a
+probability under the gate. At Mirnov positions almost every code is that
+uncertain, so the gated rollout is the last seed frame held, in 57 and 83 of 102
+windows exactly. Once it samples the missing code it holds that too (shot 20738,
+the spectrum blanks from 212 ms on). A colder temperature moves mask F1 by about
+0.01 and peak contrast by 0.3 dB, still under persistence. Three times as many
+unmasking steps (each code then conditioned on more already-drawn codes of its
+frame) gives the same: paired +0.007 against 10 steps (95% shot bootstrap −0.002
+to +0.017). Sampling is not what keeps the rollouts off the measured modes.
+
 ## How to run
 
 ```bash
@@ -244,6 +316,7 @@ scripts/mast/py.sh scripts/mast/tokeye_keep.py --scores $S/tokeye/scores_v2
 # 3. mode fidelity of the codec and of a checkpoint's rollouts
 IGNITE_HISTORY_CACHE=1 scripts/mast/py.sh scripts/mast/tokeye_mode_fidelity.py \
     --keep $S/tokeye/scores_v2 --out $S/tokeye/fidelity_<run>_<step> --ckpt <run>/dynamics_step<N>.pt
+#    decode options, off by default: --temperature 0.7 --gate 0.2 --consensus-n 4 --decode-steps 30
 # 4. the peak + baseline Mirnov codec and a frame cache with it (CPU, about 3 minutes)
 scripts/mast/py.sh scripts/mast/port_fit_peakspec.py --frames-dir $S/frame_codes_v1b_logspec_cam_live_da \
     --keep-dir $S/tokeye/scores_v2 --out $S/peakspec_fit_v1 --workers 32
@@ -251,8 +324,8 @@ C=/models/intermediate/mast/camera
 CUDA_VISIBLE_DEVICES= scripts/mast/py.sh scripts/mast/port_build_cache.py --logspec-fit $S/peakspec_fit_v1 \
     --dalpha-fit $S/dalpha_fit_v1 --camera-codec $C/codec_rgb_v2/codec_final.pt --camera-fit $C/camera_fit_v1 \
     --camera-frames $C/frames_rgb_v1 --out $S/frame_codes_v1b_peakspec_cam_live_da --workers 48 --live-only
-# 5. training with the judge (port_train.py options, off unless given); run 7's launcher:
-#    $S/runs/v1b_peakspec_cam_live_da_f32_d512L12/launch.sh
+# 5. training with the judge (port_train.py options, off unless given); run 8's launcher:
+#    $S/runs/v1b_logspec_cam_live_da_tokeye_f32_d512L12/launch.sh (run 7's: .../v1b_peakspec_cam_live_da_f32_d512L12/)
 ... port_train.py ... --presence_path $S/tokeye/scores_v2/presence_tokeye.json --mask_absent \
     --tokeye_frames $S/tokeye/scores_v2/frames.parquet --tokeye_factor 2
 ```
