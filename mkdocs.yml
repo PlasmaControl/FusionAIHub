@@ -96,6 +96,7 @@ nav:
       - models/ignite-mast-design.md
       - models/ignite-mast-stage0.md
       - models/ignite-mast-stage1.md
+      - models/ignite-mast-spectrogram-quality.md
   - Shot Design:
       - shot-design/overview.md
       - shot-design/cli.md

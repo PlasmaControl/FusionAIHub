@@ -27,6 +27,14 @@ def run(argv: list[str] | None = None):
             "frame_s/t0_start live_end path is not ported."
         )
 
+    # Port-only options, consumed here and not forwarded (off unless given): repeat TokEye
+    # mode-active training windows (port.curate; frames.parquet from tokeye_keep.py).
+    own = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    own.add_argument("--tokeye_frames", default=None)
+    own.add_argument("--tokeye_factor", type=int, default=0)
+    own.add_argument("--tokeye_min_active", type=int, default=4)
+    mine, raw_argv = own.parse_known_args(raw_argv)
+
     peek = argparse.ArgumentParser(add_help=False)
     peek.add_argument("--cache_dir", default=None)
     known, _rest = peek.parse_known_args(raw_argv)
@@ -37,6 +45,13 @@ def run(argv: list[str] | None = None):
         raw_argv = raw_argv + ["--mask_absent"]
 
     layout.patch_ignite(known.cache_dir)
+    if mine.tokeye_frames and mine.tokeye_factor > 0:
+        from tokamak_foundation_model.ignite.mast.port import curate
+
+        curate.patch_mode_oversample(
+            mine.tokeye_frames, mine.tokeye_factor, curate.train_shots_from_splits(known.cache_dir),
+            min_active=mine.tokeye_min_active,
+        )
     return td.main(raw_argv)
 
 
