@@ -13,7 +13,7 @@ import torch
 
 from .. import cache, transform
 from ..tokenizers import codecs as tok_codecs, frames
-from . import framecache, layout, logspec
+from . import framecache, layout, logspec, peakspec
 from .layout import ev
 
 
@@ -296,7 +296,7 @@ def decode_and_score_rollout(
         if name not in codecs:
             continue
         codec = codecs[name]
-        is_logspec = isinstance(codec, logspec.LogBandDCT)
+        is_logspec = isinstance(codec, (logspec.LogBandDCT, peakspec.PeakSpec))
         _n_bins, missing_code, _vocab = framecache.codec_vocab(codec)
         is_present = True if present is None else bool(present.get(name, True))
         cs = shot_data.get(name) if is_present else None

@@ -4,7 +4,7 @@ title: "IGNITE on MAST: TokEye judges the Mirnov spectrograms"
 
 # IGNITE on MAST: TokEye judges the Mirnov spectrograms
 
-**Status: measured (2026-11-24) on all 11,177 cached MAST shots. OMV keeps 9,502 of 10,498 (shot, signal) pairs and CC 5,433 of 7,240; the dropped pairs leave the dynamics loss through `presence_tokeye.json`. TokEye also measures that the Mirnov codec keeps the modes (mask F1 0.93) and that IGNITE's rollouts lose them (F1 0.14, no better than holding the last seed frame), for run 5 and run 6 alike.****
+**Status: measured (2026-11-24) on all 11,177 cached MAST shots. OMV keeps 9,502 of 10,498 (shot, signal) pairs and CC 5,433 of 7,240; the dropped pairs leave the dynamics loss through `presence_tokeye.json`. TokEye also measures that the Mirnov codec keeps the modes (mask F1 0.93) and that IGNITE's rollouts lose them (F1 0.14, no better than holding the last seed frame), for run 5 and run 6 alike. A peak + baseline Mirnov codec (`port.peakspec`, dev-peter's advice) keeps the modes nearly as well (F1 0.89) and is in training as run 7.**
 
 ## What this is
 
@@ -172,13 +172,65 @@ that, so it is not a question of model size or sampling. Each Mirnov array is
 many of them, and a model that predicts each coefficient's distribution washes
 lines out. This is where dev-peter's peak-and-baseline advice points.
 
+## A peak + baseline Mirnov codec
+
+`port/peakspec.py` (`PeakSpec`) codes each probe's frame spectrum the way
+dev-peter advised for the DIII-D spectrogram tokenizer: a baseline plus peaks.
+It works in the same centred log10 power as the band-DCT codec (the `logspec`
+fit's floor and mean per bin are reused) and per probe and 5 ms frame keeps:
+
+- **baseline**: the first 24 cosine coefficients of the 256-bin spectrum,
+  fitted robustly (a second pass replaces the bins where the first residual tops
+  1 dB by the first baseline, so a strong line does not lift its surroundings);
+- **peaks**: the bins fall into 32 bands of 8 bins (7.8 kHz). Each band holds at
+  most one peak, the highest local maximum of the residual above 1 dB: its
+  frequency (sub-bin, a parabola through three bins), its height and its
+  Gaussian width (from the width at half height). An empty band codes height 0.
+
+A band slot always means the same band, so a mode drifting in frequency stays in
+its slot while it stays in its band. That is the bet against washed-out
+rollouts: a sampled peak token always draws a sharp line, where hundreds of
+independently sampled cosine coefficients do not. Each array is 3 probes x 120
+values = 360 tokens a frame (the band-DCT codec has 432 live ones).
+
+The grids (64 levels, `peak_grids`) are fitted by `fit_peakspec` on 300 training
+(shot, signal) pairs per array that the judge keeps, half of them the pairs with
+the most mode activity, using only probes classed ok (dev-peter: fit the
+spectrogram tokenizer on shots with enough mode content). The fit
+(`peakspec_fit_v1`, 2026-11-24, 6 s) found a peak above 1 dB in 95% (OMV) and
+97% (CC) of band slots, median height 4.4 and 4.3 dB. It is stored as
+`logspec_fit.{npz,json}` with `"codec": "peakspec"`, so a frame-code manifest
+records it in `logspec_fit_path` and `logspec.build_logspec_codecs` builds it.
+
+How much of the modes the codec keeps, measured end to end (encode, the
+frame-cache codes, decode) on 36 val probes classed ok, 24 OMV and 12 CC, two
+thirds with mode activity (2026-11-24):
+
+| mode-rich probes | OMV mask F1 | OMV peak contrast | CC mask F1 | CC peak contrast | values a probe |
+|---|---|---|---|---|---|
+| truth | | 7.8 dB | | 7.2 dB | |
+| frame mean (no coding) | 0.92 | 5.5 dB | 0.88 | 4.9 dB | 256 |
+| band-DCT codec (`LogBandDCT`) | 0.93 | 5.3 dB | 0.88 | 4.7 dB | 144 |
+| `PeakSpec` | 0.89 | 5.3 dB | 0.86 | 4.7 dB | 120 |
+
+The peak codec loses a few points of mask F1 at the same peak contrast and the
+same median |dlog10| (0.44 against 0.43 on OMV). Fewer bands cost more
+(prototype, 16 bands: F1 0.82). Run 7 tests whether rollouts on it keep the
+modes.
+
 ## Use in training
 
-Not applied to a run yet (2026-11-24). The presence file and the window
-oversampling are wired (`port_train.py`, off unless given) and tested on the
-synthetic three-shot cache. They change what the loss sees, not how the
-spectrogram is coded, so on their own they cannot fix rollouts that wash the
-modes out; they go into the next run together with a new Mirnov coding.
+**Run 7** (`runs/v1b_peakspec_cam_live_da_f32_d512L12`, started 2026-11-24
+20:42 UTC on GPUs 2-3) is run 5's recipe (d512 x 12, 32-frame windows, 30k
+steps) on the frame cache `frame_codes_v1b_peakspec_cam_live_da` (`PeakSpec`
+for both Mirnov arrays, the D-alpha level + spikes codec, the camera codes;
+1,396 tokens a frame), with the judge: `--presence_path presence_tokeye.json
+--mask_absent` and `--tokeye_frames frames.parquet --tokeye_factor 2`. The
+oversampling adds two copies of each of the 249,348 mode-active training
+windows (at least 4 of 32 frames mode-active), so 78% of the 961,093 training
+windows are mode-active (54% without it). Run 7 therefore changes the coding and
+what the loss sees at once; it is compared with run 5 on the mode fidelity of
+its rollouts, not on loss.
 
 ## How to run
 
@@ -192,7 +244,15 @@ scripts/mast/py.sh scripts/mast/tokeye_keep.py --scores $S/tokeye/scores_v2
 # 3. mode fidelity of the codec and of a checkpoint's rollouts
 IGNITE_HISTORY_CACHE=1 scripts/mast/py.sh scripts/mast/tokeye_mode_fidelity.py \
     --keep $S/tokeye/scores_v2 --out $S/tokeye/fidelity_<run>_<step> --ckpt <run>/dynamics_step<N>.pt
-# 4. training with the judge (port_train.py options, off unless given)
+# 4. the peak + baseline Mirnov codec and a frame cache with it (CPU, about 3 minutes)
+scripts/mast/py.sh scripts/mast/port_fit_peakspec.py --frames-dir $S/frame_codes_v1b_logspec_cam_live_da \
+    --keep-dir $S/tokeye/scores_v2 --out $S/peakspec_fit_v1 --workers 32
+C=/models/intermediate/mast/camera
+CUDA_VISIBLE_DEVICES= scripts/mast/py.sh scripts/mast/port_build_cache.py --logspec-fit $S/peakspec_fit_v1 \
+    --dalpha-fit $S/dalpha_fit_v1 --camera-codec $C/codec_rgb_v2/codec_final.pt --camera-fit $C/camera_fit_v1 \
+    --camera-frames $C/frames_rgb_v1 --out $S/frame_codes_v1b_peakspec_cam_live_da --workers 48 --live-only
+# 5. training with the judge (port_train.py options, off unless given); run 7's launcher:
+#    $S/runs/v1b_peakspec_cam_live_da_f32_d512L12/launch.sh
 ... port_train.py ... --presence_path $S/tokeye/scores_v2/presence_tokeye.json --mask_absent \
     --tokeye_frames $S/tokeye/scores_v2/frames.parquet --tokeye_factor 2
 ```

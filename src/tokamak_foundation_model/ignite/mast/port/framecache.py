@@ -33,7 +33,7 @@ import torch
 from .. import cache, paths, registry, tasks, transform
 from ..tokenizers import assign, codecs as tok_codecs, fit, frames
 from ..tokenizers.learned import build as learned_build
-from . import dalpha
+from . import dalpha, peakspec
 
 DT_FRAME: float = frames.FRAME_S
 MIN_CACHED_FRAMES: int = 8      # matches train_dynamics._MIN_CACHED_FRAMES
@@ -576,7 +576,7 @@ def _encode_domain_by_frame_index(
     n_frames: int,
 ) -> np.ndarray:
     """Encode domain samples ``u_w`` ``(1, *values_shape, M)`` onto frames ``fi_w`` in ``[0, n_frames)``."""
-    if isinstance(codec, dalpha.PeakLevel):
+    if isinstance(codec, (dalpha.PeakLevel, peakspec.PeakSpec)):
         return codec.encode_aligned(np.asarray(u_w, dtype=np.float64)[0], fi_w, n_frames)
 
     if isinstance(codec, tok_codecs.FrameDCT):
@@ -743,7 +743,7 @@ def _decode_domain_by_frame_index(
 ) -> np.ndarray:
     """Decode ``dec_vals`` ``(1, n_frames, n_tok, n_val)`` onto samples with frame indices ``fi``."""
     n_samp = len(fi)
-    if isinstance(codec, dalpha.PeakLevel):
+    if isinstance(codec, (dalpha.PeakLevel, peakspec.PeakSpec)):
         return codec.render(dec_vals[0], fi, n_frames)
 
     if isinstance(codec, tok_codecs.FrameDCT):

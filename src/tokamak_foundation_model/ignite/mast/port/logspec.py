@@ -357,10 +357,19 @@ def logspec_fit_sha256(out_dir: Path | str) -> str:
 def build_logspec_codecs(
     fit_dir: Path | str,
     stats: Mapping[str, transform.ChannelStats],
-) -> dict[str, LogBandDCT]:
-    """Load ``<fit_dir>/logspec_fit.{json,npz}`` and construct ``{name: LogBandDCT}``."""
+) -> dict[str, tok_codecs.Codec]:
+    """Load ``<fit_dir>/logspec_fit.{json,npz}`` and construct ``{name: LogBandDCT}``.
+
+    A fit whose json says ``"codec": "peakspec"`` builds `peakspec.PeakSpec` codecs instead.
+    """
     fit_path = Path(fit_dir)
     meta = json.loads((fit_path / "logspec_fit.json").read_text())
+    if meta.get("codec", "band_dct") != "band_dct":
+        # a peak + baseline fit (`peakspec`) is stored under the same file names, so a frame-code
+        # manifest's logspec_fit_path / logspec_fit_sha256 carry either kind
+        from . import peakspec
+
+        return peakspec.build_peakspec_codecs(fit_path, stats)
     n_bins = int(meta["n_bins"])
     codecs: dict[str, LogBandDCT] = {}
     with np.load(fit_path / "logspec_fit.npz", allow_pickle=False) as z:
