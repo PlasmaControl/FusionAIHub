@@ -33,6 +33,7 @@ import torch
 from tokamak_foundation_model.ignite.mast import paths, registry
 from tokamak_foundation_model.ignite.mast.port import (
     camera,
+    dalpha,
     framecache,
     layout,
     logspec,
@@ -423,6 +424,7 @@ def run_recon_plots(
         Path(manifest["fit_dir"]),
         Path(manifest["assignment_path"]),
         logspec_fit=logspec_fit,
+        dalpha_fit=dalpha.resolve_manifest_dalpha_fit(manifest),
     )
     names = [r[0] for r in ROWS]
 

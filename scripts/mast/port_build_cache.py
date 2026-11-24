@@ -26,7 +26,7 @@ import numpy as np
 import torch
 
 from tokamak_foundation_model.ignite.mast import paths, registry, transform
-from tokamak_foundation_model.ignite.mast.port import camera, framecache, logspec
+from tokamak_foundation_model.ignite.mast.port import camera, dalpha, framecache, logspec
 from tokamak_foundation_model.ignite.mast.port.layout import td
 from tokamak_foundation_model.ignite.mast.tokenizers import assign, fit
 
@@ -84,6 +84,7 @@ def _init_encode_worker(state: tuple) -> None:
         force,
         camera_spec,
         live_only,
+        dalpha_fit,
     ) = state
     _LIVE_ONLY = bool(live_only)
     codecs, stats, _assignment = framecache.build_mast_codecs(
@@ -93,6 +94,7 @@ def _init_encode_worker(state: tuple) -> None:
         Path(assignment_path),
         Path(recoders_dir),
         logspec_fit=Path(logspec_fit) if logspec_fit is not None else None,
+        dalpha_fit=Path(dalpha_fit) if dalpha_fit is not None else None,
     )
     modality_order = tuple(s.name for s in signals if s.name in codecs)
     _ENCODE_STATE = (
@@ -242,6 +244,7 @@ def _check_existing_manifest(
     camera_fit_sha256: str | None = None,
     camera_frames_index_sha256: str | None = None,
     n_train_shots: int | None = None,
+    dalpha_fit_sha256: str | None = None,
 ) -> None:
     """Refuse to resume into an existing cache dir if any provenance or stats key disagrees."""
     existing = json.loads(manifest_path.read_text())
@@ -262,6 +265,7 @@ def _check_existing_manifest(
         ("camera_codec_sha256", camera_codec_sha256),
         ("camera_fit_sha256", camera_fit_sha256),
         ("camera_frames_index_sha256", camera_frames_index_sha256),
+        ("dalpha_fit_sha256", dalpha_fit_sha256),
     ):
         if existing.get(key) != val:
             diffs.append(f"{key} ({existing.get(key)!r} != {val!r})")
@@ -299,10 +303,12 @@ def build_cache(
     max_shots: int = 0,
     force: bool = False,
     live_only: bool = False,
+    dalpha_fit: Path | None = None,
 ) -> dict:
     """Build (or resume) the MAST Phase-B frame-code cache under ``out_dir``.
 
     ``live_only``: drop the positions a codec never uses (`framecache.live_mask`) from every frame.
+    ``dalpha_fit``: code D-alpha with the level + spikes codec (`port.dalpha`) fitted there.
     """
     cam_args = (camera_codec, camera_fit, camera_frames)
     if any(x is not None for x in cam_args) and not all(x is not None for x in cam_args):
@@ -318,6 +324,8 @@ def build_cache(
     logspec_sha = (
         logspec.logspec_fit_sha256(logspec_fit_path) if logspec_fit_path is not None else None
     )
+    dalpha_fit_path = Path(dalpha_fit) if dalpha_fit is not None else None
+    dalpha_sha = dalpha.dalpha_fit_sha256(dalpha_fit_path) if dalpha_fit_path is not None else None
 
     cam_codec_path = Path(camera_codec) if camera_codec is not None else None
     cam_fit_path = Path(camera_fit) if camera_fit is not None else None
@@ -344,7 +352,8 @@ def build_cache(
     act_specs = framecache.actuator_specs()
 
     codecs, stats, assignment = framecache.build_mast_codecs(
-        signals, cache_root, fit_dir, assignment_path, logspec_fit=logspec_fit_path
+        signals, cache_root, fit_dir, assignment_path, logspec_fit=logspec_fit_path,
+        dalpha_fit=dalpha_fit_path,
     )
     modality_order = tuple(s.name for s in signals if s.name in codecs)
     assign_sha = assign.assignment_sha256(assignment)
@@ -362,6 +371,7 @@ def build_cache(
             camera_codec_sha256=cam_codec_sha,
             camera_fit_sha256=cam_fit_sha,
             camera_frames_index_sha256=cam_frames_sha,
+            dalpha_fit_sha256=dalpha_sha,
         )
 
     shot_items = _discover_shots(cache_root, workers=workers, max_shots=max_shots)
@@ -396,6 +406,7 @@ def build_cache(
             camera_fit_sha256=cam_fit_sha,
             camera_frames_index_sha256=cam_frames_sha,
             n_train_shots=act_stats.n_train_shots,
+            dalpha_fit_sha256=dalpha_sha,
         )
 
     manifest = framecache.build_manifest(
@@ -420,6 +431,8 @@ def build_cache(
         camera_frames_index_sha256=cam_frames_sha,
         camera_n_tok=cam_n_tok,
         camera_codebook_size=cam_codebook,
+        dalpha_fit_path=dalpha_fit_path,
+        dalpha_fit_sha256=dalpha_sha,
         live_only=live_only,
     )
     framecache.save_json_atomic(manifest, manifest_path)
@@ -449,6 +462,7 @@ def build_cache(
         force,
         camera_spec,
         live_only,
+        str(dalpha_fit_path) if dalpha_fit_path is not None else None,
     )
 
     if workers <= 1 or len(shot_items) <= 1:
@@ -530,6 +544,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Optional LogBandDCT fit directory replacing the two Mirnov BandDCT codecs",
     )
     p.add_argument(
+        "--dalpha-fit",
+        default=None,
+        help="Optional D-alpha fit directory (port.dalpha) replacing the D-alpha frame_dct codec",
+    )
+    p.add_argument(
         "--camera-codec",
         default=None,
         help="Optional trained VideoCodec checkpoint (codec_best.pt) for camera-rgb",
@@ -571,6 +590,7 @@ def main(argv=None) -> int:
         max_shots=args.max_shots,
         force=args.force,
         live_only=args.live_only,
+        dalpha_fit=Path(args.dalpha_fit) if args.dalpha_fit else None,
     )
     return 1 if summary.get("n_errors", 0) > 0 else 0
 

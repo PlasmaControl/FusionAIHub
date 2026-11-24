@@ -33,6 +33,7 @@ import torch
 from .. import cache, paths, registry, tasks, transform
 from ..tokenizers import assign, codecs as tok_codecs, fit, frames
 from ..tokenizers.learned import build as learned_build
+from . import dalpha
 
 DT_FRAME: float = frames.FRAME_S
 MIN_CACHED_FRAMES: int = 8      # matches train_dynamics._MIN_CACHED_FRAMES
@@ -161,8 +162,13 @@ def build_mast_codecs(
     assignment_path: Path,
     recoders_dir: Path | None = None,
     logspec_fit: Path | None = None,
+    dalpha_fit: Path | None = None,
 ) -> tuple[dict[str, tok_codecs.Codec], dict[str, transform.ChannelStats], dict[str, assign.Setting]]:
-    """Build stage-1b/1c codecs exactly as ``scripts/mast/run_tokenizer.py::_build_predictor``."""
+    """Build stage-1b/1c codecs exactly as ``scripts/mast/run_tokenizer.py::_build_predictor``.
+
+    ``logspec_fit`` swaps the Mirnov spectrogram codecs for the log-power ones (`logspec`);
+    ``dalpha_fit`` swaps the D-alpha codec for the level + spikes one (`dalpha.PeakLevel`).
+    """
     fits, _ = fit.load_fit(Path(fit_dir))
     assignment = assign.load_assignment(Path(assignment_path))
     stats = transform.load_stats(Path(cache_root) / "stats.npz")
@@ -195,6 +201,18 @@ def build_mast_codecs(
         for name, codec in log_codecs.items():
             if name in codecs:
                 codecs[name] = codec
+    if dalpha_fit is not None:
+        fit_path = Path(dalpha_fit)
+        meta = json.loads((fit_path / "dalpha_fit.json").read_text())
+        cache_stats_sha = transform.stats_sha256(Path(cache_root) / "stats.npz")
+        if str(meta.get("stats_sha256")) != cache_stats_sha:
+            raise ValueError(
+                f"dalpha_fit stats_sha256 ({meta.get('stats_sha256')!r}) disagrees with "
+                f"{Path(cache_root) / 'stats.npz'} ({cache_stats_sha!r})"
+            )
+        if dalpha.SIGNAL not in codecs:
+            raise ValueError(f"dalpha_fit given but {dalpha.SIGNAL} has no codec to replace")
+        codecs[dalpha.SIGNAL] = dalpha.build_dalpha_codec(fit_path, stats, codecs[dalpha.SIGNAL].dt)
     return codecs, stats, assignment
 
 
@@ -558,6 +576,9 @@ def _encode_domain_by_frame_index(
     n_frames: int,
 ) -> np.ndarray:
     """Encode domain samples ``u_w`` ``(1, *values_shape, M)`` onto frames ``fi_w`` in ``[0, n_frames)``."""
+    if isinstance(codec, dalpha.PeakLevel):
+        return codec.encode_aligned(np.asarray(u_w, dtype=np.float64)[0], fi_w, n_frames)
+
     if isinstance(codec, tok_codecs.FrameDCT):
         flat = np.asarray(u_w, dtype=np.float64).reshape(1, codec.n_tok, u_w.shape[-1])
         aligned = np.full((n_frames, codec.n_tok, codec.k), np.nan, dtype=np.float64)
@@ -722,6 +743,9 @@ def _decode_domain_by_frame_index(
 ) -> np.ndarray:
     """Decode ``dec_vals`` ``(1, n_frames, n_tok, n_val)`` onto samples with frame indices ``fi``."""
     n_samp = len(fi)
+    if isinstance(codec, dalpha.PeakLevel):
+        return codec.render(dec_vals[0], fi, n_frames)
+
     if isinstance(codec, tok_codecs.FrameDCT):
         out = np.full((1, codec.n_tok, n_samp), np.nan, dtype=np.float64)
         for length, ids, starts in _groups_from_frame_index(fi, n_frames):
@@ -903,6 +927,8 @@ def build_manifest(
     camera_frames_index_sha256: str | None = None,
     camera_n_tok: int | None = None,
     camera_codebook_size: int | None = None,
+    dalpha_fit_path: Path | None = None,
+    dalpha_fit_sha256: str | None = None,
     plasma_ip_threshold_a: float = PLASMA_IP_THRESHOLD_A,
     dt_frame: float = DT_FRAME,
     t0_start: float = 0.0,
@@ -1007,6 +1033,15 @@ def build_manifest(
         ),
         "logspec_fit_sha256": (
             str(logspec_fit_sha256) if logspec_fit_sha256 is not None else None
+        ),
+        # written only when the D-alpha level + spikes codec is used, so older manifests are unchanged
+        **(
+            {
+                "dalpha_fit_path": str(Path(dalpha_fit_path).resolve()),
+                "dalpha_fit_sha256": str(dalpha_fit_sha256),
+            }
+            if dalpha_fit_path is not None
+            else {}
         ),
         "notes": {
             "family_mapping": (

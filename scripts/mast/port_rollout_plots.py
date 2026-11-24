@@ -24,6 +24,7 @@ import torch
 from tokamak_foundation_model.ignite.mast import paths, registry
 from tokamak_foundation_model.ignite.mast.port import (
     camera,
+    dalpha,
     framecache,
     layout,
     logspec,
@@ -152,7 +153,8 @@ def run_rollout_plots(
     signals = registry.all_signals()
     logspec_fit = logspec.resolve_manifest_logspec_fit(manifest)
     codecs, stats, _assignment = framecache.build_mast_codecs(
-        signals, cache_root, fit_dir, assignment_path, logspec_fit=logspec_fit
+        signals, cache_root, fit_dir, assignment_path, logspec_fit=logspec_fit,
+        dalpha_fit=dalpha.resolve_manifest_dalpha_fit(manifest),
     )
 
     shot_list = (
