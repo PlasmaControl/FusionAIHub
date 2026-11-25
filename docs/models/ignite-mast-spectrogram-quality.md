@@ -416,6 +416,78 @@ OMV (+0.029). Its free rollout is still worse at step 3,500 (OMV −0.060). Mode
 size, not more steps, is the lever for the Mirnov dynamics, so run 6 resumes after
 run 8.
 
+### Run 6 keeps the Mirnov modes, but T_e and n_e freeze
+
+Run 6 (d1024 × 16) is trained on dev-peter's production recipe: effective batch
+256, a flat learning rate of 1e-3 (`min_lr_ratio 1.0`,
+`scripts/slurm_frontier/train_dynamics.sh`), β2 0.9 and no weight decay. Runs 5 and 8
+decay the learning rate on a cosine to 1%. Run 6 resumed from step 3,500 on
+2026-11-25 at 04:50 UTC, on 2 GPUs at 28.5 s a step. Below, every rollout uses the
+CPU sampler and `--forbid-missing`, and every comparison is against run 8's final
+checkpoint scored the same way. The CPU and GPU samplers differ (run 8's final
+checkpoint, CC mask F1: CPU − GPU −0.026, 95% shot bootstrap −0.040 to −0.009), so
+CPU scores are compared only to CPU scores.
+
+**Shot 23529, three rollout seeds.** The OMV column is the |Δ log10 power| error
+of the table above. T_e and n_e are the rollout NRMSE. Measured 2026-11-25:
+
+| shot 23529, seeds 0 / 1 / 2 | OMV | T_e | n_e |
+|---|---|---|---|
+| run 6, step 3,500 | 0.68 / 0.77 / 0.72 | 0.45 / 0.43 / 0.39 | 0.34 / 0.42 / 0.39 |
+| run 8, step 30,000 | 2.07 / 2.06 / 2.11 | 0.29 / 0.31 / 0.27 | 0.21 / 0.20 / 0.19 |
+
+On all three seeds, run 6 keeps the modes that start at the end of the seed, as
+flat lines at their measured frequencies. Run 8 drops them. Run 6's T_e and n_e
+rollouts are worse on every seed.
+
+**Step 4,000** (snapshot 2026-11-25 08:47, scored 10:58):
+
+| | run 6, step 4,000 | run 8, step 30,000 | paired, run 6 − run 8 (95% shot bootstrap) |
+|---|---|---|---|
+| OMV mask F1 (persistence 0.189) | 0.173 | 0.159 | +0.015 (−0.002 to +0.032) |
+| CC mask F1 (persistence 0.140) | 0.160 | 0.139 | +0.021 (+0.005 to +0.039) |
+| OMV peak contrast (truth 12.6 dB) | 8.1 dB | 3.8 dB | |
+| one frame ahead, OMV / CC (23529 + 26067) | 0.563 / 0.445 | 0.455 / 0.263 | +0.077 (13 of 18) / +0.107 (10 of 12) |
+| median error, 40 signals, 6 shots | 0.062 | 0.068 | run 6 better on 15 of 40 |
+| T_e | 0.606 | 0.185 | |
+| n_e | 0.391 | 0.193 | |
+
+On the spectrograms, run 6 is the best checkpoint so far. Its CC mask F1 beats run 8,
+with a bootstrap interval above zero, and its OMV peak contrast is twice run 8's.
+The median over 40 signals is lower too, but it is better on only 15 of them. Its
+free rollouts hold T_e and n_e almost constant, in steps, from frame to frame. T_e is
+the clearest case. Its 6-shot error falls to 0.32 at step 1,500, then rises with
+every snapshot:
+
+| run 6 step | 500 | 1,000 | 1,500 | 2,000 | 3,000 | 4,000 |
+|---|---|---|---|---|---|---|
+| T_e error | 0.70 | 0.65 | 0.32 | 0.43 | 0.53 | 0.61 |
+| median error, 40 signals | 0.184 | 0.143 | 0.120 | 0.130 | 0.088 | 0.062 |
+
+Steps 500 to 3,000 used the GPU sampler without `--forbid-missing`. Run 8's T_e error
+falls throughout: 0.42 at step 5,000, 0.21 at step 15,000 and 0.185 at step 30,000.
+One frame ahead, run 6 predicts T_e better than run 8: its validation T_e
+cross-entropy is 2.58 at step 3,500, against run 8's final 2.65. The freeze is
+therefore in the free rollout. At step 4,000, shot 23529 is dark again (OMV 2.03),
+both SXR cameras saturate, and n_e collapses at 95 ms.
+
+**Averaging the weights.** A uniform mean of the step 3,000, 3,500 and 4,000 weights
+(`scripts/mast/avg_ckpt.py`) is the usual stand-in for a decayed learning rate.
+Measured 2026-11-25: median error 0.065, T_e 0.608, n_e 0.371, and on 23529 an OMV
+error of 0.83, so the modes are kept. The average leaves T_e frozen, so the freeze
+is not noise from the flat learning rate.
+
+**Run 9** (`v1b_r9_r6s4500_r8recipe_d1024L16`) tests whether run 8's recipe frees
+T_e and n_e in run 6's weights. Run 6 stopped at its step-4,500 snapshot
+(2026-11-25 12:47 UTC); its `dynamics_latest.pt` is kept, so it can resume. Run 9
+loads run 6's step-4,500 model weights without the optimizer state. Adam therefore
+starts fresh with run 8's β2 0.999 and weight decay 0.01. Run 9 also uses run 8's
+data: batch 8 on each of 2 GPUs (effective 16), TokEye presence, and mode-active
+windows twice. Its learning rate decays on a cosine from 1e-3 at step 4,500
+(`--lr_decay_from 4500`) to 1% at step 16,500. Each step takes 2.0 s. If T_e still
+freezes after about 2,000 steps, the freeze lives in run 6's weights, and the next
+run trains d1024 × 16 from scratch on run 8's recipe.
+
 ## How to run
 
 ```bash
