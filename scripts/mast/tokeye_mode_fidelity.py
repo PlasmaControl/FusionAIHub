@@ -102,6 +102,10 @@ def main() -> None:
     ap.add_argument("--consensus-mode", choices=("majority", "mean"), default="majority")
     # MaskGIT unmasking steps per frame; 0 keeps the checkpoint's (maskgit_decode_steps, 10 here).
     ap.add_argument("--decode-steps", type=int, default=0)
+    # Never sample the "not recorded" code at a Mirnov token that records in the last seed frame
+    # (dev-peter's decode "forbid"): a recording probe can't switch off mid-rollout. Off by default.
+    # Without it, 5-6% of predicted columns came out blank in runs 5 and 8 (measured 2026-11-25).
+    ap.add_argument("--forbid-missing", action="store_true")
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
 
@@ -155,11 +159,13 @@ def main() -> None:
             preds = {"ceiling": gt}
             if model is not None:
                 g = torch.Generator(device=dev).manual_seed(args.seed)
+                decode = {"gate": args.gate, "consensus_n": args.consensus_n,
+                          "consensus_q": args.consensus_q, "consensus_mode": args.consensus_mode}
+                if args.forbid_missing:
+                    decode["forbid"] = port_rollout.forbid_missing_codes(
+                        entry, {n: codecs[n] for n in gt}, start + k0)
                 ro = ev.rollout_shot(model, cfg, entry, k0, args.temperature, g, dev, actuator_mode="real",
-                                     cache_dir=args.cache_dir, shot=shot, start=start,
-                                     decode={"gate": args.gate, "consensus_n": args.consensus_n,
-                                             "consensus_q": args.consensus_q,
-                                             "consensus_mode": args.consensus_mode})
+                                     cache_dir=args.cache_dir, shot=shot, start=start, decode=decode)
                 preds["rollout"] = {n: ro.pred_codes[n] for n in gt}
                 pers = {}
                 for n, c in gt.items():
@@ -216,6 +222,7 @@ def main() -> None:
             "n_shots": len(shots), "n_rows": int(len(df)), "tol_px": q.AGREE_TOL,
             "temperature": args.temperature, "gate": args.gate, "consensus_n": args.consensus_n,
             "consensus_q": args.consensus_q, "consensus_mode": args.consensus_mode,
+            "forbid_missing": bool(args.forbid_missing),
             "decode_steps": int(cfg.maskgit_decode_steps) if cfg is not None else None}
     for s in sorted(df.sig.unique()) if len(df) else []:
         d = df[df.sig == s]

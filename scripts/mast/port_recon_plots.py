@@ -30,7 +30,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from tokamak_foundation_model.ignite.mast import paths, registry
+from tokamak_foundation_model.ignite.mast import paths, registry, tasks
 from tokamak_foundation_model.ignite.mast.port import (
     camera,
     dalpha,
@@ -409,7 +409,10 @@ def run_recon_plots(
     temperature: float = 1.0,
     seed: int = 0,
     device_spec: str = "auto",
+    forbid_missing: bool = False,
 ) -> dict:
+    # forbid_missing (off by default): the Mirnov spectrograms can't be sampled as "not
+    # recorded" where the seed records (port_rollout.forbid_missing_codes).
     cache_dir = Path(cache_dir)
     out_dir = paths.prepare_write_root(Path(out_dir))
     manifest = layout.load_manifest(cache_dir)
@@ -457,6 +460,10 @@ def run_recon_plots(
             ro, entry, _ = port_rollout.rollout_mast_shot(
                 model, cfg, cache_dir, shot, k0=k0, horizon=horizon, temperature=temperature,
                 seed=seed, device=device, actuator_mode="real",
+                forbid_missing=(
+                    {n: codecs[n] for n in tasks.SPECTROGRAM_SIGNALS if n in codecs}
+                    if forbid_missing else None
+                ),
             )
             k0_eff, n_frames = int(ro.k0), int(ro.n_frames)
             gt = {n: ro.gt_codes[n] for n in names if n in ro.gt_codes}
@@ -526,12 +533,16 @@ def main(argv=None) -> int:
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--device", default="auto")
+    p.add_argument("--forbid-missing", action="store_true",
+                   help="Never sample a Mirnov probe recording in the last seed frame as "
+                   "'not recorded' (dev-peter's decode forbid; off by default)")
     a = p.parse_args(argv)
     run_recon_plots(
         cache_dir=Path(a.cache_dir), out_dir=Path(a.out_dir),
         shots=[s.strip() for s in a.shots.split(",") if s.strip()],
         ckpt=Path(a.ckpt) if a.ckpt else None, k0=a.k0, horizon=a.horizon,
         temperature=a.temperature, seed=a.seed, device_spec=a.device,
+        forbid_missing=a.forbid_missing,
     )
     return 0
 

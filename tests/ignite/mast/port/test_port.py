@@ -628,6 +628,21 @@ def test_partial_nan_uses_missing_code_and_presence_distinguishes_constant(tmp_p
     assert pres == {"1": {"sig-a": True}, "2": {"sig-a": False}}
 
 
+def test_forbid_missing_codes_only_where_the_seed_records():
+    """The missing code is forbidden at tokens recording in the last seed frame, bin 0 elsewhere."""
+    st = transform.ChannelStats("none", np.ones((3,)), np.zeros((3,)), np.ones((3,)))
+    grids = GridSet(
+        lo=np.full((3, 1), -2.0), hi=np.full((3, 1), 2.0), width=np.full((3, 1), 1.0), n_bins=16,
+    )
+    codec = tok_codecs.FrameDCT("sig-a", 0.005, (3,), st, k=1, domain="linear", grids=grids)
+    codes = torch.tensor([[1, 2, 3], [4, 16, 5], [6, 16, 16]])
+    forbid = rollout.forbid_missing_codes({"codes": {"sig-a": codes}}, {"sig-a": codec}, seed_end=2)
+    assert forbid["sig-a"].tolist() == [16, 0, 16]
+    forbid = rollout.forbid_missing_codes({"codes": {"sig-a": codes}}, {"sig-a": codec}, seed_end=3)
+    assert forbid["sig-a"].tolist() == [16, 0, 0]
+    assert rollout.forbid_missing_codes({"codes": {}}, {"sig-a": codec}, seed_end=2) == {}
+
+
 # ----------------------------------------------------------------------- 3-shot train + rollout + plot
 
 def _make_synthetic_three_shot_fixture(tmp_path: Path):
@@ -818,6 +833,17 @@ def test_end_to_end_train_rollout_plot(tmp_path: Path):
         assert step == 4
         assert cfg.d_model == 64 and cfg.depth == 2
         assert cfg.actuator_dim == 1
+
+        # forbid_missing: a signal recording at the seed end is never sampled as "not
+        # recorded", even at a temperature that makes every code likely.
+        miss = framecache.codec_vocab(codecs["summary-ip"])[1]
+        ro_f, entry_f, _ = rollout.rollout_mast_shot(
+            model, cfg, fc_dir, "1003", k0=4, horizon=6, temperature=50.0, seed=0,
+            device=device, forbid_missing={"summary-ip": codecs["summary-ip"]},
+        )
+        rec = entry_f["codes"]["summary-ip"][3] != miss
+        assert rec.any()
+        assert not (ro_f.pred_codes["summary-ip"][4:10][:, rec] == miss).any()
 
         plots_dir = tmp_path / "plots"
         for mode in ("real", "set:summary-power_nbi=0@4"):

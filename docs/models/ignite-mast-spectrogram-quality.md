@@ -304,6 +304,31 @@ unmasking steps (each code then conditioned on more already-drawn codes of its
 frame) gives the same: paired +0.007 against 10 steps (95% shot bootstrap −0.002
 to +0.017). Sampling is not what keeps the rollouts off the measured modes.
 
+**Blank stretches and `--forbid-missing`.** Every spectrogram position has a
+"not recorded" code (`framecache.codec_vocab`: code 64 for the Mirnov arrays).
+Rollouts sample it now and then for a probe that records, and that probe's
+spectrum stays blank from there on. With `--forbid-missing` (dev-peter's decode
+`forbid`, in `tokeye_mode_fidelity.py`, `port_rollout_plots.py` and
+`port_recon_plots.py`; off by default) that code can't be sampled at any Mirnov
+position whose last seed frame records. Positions already missing at the seed end
+stay free. Same windows, same CPU generator seed, measured 2026-11-25:
+
+| | OMV columns blank | CC columns blank | OMV mask F1 | paired F1, forbid − plain (95% shot bootstrap) |
+|---|---|---|---|---|
+| last seed frame held (persistence) | 3.3% | 0.0% | | |
+| run 8, step 10,000 | 4.0% | 0.9% | 0.201 | |
+| run 8, step 10,000, forbid | 3.3% | 0.0% | 0.208 | +0.000 (−0.006 to +0.006) |
+| run 5, step 30,000 | 7.2% | 5.3% | 0.176 | |
+| run 5, step 30,000, forbid | 3.3% | 0.0% | 0.176 | −0.001 (−0.008 to +0.006) |
+
+"Columns blank" is 1 − Σ rollout columns / Σ codec-ceiling columns over the
+probe-windows the ceiling decodes. The 3.3% left are probes already missing at the
+seed end, as in persistence. Mode share and peak contrast move by under 0.01 and
+0.1 dB. Forbidding the code removes the blank stretches and nothing else, so it is
+used in the rollout plots from run 8's final checkpoint on. The blank share of a
+plain rollout is noisy: run 8 at step 10,000 left 7.3% blank on the GPU sampler
+and 4.0% on the CPU one.
+
 ## How to run
 
 ```bash
@@ -316,7 +341,8 @@ scripts/mast/py.sh scripts/mast/tokeye_keep.py --scores $S/tokeye/scores_v2
 # 3. mode fidelity of the codec and of a checkpoint's rollouts
 IGNITE_HISTORY_CACHE=1 scripts/mast/py.sh scripts/mast/tokeye_mode_fidelity.py \
     --keep $S/tokeye/scores_v2 --out $S/tokeye/fidelity_<run>_<step> --ckpt <run>/dynamics_step<N>.pt
-#    decode options, off by default: --temperature 0.7 --gate 0.2 --consensus-n 4 --decode-steps 30
+#    decode options, off by default: --temperature 0.7 --gate 0.2 --consensus-n 4 --decode-steps 30 --forbid-missing
+#    (port_rollout_plots.py and port_recon_plots.py also take --forbid-missing)
 # 4. the peak + baseline Mirnov codec and a frame cache with it (CPU, about 3 minutes)
 scripts/mast/py.sh scripts/mast/port_fit_peakspec.py --frames-dir $S/frame_codes_v1b_logspec_cam_live_da \
     --keep-dir $S/tokeye/scores_v2 --out $S/peakspec_fit_v1 --workers 32

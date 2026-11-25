@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from tokamak_foundation_model.ignite.mast import paths, registry
+from tokamak_foundation_model.ignite.mast import paths, registry, tasks
 from tokamak_foundation_model.ignite.mast.port import (
     camera,
     dalpha,
@@ -118,8 +118,13 @@ def run_rollout_plots(
     temperature: float = 1.0,
     actuator_mode: str = "real",
     device_spec: str = "auto",
+    forbid_missing: bool = False,
 ) -> dict:
-    """Roll out selected shots, decode to physical units, plot PNGs, write ``rollout_metrics.json``."""
+    """Roll out selected shots, decode to physical units, plot PNGs, write ``rollout_metrics.json``.
+
+    ``forbid_missing`` (off by default): the Mirnov spectrograms can't be sampled as "not
+    recorded" where the seed records (`port_rollout.forbid_missing_codes`).
+    """
     cache_dir = Path(cache_dir)
     out_dir = paths.prepare_write_root(Path(out_dir))
     manifest = layout.load_manifest(cache_dir)
@@ -177,6 +182,11 @@ def run_rollout_plots(
             seed=seed,
             device=device,
             actuator_mode=actuator_mode,
+            forbid_missing=(
+                {n: codecs[n] for n in tasks.SPECTROGRAM_SIGNALS if n in codecs}
+                if forbid_missing
+                else None
+            ),
         )
         t0 = float(entry.get("t0", manifest.get("t0_start", 0.0)))
         decoded, sig_metrics = port_rollout.decode_and_score_rollout(
@@ -233,6 +243,7 @@ def run_rollout_plots(
         "actuator_mode": actuator_mode,
         "temperature": float(temperature),
         "seed": int(seed),
+        "forbid_missing": bool(forbid_missing),
         "k0": int(k0 or cfg.k0_seed),
         "horizon": int(horizon),
         "shots": shot_list,
@@ -265,6 +276,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Actuator mode (real, zero, freeze, shuffle, donor:<shot>, group_zero:<name>, scale:..., ramp:..., set:...)",
     )
     p.add_argument("--device", default="auto", help="Torch device (auto, cpu, cuda:0, ...)")
+    p.add_argument(
+        "--forbid-missing",
+        action="store_true",
+        help="Never sample a Mirnov probe recording in the last seed frame as 'not recorded' "
+        "(dev-peter's decode forbid; off by default)",
+    )
     return p
 
 
@@ -290,6 +307,7 @@ def main(argv=None) -> int:
         temperature=args.temperature,
         actuator_mode=args.actuator_mode,
         device_spec=args.device,
+        forbid_missing=args.forbid_missing,
     )
     return 0
 

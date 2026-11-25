@@ -49,6 +49,28 @@ def load_mast_model(ckpt_path: Path | str, cache_dir: Path | str, device: torch.
     return ev.load_model(Path(ckpt_path), device)
 
 
+def forbid_missing_codes(
+    entry: dict, codecs: Mapping[str, tok_codecs.Codec], seed_end: int
+) -> dict[str, torch.Tensor]:
+    """dev-peter's decode ``forbid`` so a recording diagnostic can't switch off mid-rollout.
+
+    For each signal in ``codecs``: at every token that records in the last seed frame
+    (``seed_end - 1``), the codec's "not recorded" code is never sampled. ``forbid`` takes one
+    code per token, so where the seed is already "not recorded" bin 0 is forbidden instead,
+    which leaves "not recorded" free there. Without it, 5-6% of predicted Mirnov OMV columns
+    came out blank in runs 5 and 8 (measured 2026-11-25), where a probe that records was
+    sampled as not recording.
+    """
+    out = {}
+    for name, codec in codecs.items():
+        if name not in entry["codes"]:
+            continue
+        miss = framecache.codec_vocab(codec)[1]
+        last = entry["codes"][name][seed_end - 1].long()
+        out[name] = torch.where(last == miss, torch.zeros_like(last), torch.full_like(last, miss))
+    return out
+
+
 def rollout_mast_shot(
     model,
     cfg,
@@ -61,8 +83,12 @@ def rollout_mast_shot(
     seed: int = 0,
     device: torch.device,
     actuator_mode: str = "real",
+    forbid_missing: Mapping[str, tok_codecs.Codec] | None = None,
 ) -> tuple[ev.Rollout, dict, torch.Tensor]:
     """Run dev-peter's ``eval_dynamics.rollout_shot`` on one cached MAST shot.
+
+    ``forbid_missing`` (default None, off): codecs of the signals that may not be sampled as
+    "not recorded" where the seed records (`forbid_missing_codes`).
 
     Returns ``(rollout, shot_cache_entry, edited_actuators)``.
     """
@@ -78,6 +104,11 @@ def rollout_mast_shot(
         )
     view = {**entry, "n_frames": capped}
     generator = torch.Generator(device=device).manual_seed(int(seed))
+    decode = (
+        {"forbid": forbid_missing_codes(view, forbid_missing, n_seed)}
+        if forbid_missing
+        else None
+    )
     rollout = ev.rollout_shot(
         model,
         cfg,
@@ -89,6 +120,7 @@ def rollout_mast_shot(
         actuator_mode=actuator_mode,
         cache_dir=Path(cache_dir),
         shot=str(shot),
+        decode=decode,
     )
     edited_act = ev.apply_actuator_mode(
         entry["actuators"][: rollout.n_frames].float(),
