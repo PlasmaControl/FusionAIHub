@@ -363,6 +363,8 @@ the spectrum blanks from 212 ms on). A colder temperature moves mask F1 by about
 unmasking steps (each code then conditioned on more already-drawn codes of its
 frame) gives the same: paired +0.007 against 10 steps (95% shot bootstrap −0.002
 to +0.017). Sampling is not what keeps the rollouts off the measured modes.
+Every row here decodes without Gumbel noise on the reveal order; that one setting
+does matter (see "Decoding noise" below).
 
 **Blank stretches and `--forbid-missing`.** Every spectrogram position has a
 "not recorded" code (`framecache.codec_vocab`: code 64 for the Mirnov arrays).
@@ -488,6 +490,48 @@ windows twice. Its learning rate decays on a cosine from 1e-3 at step 4,500
 freezes after about 2,000 steps, the freeze lives in run 6's weights, and the next
 run trains d1024 × 16 from scratch on run 8's recipe.
 
+### Decoding noise (Gumbel 3) unfreezes T_e and n_e
+
+`maskgit.generate_frame` builds a frame in `maskgit_decode_steps` (10) steps and
+each step fixes the masked tokens it is most sure of. `IGNITE_MASKGIT_GUMBEL`
+(read once at import, default 0) adds annealed Gumbel noise to that order; with 0,
+the docstring calls it "a greedy cascade onto the mode". dev-peter sets it to 3 in
+every DIII-D rollout script (`scripts/slurm_stellarai/run_shot.sh`: "sampling
+noise; without it spectrogram modes go flat", `ckpt_scorecard.sh`,
+`analysis/paper_figures/paper_rollouts.sh`). Every MAST rollout and TokEye score
+above used 0, and the decode options table never varied it.
+
+Without the noise the surest tokens are the ones equal to the last frame, so a
+rollout copies itself. The share of a frame's tokens equal to the previous frame's,
+over the 6 plotted shots (last seed frame plus 20 predicted frames, CPU, seed 0,
+missing codes excluded), measured 2026-11-25:
+
+| tokens repeated frame to frame | T_e | n_e | q95 | SXR upper |
+|---|---|---|---|---|
+| measured | 0.19 | 0.34 | 0.41 | 0.26 |
+| run 8 final, Gumbel 0 | 0.46 | 0.66 | 0.29 | 0.49 |
+| run 8 final, Gumbel 3 | 0.21 | 0.37 | 0.26 | 0.33 |
+| run 6 step 4,500, Gumbel 0 | 0.90 | 0.91 | 0.35 | 0.43 |
+| run 6 step 4,500, Gumbel 3 | 0.31 | 0.44 | 0.34 | 0.31 |
+
+Rollout error on the same 6 shots and 23529 (`--forbid-missing`, CPU, seed 0):
+
+| | median, 40 signals | T_e | n_e | q95 | 23529 OMV, decades |
+|---|---|---|---|---|---|
+| run 8 final, Gumbel 0 | 0.068 | 0.185 | 0.193 | 0.124 | 2.07 |
+| run 8 final, Gumbel 3 | 0.057 (25 of 40 better) | 0.159 | 0.176 | 0.142 | 1.08 |
+| run 6 step 4,500, Gumbel 0 | 0.057 | 0.485 | 0.388 | 0.084 | 0.70 |
+| run 6 step 4,500, Gumbel 3 | 0.057 | 0.214 | 0.198 | 0.115 | 1.64 |
+
+With Gumbel 3, run 8's final checkpoint beats run 6's step 4,500 on 25 of 40
+signals. Run 6 keeps the upper SXR chords (0.146 against 0.211) and q95. The
+23529 numbers are one seed. On 23529 the noise keeps the OMV power and activity
+up after the seed and T_e keeps rising, but the predicted modes are a patchy
+per-frame mosaic, not the continuous chirping lines the codec reconstructs. The
+T_e freeze in every MAST run so far (run 6 above, run 8 and run 5 early in
+training) was therefore the decode, not the training recipe. From 2026-11-25
+15:50 UTC all MAST rollout scoring sets `IGNITE_MASKGIT_GUMBEL=3`.
+
 ## How to run
 
 ```bash
@@ -497,8 +541,10 @@ OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES= scripts/mast/py.sh scripts/mast/tokeye_s
     --out $S/tokeye/scores_v2 --workers 48 --threads 4
 # 2. verdicts, keep map, presence file
 scripts/mast/py.sh scripts/mast/tokeye_keep.py --scores $S/tokeye/scores_v2
-# 3. mode fidelity of the codec and of a checkpoint's rollouts
-IGNITE_HISTORY_CACHE=1 scripts/mast/py.sh scripts/mast/tokeye_mode_fidelity.py \
+# 3. mode fidelity of the codec and of a checkpoint's rollouts. Always decode with dev-peter's
+#    Gumbel noise (IGNITE_MASKGIT_GUMBEL=3; the default 0 freezes T_e and n_e, see above); the
+#    same applies to port_rollout_plots.py and port_recon_plots.py
+IGNITE_MASKGIT_GUMBEL=3 IGNITE_HISTORY_CACHE=1 scripts/mast/py.sh scripts/mast/tokeye_mode_fidelity.py \
     --keep $S/tokeye/scores_v2 --out $S/tokeye/fidelity_<run>_<step> --ckpt <run>/dynamics_step<N>.pt
 #    decode options, off by default: --temperature 0.7 --gate 0.2 --consensus-n 4 --decode-steps 30 --forbid-missing
 #    (port_rollout_plots.py and port_recon_plots.py also take --forbid-missing)
