@@ -567,6 +567,15 @@ at lower temperature it gives the most common value (flat or dark). In bin space
 the same line moves one position, and the bright line bins persist (0.16).
 Sampling errors there look like speckle, not blocks.
 
+The rollout's band means are not the problem. Over 7 val shots (run 8 final,
+Gumbel 3), the OMV band means change from frame to frame 1.37 times as much as
+the measured ones at temperature 1.0, and 1.15 times at 0.7 (CC 1.40 and 1.16).
+The fine levels change about as much in the rollout as in the measurement,
+because the measured fine levels also redraw almost completely every frame. A
+measured frame's coefficients are coherent within the frame (together they draw
+a line). Sampling 16 to 32 of them per band, token by token, loses that
+coherence.
+
 ### A per-bin Mirnov codec (BinSpec)
 
 `port/binspec.py` codes each probe frame directly in bin space:
