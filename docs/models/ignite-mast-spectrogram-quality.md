@@ -293,6 +293,7 @@ plotted shots (11914, 16052, 20384, 23403, 24934, 28101), then the median over
 | run 8, step 15,000 | 0.090 | 0.189 | 0.098 | 4.7 dB | 0.140 | 0.044 |
 | run 8, step 20,000 | 0.062 | 0.182 | 0.083 | 4.0 dB | 0.148 | 0.040 |
 | run 8, step 25,000 | 0.067 | 0.155 | 0.075 | 4.0 dB | 0.146 | 0.035 |
+| run 8, step 30,000 (final) | 0.072 | 0.160 | 0.081 | 4.0 dB | 0.147 | 0.042 |
 | run 5, step 30,000 | 0.074 | 0.163 | 0.116 | 5.8 dB | 0.144 | 0.034 |
 
 The median error falls to step 20,000 and then holds. At step 25,000, step
@@ -304,6 +305,37 @@ peak contrast is highest at step 10,000 (6.2 dB) and falls to 4.0 dB by step
 frame, and from step 20,000 to 25,000 it drops by 0.012 (paired; 95% shot bootstrap
 −0.023 to −0.002). CC mask F1 rises throughout and beats run 5 at step 25,000
 (+0.010, +0.003 to +0.016).
+
+Run 8 finished at step 30,000 (2026-11-25 04:14 UTC). One rollout per shot moves
+the 6-shot median by up to 0.007, so the final comparison with run 5 uses 3
+rollout seeds per shot. The per-seed medians are 0.072, 0.070 and 0.072 for run 8,
+and 0.074, 0.077 and 0.070 for run 5. Averaging each signal over its 3 seeds, the
+median over 40 signals is 0.070 for run 8 and 0.075 for run 5. Run 8 is better on
+30 of the 40 signals. Its largest gains are the upper SXR chords (0.252 vs 0.366),
+n_e (0.178 vs 0.252) and κ (0.249 vs 0.296). Run 5 stays ahead on q95, β_N,
+D-alpha and the toroidal field at the magnetic axis. On the spectrograms, run 8's
+CC mask F1 beats run 5's final checkpoint (paired +0.025, +0.009 to +0.043). OMV is
+level (+0.003, −0.021 to +0.030), and the OMV peak contrast stays at 4.0 dB.
+
+**Modes that start at the end of the seed are dropped.** In shot 23529, the NBI
+comes on in seed frame 10 of 12, and Mirnov modes start at 55 ms, in the last seed
+frames. Run 8's final checkpoint (`--forbid-missing`, CPU sampler, seed 0) rolls
+out a dark OMV spectrum with stripes. Its mean log10 power is about 2 decades below
+the truth on all 3 probes. Error here means the median over 5 ms frames of
+\|Δ log10 power\|, from `port_recon_plots.py`:
+
+| shot | 23529 | 26067 | 24934 | 20384 |
+|---|---|---|---|---|
+| OMV rollout | 2.07 | 0.87 | 0.55 | 0.30 |
+| CC rollout | 0.29 | 0.40 | 0.30 | no score (NaN) |
+| codec ceiling, OMV and CC | 0.08 | 0.08 | 0.08 to 0.09 | 0.08 |
+
+The codec ceiling is the token round trip of the same frames. The rollout's seed codes equal the truth. The codec decodes each frame
+on its own, so the predicted frames can't change the seed region. The dark spectrum
+is therefore the model's prediction, not a plotting artefact. Holding the last seed
+frame would do better on this shot. Shot 26067 (NBI on at frame 8) is the next
+worst. Run 6 is judged on the same two images (23529 and 20384) at every 500th
+step.
 
 ### Decode options (no retraining)
 
