@@ -360,10 +360,15 @@ def build_logspec_codecs(
 ) -> dict[str, tok_codecs.Codec]:
     """Load ``<fit_dir>/logspec_fit.{json,npz}`` and construct ``{name: LogBandDCT}``.
 
-    A fit whose json says ``"codec": "peakspec"`` builds `peakspec.PeakSpec` codecs instead.
+    A fit whose json says ``"codec": "peakspec"`` builds `peakspec.PeakSpec` codecs instead, and
+    ``"codec": "binspec"`` builds `binspec.BinSpec` codecs.
     """
     fit_path = Path(fit_dir)
     meta = json.loads((fit_path / "logspec_fit.json").read_text())
+    if meta.get("codec") == "binspec":
+        from . import binspec
+
+        return binspec.build_binspec_codecs(fit_path, stats)
     if meta.get("codec", "band_dct") != "band_dct":
         # a peak + baseline fit (`peakspec`) is stored under the same file names, so a frame-code
         # manifest's logspec_fit_path / logspec_fit_sha256 carry either kind

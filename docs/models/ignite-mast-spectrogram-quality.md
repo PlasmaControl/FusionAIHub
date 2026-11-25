@@ -532,6 +532,70 @@ T_e freeze in every MAST run so far (run 6 above, run 8 and run 5 early in
 training) was therefore the decode, not the training recipe. From 2026-11-25
 15:50 UTC all MAST rollout scoring sets `IGNITE_MASKGIT_GUMBEL=3`.
 
+### Why the band-DCT Mirnov rollout is a mosaic
+
+Neither the decode noise nor a lower temperature makes the predicted modes look
+like the codec's reconstruction. Run 8 final on 23529 (OMV |dlog10| in decades,
+Gumbel 3, CPU, `--forbid-missing`, seed 0, measured 2026-11-25):
+
+| decode | 23529 OMV | what the rollout looks like |
+|---|---|---|
+| temperature 1.0 | 1.08 | per-frame block mosaic |
+| temperature 0.7 | 0.75 | bands hold longer, still blocky |
+| temperature 0.5 | 1.98 | collapses to a dark, quiet spectrogram |
+| coarse-to-fine reveal (MARS/VAR order by DCT level) | 1.05 | same mosaic |
+
+The cause is in the codes, not in the model or the decode. A frame's band-DCT
+code is barely closer to the previous frame's code than to a random frame's from
+the same shot. The table gives the mean |code change| from the previous frame
+divided by the same for a random frame of the shot ("step/shuffle"). Near 1, the
+previous frame says nothing; near 0, it predicts the frame. Measured on the stored
+cache codes of 200 val shots (`scripts/mast/mirnov_code_persistence.py`, truth only). "Active"
+means TokEye mode share ≥ 0.05 in both frames:
+
+| codes | OMV active | OMV all frames | CC active | CC all frames |
+|---|---|---|---|---|
+| band-DCT (`frame_codes_v1b_logspec_cam_live_da`, 432 per array) | 0.81 | 0.89 | 0.81 | 0.91 |
+| per-bin (`frame_codes_v1b_binspec_cam_live_da`, 384 per array) | 0.34 | 0.50 | 0.36 | 0.36 |
+
+Split by DCT level (from the cache v1 spectrograms), the band means persist and
+the fine levels (j ≥ 2, 78% of the Mirnov tokens) do not: 0.78 to 0.99 even in
+mode-active frames. A mode line that drifts by one bin changes nearly every fine
+DCT coefficient of its band, so a model that predicts from the previous frame
+can only sample those coefficients. At temperature 1 that gives noise blocks;
+at lower temperature it gives the most common value (flat or dark). In bin space,
+the same line moves one position, and the bright line bins persist (0.16).
+Sampling errors there look like speckle, not blocks.
+
+### A per-bin Mirnov codec (BinSpec)
+
+`port/binspec.py` codes each probe frame directly in bin space:
+- Start from the centred log10 power of the band-DCT fit (same floor and log mean).
+- Take the frame mean over the 1.024 ms columns.
+- Average pairs of neighbouring bins, which gives 128 values per probe and 384
+  tokens per array (band-DCT has 432).
+- Quantize each position to 64 asinh levels fitted on TokEye-kept training shots
+  (`fit_binspec`, the same shot choice as the PeakSpec fit).
+
+It subclasses `PeakSpec`, so the frame cache and the rollout use it unchanged.
+`logspec.build_logspec_codecs` dispatches on `"codec": "binspec"` in the fit's
+JSON. The fit `binspec_fit_v1` used 300 shots and 22,082 OMV and 22,894 CC frames.
+The frame cache differs from run 8's only in the two Mirnov arrays. The presence
+map and splits are identical, and the other modalities' codes match exactly on
+the shots checked.
+
+Codec ceiling (TokEye mask agreement of the decoded truth, the same 12 mode-rich
+val shots × 3 windows as above):
+
+| codec | OMV F1 | OMV peak dB (truth 12.6) | CC F1 | CC peak dB (truth 8.0) |
+|---|---|---|---|---|
+| band-DCT | 0.957 | 9.1 | 0.890 | 5.7 |
+| per-bin | 0.954 | 8.6 | 0.874 | 5.7 |
+
+Run 10 (`runs/v1b_binspec_cam_live_da_tokeye_f32_d512L12/launch.sh`) is run 8's
+launcher with only the cache and the presence path changed. Run 8 against run 10
+at equal steps therefore isolates the Mirnov codec.
+
 ## How to run
 
 ```bash
@@ -557,6 +621,14 @@ C=/models/intermediate/mast/camera
 CUDA_VISIBLE_DEVICES= scripts/mast/py.sh scripts/mast/port_build_cache.py --logspec-fit $S/peakspec_fit_v1 \
     --dalpha-fit $S/dalpha_fit_v1 --camera-codec $C/codec_rgb_v2/codec_final.pt --camera-fit $C/camera_fit_v1 \
     --camera-frames $C/frames_rgb_v1 --out $S/frame_codes_v1b_peakspec_cam_live_da --workers 48 --live-only
+#    the per-bin Mirnov codec (BinSpec) the same way (CPU, about 4 minutes for the cache)
+scripts/mast/py.sh scripts/mast/port_fit_binspec.py --frames-dir $S/frame_codes_v1b_logspec_cam_live_da \
+    --keep-dir $S/tokeye/scores_v2 --out $S/binspec_fit_v1
+CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 scripts/mast/py.sh scripts/mast/port_build_cache.py --logspec-fit $S/binspec_fit_v1 \
+    --dalpha-fit $S/dalpha_fit_v1 --camera-codec $C/codec_rgb_v2/codec_final.pt --camera-fit $C/camera_fit_v1 \
+    --camera-frames $C/frames_rgb_v1 --out $S/frame_codes_v1b_binspec_cam_live_da --workers 64 --live-only
+#    the TokEye presence file is per (shot, signal), so a new cache reuses presence_tokeye.json with
+#    "cache_dir" pointed at it (presence_tokeye_binspec.json)
 # 5. training with the judge (port_train.py options, off unless given); run 8's launcher:
 #    $S/runs/v1b_logspec_cam_live_da_tokeye_f32_d512L12/launch.sh (run 7's: .../v1b_peakspec_cam_live_da_f32_d512L12/)
 ... port_train.py ... --presence_path $S/tokeye/scores_v2/presence_tokeye.json --mask_absent \
