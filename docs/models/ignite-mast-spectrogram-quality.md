@@ -277,6 +277,34 @@ TokEye selection (the presence file was built on this cache; same 961,093
 windows). Run 7 against run 8 at equal steps isolates the Mirnov codec; run 8
 against run 5 is D-alpha v2 plus the selection.
 
+### Run 8 over training
+
+Same 102 OMV and 45 CC probe-windows, temperature 1, GPU sampler, no
+`--forbid-missing`. The median error is the rollout NRMSE per signal over the 6
+plotted shots (11914, 16052, 20384, 23403, 24934, 28101), then the median over
+40 signals, from one rollout per shot. Measured 2026-11-24 and 25:
+
+| | median error, 40 signals | OMV mask F1 | OMV mode share | OMV peak contrast | CC mask F1 | CC mode share |
+|---|---|---|---|---|---|---|
+| truth | | | 0.085 | 12.6 dB | | 0.042 |
+| last seed frame held | | 0.189 | 0.159 | 6.0 dB | 0.140 | 0.081 |
+| run 8, step 5,000 | 0.172 | 0.182 | 0.102 | 4.9 dB | 0.104 | 0.042 |
+| run 8, step 10,000 | 0.114 | 0.187 | 0.120 | 6.2 dB | 0.117 | 0.041 |
+| run 8, step 15,000 | 0.090 | 0.189 | 0.098 | 4.7 dB | 0.140 | 0.044 |
+| run 8, step 20,000 | 0.062 | 0.182 | 0.083 | 4.0 dB | 0.148 | 0.040 |
+| run 8, step 25,000 | 0.067 | 0.155 | 0.075 | 4.0 dB | 0.146 | 0.035 |
+| run 5, step 30,000 | 0.074 | 0.163 | 0.116 | 5.8 dB | 0.144 | 0.034 |
+
+The median error falls to step 20,000 and then holds. At step 25,000, step
+20,000 is better on 17 of 40 signals, within the noise of one rollout per shot.
+Run 8 beats run 5's final checkpoint from step 20,000 on (better on 29 of 40
+signals at step 20,000; run 5 is better on only 9 of 40 at step 25,000). The OMV spectrograms go the other way: their
+peak contrast is highest at step 10,000 (6.2 dB) and falls to 4.0 dB by step
+20,000, below run 5's 5.8 dB. OMV mask F1 never beats holding the last seed
+frame, and from step 20,000 to 25,000 it drops by 0.012 (paired; 95% shot bootstrap
+−0.023 to −0.002). CC mask F1 rises throughout and beats run 5 at step 25,000
+(+0.010, +0.003 to +0.016).
+
 ### Decode options (no retraining)
 
 dev-peter's sampler has options that act only at rollout time.
