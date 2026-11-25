@@ -605,6 +605,58 @@ Run 10 (`runs/v1b_binspec_cam_live_da_tokeye_f32_d512L12/launch.sh`) is run 8's
 launcher with only the cache and the presence path changed. Run 8 against run 10
 at equal steps therefore isolates the Mirnov codec.
 
+### Run 10 against run 8 at equal steps
+
+Measured 2026-11-25 on the same 6 shots: CPU sampler, Gumbel 3, `--forbid-missing`,
+seed 0. Errors are 6-shot medians of the rollout NRMSE. The OMV columns are
+`|dlog10|` on one shot each.
+
+| | median, 40 signals | T_e | n_e | q95 | SXR upper | D-alpha | 23529 OMV | 20384 OMV |
+|---|---|---|---|---|---|---|---|---|
+| run 10, step 10,000 | 0.088 (26/40 better) | 0.237 | 0.224 | 0.225 | 0.203 | 0.166 | 1.10 | 0.42 |
+| run 8, step 10,000 | 0.121 | 0.236 | 0.268 | 0.240 | 0.302 | 0.208 | 0.79 | 0.37 |
+| run 10, step 5,000 | 0.112 (32/40 better) | 0.330 | 0.377 | 0.205 | 0.287 | 0.322 | 2.85 | 0.43 |
+| run 8, step 5,000 | 0.129 | 0.361 | 0.323 | 0.310 | 0.320 | 0.345 | 1.21 | 0.53 |
+
+The validation masked CE is 1.276 against 1.336 at step 10,000 (1.438 against
+1.508 at 5,000). Run 10's Mirnov rollouts have no blocks. At step 10,000 they
+are dimmer than the measurement and show no chirping lines yet. Run 8's are
+brighter and blocky.
+
+At step 5,000, run 10's 23529 OMV went dark after the seed. Decode changes on
+that checkpoint (23529 OMV `|dlog10|`):
+
+| decode | 23529 OMV |
+|---|---|
+| standard: 10 steps, Gumbel 3 (seeds 0, 1, 2) | 2.85, 2.87, 2.82 |
+| 30 steps | 2.96 |
+| 3 steps / 2 steps | 2.64 / 2.50 |
+| 1 step | 2.06 |
+| Gumbel 10 / 30 | 2.76 / 2.64 |
+
+Only 1 step lights it up, with speckle. `scripts/mast/maskgit_cascade_probe.py`
+follows the decode of the first predicted frame step by step. BinSpec codes are
+ordered power levels, so their mean measures how lit a frame is.
+
+- In 23529 the measured frame averages level 30.7. The last seed frame averages
+  26.2, and the quiet seed frames before it 14.7.
+- At the first decode step the model expects 25.2 and gives a level of 30.7 or
+  more a probability of 0.32.
+- The 5 tokens committed first average 16.8. Quiet levels are narrow, so they are
+  the most confident.
+- With those committed, the expectation for the still-masked tokens falls step by
+  step to 18.4, and the frame ends at 17.4.
+- Where the seed ends clearly lit (20384 at k0 27, last seed frame 51.1), the
+  same checkpoint keeps the next frame lit: it ends at 51.1, and the measured
+  frame is 49.8.
+
+So the dark frame came from a model unsure about a mode that starts in the last
+seed frame, which the confidence-first decode then turned into a quiet frame. By
+step 10,000 the standard decode keeps 23529 lit (1.10), and no decode change was
+made. At step 10,000 the probe shows the change: the first step expects level
+31.6, close to the measured 30.7, and gives 30.7 or more a probability of 0.55.
+The decode then rises to 35 and ends at 35.3.
+
 ## How to run
 
 ```bash
@@ -623,6 +675,9 @@ IGNITE_MASKGIT_GUMBEL=3 IGNITE_HISTORY_CACHE=1 scripts/mast/py.sh scripts/mast/t
 #    (port_rollout_plots.py and port_recon_plots.py also take --forbid-missing)
 #    --one-step also scores each frame predicted from the measured frames before it (the training
 #    task; ~20x the rollout's cost, so pair it with --shots 23529,26067 on the CPU)
+#    the decode of one frame step by step (per-bin codec only; CPU, about a minute)
+IGNITE_MASKGIT_GUMBEL=3 scripts/mast/py.sh scripts/mast/maskgit_cascade_probe.py \
+    <run>/dynamics_step<N>.pt $S/frame_codes_v1b_binspec_cam_live_da 23529 --k0 12
 # 4. the peak + baseline Mirnov codec and a frame cache with it (CPU, about 3 minutes)
 scripts/mast/py.sh scripts/mast/port_fit_peakspec.py --frames-dir $S/frame_codes_v1b_logspec_cam_live_da \
     --keep-dir $S/tokeye/scores_v2 --out $S/peakspec_fit_v1 --workers 32
