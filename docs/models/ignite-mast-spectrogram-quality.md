@@ -329,6 +329,33 @@ used in the rollout plots from run 8's final checkpoint on. The blank share of a
 plain rollout is noisy: run 8 at step 10,000 left 7.3% blank on the GPU sampler
 and 4.0% on the CPU one.
 
+**One frame ahead (`--one-step`).** Even the best rollout windows hold the
+modes flat where the measured ones chirp. `--one-step` also scores each frame
+predicted from the window's measured frames before it, the task the model trains
+on. Shots 23529 and 26067 (3 windows each, CPU sampler, `--forbid-missing`),
+measured 2026-11-25:
+
+| median mask F1 | OMV (18) | CC (12) |
+|---|---|---|
+| codec ceiling | 0.964 | 0.905 |
+| run 8, step 15,000, one frame ahead | 0.490 | 0.277 |
+| run 6 (d1024 x 16), step 3,500, one frame ahead | 0.559 | 0.456 |
+| run 8, step 15,000, free rollout | 0.265 | 0.162 |
+| run 6, step 3,500, free rollout | 0.213 | 0.115 |
+| last seed frame held | 0.171 | 0.134 |
+
+One frame ahead, run 8 beats its free rollout on 16 of 18 OMV probe-windows. It
+follows the spectrum's level (quiet stretches, an onset one frame late), so the
+free rollout loses part of what the model knows. But it renders a chirping line
+(23529, 90 to 70 kHz) as a flat, patchy band, at half the codec's F1. Run 8's
+Mirnov validation loss has barely moved (OMV `gen_ce` 3.665 at step 1,000, 3.580
+at step 18,000, where uniform is ln 64 = 4.16), while its total fell from 1.98 to
+1.18. Run 6 reached 3.539 at step 3,500, level with run 5's final 3.543. One frame
+ahead, run 6 beats run 8 on CC (paired +0.108, better on 11 of 12) and a little on
+OMV (+0.029). Its free rollout is still worse at step 3,500 (OMV −0.060). Model
+size, not more steps, is the lever for the Mirnov dynamics, so run 6 resumes after
+run 8.
+
 ## How to run
 
 ```bash
@@ -343,6 +370,8 @@ IGNITE_HISTORY_CACHE=1 scripts/mast/py.sh scripts/mast/tokeye_mode_fidelity.py \
     --keep $S/tokeye/scores_v2 --out $S/tokeye/fidelity_<run>_<step> --ckpt <run>/dynamics_step<N>.pt
 #    decode options, off by default: --temperature 0.7 --gate 0.2 --consensus-n 4 --decode-steps 30 --forbid-missing
 #    (port_rollout_plots.py and port_recon_plots.py also take --forbid-missing)
+#    --one-step also scores each frame predicted from the measured frames before it (the training
+#    task; ~20x the rollout's cost, so pair it with --shots 23529,26067 on the CPU)
 # 4. the peak + baseline Mirnov codec and a frame cache with it (CPU, about 3 minutes)
 scripts/mast/py.sh scripts/mast/port_fit_peakspec.py --frames-dir $S/frame_codes_v1b_logspec_cam_live_da \
     --keep-dir $S/tokeye/scores_v2 --out $S/peakspec_fit_v1 --workers 32

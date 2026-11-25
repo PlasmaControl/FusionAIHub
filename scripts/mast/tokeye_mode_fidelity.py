@@ -106,6 +106,12 @@ def main() -> None:
     # (dev-peter's decode "forbid"): a recording probe can't switch off mid-rollout. Off by default.
     # Without it, 5-6% of predicted columns came out blank in runs 5 and 8 (measured 2026-11-25).
     ap.add_argument("--forbid-missing", action="store_true")
+    # Also score "onestep": every predicted frame k generated from the window's measured frames
+    # 0..k-1 (the training task), one rollout_shot call per frame. If it follows the modes and the
+    # free rollout doesn't, the rollout loses them as it runs; if neither does, the model hasn't
+    # learned how they move. Off by default; ~F - k0 times the rollout's cost.
+    ap.add_argument("--one-step", action="store_true")
+    ap.add_argument("--shots", default="", help="comma-separated val shots (default: the --n-shots most mode-rich)")
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
 
@@ -145,6 +151,12 @@ def main() -> None:
     fr = pd.read_parquet(args.keep / "frames.parquet")
     val = sg[(sg.split == "val") & sg.keep & (sg.sig == "omv")].sort_values("mode_mean", ascending=False)
     shots = list(val.shot.head(args.n_shots))
+    if args.shots.strip():
+        want = [s.strip() for s in args.shots.split(",") if s.strip()]
+        shots = [s for s in val.shot if str(s) in want]
+        missing = sorted(set(want) - {str(s) for s in shots})
+        if missing:
+            raise SystemExit(f"--shots not kept val OMV shots: {missing}")
     print(f"[fidelity] {len(shots)} val shots, window {win} (k0 {k0}), step {step}", flush=True)
 
     rows, n_fig = [], 0
@@ -167,6 +179,21 @@ def main() -> None:
                 ro = ev.rollout_shot(model, cfg, entry, k0, args.temperature, g, dev, actuator_mode="real",
                                      cache_dir=args.cache_dir, shot=shot, start=start, decode=decode)
                 preds["rollout"] = {n: ro.pred_codes[n] for n in gt}
+                if args.one_step:
+                    one = {n: c.clone() for n, c in gt.items()}
+                    for k in range(k0, F):
+                        dk = {kk: v for kk, v in decode.items() if kk != "forbid"}
+                        if args.forbid_missing:
+                            dk["forbid"] = port_rollout.forbid_missing_codes(
+                                entry, {n: codecs[n] for n in gt}, start + k)
+                        # A window cut to k + 1 frames with k measured ones: rollout_shot generates frame k only.
+                        r1 = ev.rollout_shot(model, cfg, dict(entry, n_frames=start + k + 1), k, args.temperature,
+                                             torch.Generator(device=dev).manual_seed(args.seed + k), dev,
+                                             actuator_mode="real", cache_dir=args.cache_dir, shot=shot,
+                                             start=start, decode=dk)
+                        for n in gt:
+                            one[n][k] = r1.pred_codes[n][k]
+                    preds["onestep"] = one
                 pers = {}
                 for n, c in gt.items():
                     c = c.clone()
@@ -222,12 +249,12 @@ def main() -> None:
             "n_shots": len(shots), "n_rows": int(len(df)), "tol_px": q.AGREE_TOL,
             "temperature": args.temperature, "gate": args.gate, "consensus_n": args.consensus_n,
             "consensus_q": args.consensus_q, "consensus_mode": args.consensus_mode,
-            "forbid_missing": bool(args.forbid_missing),
+            "forbid_missing": bool(args.forbid_missing), "one_step": bool(args.one_step),
             "decode_steps": int(cfg.maskgit_decode_steps) if cfg is not None else None}
     for s in sorted(df.sig.unique()) if len(df) else []:
         d = df[df.sig == s]
         summ[s] = {"n": int(len(d))}
-        for kind in ("ceiling", "rollout", "persistence"):
+        for kind in ("ceiling", "rollout", "onestep", "persistence"):
             if f"{kind}_f1" in d:
                 summ[s][kind] = {k: float(np.nanmedian(d[f"{kind}_{k}"])) for k in
                                  ("f1", "recall", "precision", "other_lit", "peak_db")}
